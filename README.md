@@ -138,7 +138,7 @@ Client-side, per-agent rate limits prevent abuse and ensure fair resource usage 
 | `swarm_complete`               | Mark subtask complete with UBS bug scan, release reservations            |
 | `swarm_record_outcome`         | Record outcome for implicit feedback (duration, errors, retries)         |
 | `swarm_subtask_prompt`         | Generate prompt for spawned subtask agent (V1 - includes coordination)   |
-| `swarm_spawn_subtask`          | Generate V2 prompt for coordinator use (simplified, no coordination)     |
+| `swarm_spawn_subtask`          | Generate V2 prompt with Agent Mail/beads instructions for subagents      |
 | `swarm_complete_subtask`       | Handle subtask completion: close bead, create issue beads                |
 | `swarm_evaluation_prompt`      | Generate self-evaluation prompt                                          |
 

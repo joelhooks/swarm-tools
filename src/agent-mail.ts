@@ -455,6 +455,14 @@ export const agentmail_reserve = tool({
       reason: args.reason || "",
     });
 
+    // Handle unexpected response structure
+    if (!result) {
+      throw new AgentMailError(
+        "Unexpected response: file_reservation_paths returned null/undefined",
+        "file_reservation_paths",
+      );
+    }
+
     // Check for conflicts
     if (result.conflicts && result.conflicts.length > 0) {
       const conflictDetails = result.conflicts
@@ -467,12 +475,25 @@ export const agentmail_reserve = tool({
       );
     }
 
+    // Handle case where granted is undefined/null (alternative response formats)
+    const granted = result.granted ?? [];
+    if (!Array.isArray(granted)) {
+      throw new AgentMailError(
+        `Unexpected response format: expected granted to be an array, got ${typeof granted}`,
+        "file_reservation_paths",
+      );
+    }
+
     // Store reservation IDs for auto-release
-    const reservationIds = result.granted.map((r) => r.id);
+    const reservationIds = granted.map((r) => r.id);
     state.reservations = [...state.reservations, ...reservationIds];
     setState(ctx.sessionID, state);
 
-    return `Reserved ${result.granted.length} path(s):\n${result.granted
+    if (granted.length === 0) {
+      return "No paths were reserved (empty granted list)";
+    }
+
+    return `Reserved ${granted.length} path(s):\n${granted
       .map((r) => `  - ${r.path_pattern} (expires: ${r.expires_ts})`)
       .join("\n")}`;
   },
@@ -586,16 +607,16 @@ export const agentmail_health = tool({
 // ============================================================================
 
 export const agentMailTools = {
-  "agentmail_init": agentmail_init,
-  "agentmail_send": agentmail_send,
-  "agentmail_inbox": agentmail_inbox,
-  "agentmail_read_message": agentmail_read_message,
-  "agentmail_summarize_thread": agentmail_summarize_thread,
-  "agentmail_reserve": agentmail_reserve,
-  "agentmail_release": agentmail_release,
-  "agentmail_ack": agentmail_ack,
-  "agentmail_search": agentmail_search,
-  "agentmail_health": agentmail_health,
+  agentmail_init: agentmail_init,
+  agentmail_send: agentmail_send,
+  agentmail_inbox: agentmail_inbox,
+  agentmail_read_message: agentmail_read_message,
+  agentmail_summarize_thread: agentmail_summarize_thread,
+  agentmail_reserve: agentmail_reserve,
+  agentmail_release: agentmail_release,
+  agentmail_ack: agentmail_ack,
+  agentmail_search: agentmail_search,
+  agentmail_health: agentmail_health,
 };
 
 // ============================================================================

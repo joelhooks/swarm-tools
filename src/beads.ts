@@ -81,17 +81,26 @@ function buildCreateCommand(args: BeadCreateArgs): string[] {
 
 /**
  * Parse and validate bead JSON output
+ * Handles both object and array responses (CLI may return either)
  */
 function parseBead(output: string): Bead {
   try {
     const parsed = JSON.parse(output);
-    return BeadSchema.parse(parsed);
+    // CLI commands like `bd close`, `bd update` return arrays even for single items
+    const data = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!data) {
+      throw new BeadError("No bead data in response", "parse");
+    }
+    return BeadSchema.parse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new BeadValidationError(
         `Invalid bead data: ${error.message}`,
         error,
       );
+    }
+    if (error instanceof BeadError) {
+      throw error;
     }
     throw new BeadError(`Failed to parse bead JSON: ${output}`, "parse");
   }
@@ -582,13 +591,13 @@ export const beads_link_thread = tool({
 // ============================================================================
 
 export const beadsTools = {
-  "beads_create": beads_create,
-  "beads_create_epic": beads_create_epic,
-  "beads_query": beads_query,
-  "beads_update": beads_update,
-  "beads_close": beads_close,
-  "beads_start": beads_start,
-  "beads_ready": beads_ready,
-  "beads_sync": beads_sync,
-  "beads_link_thread": beads_link_thread,
+  beads_create: beads_create,
+  beads_create_epic: beads_create_epic,
+  beads_query: beads_query,
+  beads_update: beads_update,
+  beads_close: beads_close,
+  beads_start: beads_start,
+  beads_ready: beads_ready,
+  beads_sync: beads_sync,
+  beads_link_thread: beads_link_thread,
 };

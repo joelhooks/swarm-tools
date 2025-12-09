@@ -22,7 +22,7 @@
 ## Install
 
 ```bash
-npm install -g opencode-swarm-plugin
+npm install -g opencode-swarm-plugin@latest
 swarm setup
 ```
 

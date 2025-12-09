@@ -27,6 +27,25 @@ const AGENT_MAIL_URL = "http://127.0.0.1:8765";
 const DEFAULT_TTL_SECONDS = 3600; // 1 hour
 const MAX_INBOX_LIMIT = 5; // HARD CAP - never exceed this
 
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: parseInt(process.env.OPENCODE_AGENT_MAIL_MAX_RETRIES || "3"),
+  baseDelayMs: parseInt(process.env.OPENCODE_AGENT_MAIL_BASE_DELAY_MS || "100"),
+  maxDelayMs: parseInt(process.env.OPENCODE_AGENT_MAIL_MAX_DELAY_MS || "5000"),
+  timeoutMs: parseInt(process.env.OPENCODE_AGENT_MAIL_TIMEOUT_MS || "10000"),
+  jitterPercent: 20,
+};
+
+// Server recovery configuration
+const RECOVERY_CONFIG = {
+  /** Max consecutive failures before attempting restart */
+  failureThreshold: 2,
+  /** Cooldown between restart attempts (ms) */
+  restartCooldownMs: 30000,
+  /** Whether auto-restart is enabled */
+  enabled: process.env.OPENCODE_AGENT_MAIL_AUTO_RESTART !== "false",
+};
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -177,6 +196,245 @@ export class RateLimitExceededError extends Error {
 }
 
 // ============================================================================
+// Server Recovery
+// ============================================================================
+
+/** Track consecutive failures for recovery decisions */
+let consecutiveFailures = 0;
+let lastRestartAttempt = 0;
+let isRestarting = false;
+
+/**
+ * Check if the server is responding to health checks
+ */
+async function isServerHealthy(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(`${AGENT_MAIL_URL}/health/liveness`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Test if the server can handle a basic MCP call
+ * This catches cases where health is OK but MCP is broken
+ */
+async function isServerFunctional(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`${AGENT_MAIL_URL}/mcp/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "health-test",
+        method: "tools/call",
+        params: { name: "health_check", arguments: {} },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) return false;
+
+    const json = (await response.json()) as { result?: { isError?: boolean } };
+    // Check if it's an error response
+    if (json.result?.isError) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Attempt to restart the Agent Mail server
+ *
+ * Finds the running process, kills it, and starts a new one.
+ * Returns true if restart was successful.
+ */
+async function restartServer(): Promise<boolean> {
+  if (!RECOVERY_CONFIG.enabled) {
+    console.warn(
+      "[agent-mail] Auto-restart disabled via OPENCODE_AGENT_MAIL_AUTO_RESTART=false",
+    );
+    return false;
+  }
+
+  // Prevent concurrent restart attempts
+  if (isRestarting) {
+    console.warn("[agent-mail] Restart already in progress");
+    return false;
+  }
+
+  // Respect cooldown
+  const now = Date.now();
+  if (now - lastRestartAttempt < RECOVERY_CONFIG.restartCooldownMs) {
+    const waitSec = Math.ceil(
+      (RECOVERY_CONFIG.restartCooldownMs - (now - lastRestartAttempt)) / 1000,
+    );
+    console.warn(`[agent-mail] Restart cooldown active, wait ${waitSec}s`);
+    return false;
+  }
+
+  isRestarting = true;
+  lastRestartAttempt = now;
+
+  try {
+    console.warn("[agent-mail] Attempting server restart...");
+
+    // Find the agent-mail process
+    const findProc = Bun.spawn(["lsof", "-i", ":8765", "-t"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const findOutput = await new Response(findProc.stdout).text();
+    await findProc.exited;
+
+    const pids = findOutput.trim().split("\n").filter(Boolean);
+
+    if (pids.length > 0) {
+      // Kill existing process(es)
+      for (const pid of pids) {
+        console.warn(`[agent-mail] Killing process ${pid}`);
+        Bun.spawn(["kill", pid]);
+      }
+
+      // Wait for process to die
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    // Find the agent-mail installation directory
+    // Try common locations
+    const possiblePaths = [
+      `${process.env.HOME}/Code/Dicklesworthstone/mcp_agent_mail`,
+      `${process.env.HOME}/.local/share/agent-mail`,
+      `${process.env.HOME}/mcp_agent_mail`,
+    ];
+
+    let serverDir: string | null = null;
+    for (const path of possiblePaths) {
+      try {
+        const stat = await Bun.file(`${path}/pyproject.toml`).exists();
+        if (stat) {
+          serverDir = path;
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (!serverDir) {
+      console.error(
+        "[agent-mail] Could not find agent-mail installation directory",
+      );
+      return false;
+    }
+
+    // Start the server
+    console.warn(`[agent-mail] Starting server from ${serverDir}`);
+    Bun.spawn(["python", "-m", "mcp_agent_mail.cli", "serve-http"], {
+      cwd: serverDir,
+      stdout: "ignore",
+      stderr: "ignore",
+      // Detach so it survives our process
+      detached: true,
+    });
+
+    // Wait for server to come up
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (await isServerHealthy()) {
+        console.warn("[agent-mail] Server restarted successfully");
+        consecutiveFailures = 0;
+        return true;
+      }
+    }
+
+    console.error("[agent-mail] Server failed to start after restart");
+    return false;
+  } catch (error) {
+    console.error("[agent-mail] Restart failed:", error);
+    return false;
+  } finally {
+    isRestarting = false;
+  }
+}
+
+/**
+ * Reset recovery state (for testing)
+ */
+export function resetRecoveryState(): void {
+  consecutiveFailures = 0;
+  lastRestartAttempt = 0;
+  isRestarting = false;
+}
+
+// ============================================================================
+// Retry Logic
+// ============================================================================
+
+/**
+ * Calculate delay with exponential backoff + jitter
+ */
+function calculateBackoffDelay(attempt: number): number {
+  if (attempt === 0) return 0;
+
+  const exponentialDelay = RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt - 1);
+  const cappedDelay = Math.min(exponentialDelay, RETRY_CONFIG.maxDelayMs);
+
+  // Add jitter (±jitterPercent%)
+  const jitterRange = cappedDelay * (RETRY_CONFIG.jitterPercent / 100);
+  const jitter = (Math.random() * 2 - 1) * jitterRange;
+
+  return Math.round(cappedDelay + jitter);
+}
+
+/**
+ * Check if an error is retryable (transient network/server issues)
+ */
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    // Network errors
+    if (
+      message.includes("econnrefused") ||
+      message.includes("econnreset") ||
+      message.includes("socket") ||
+      message.includes("network") ||
+      message.includes("timeout") ||
+      message.includes("aborted")
+    ) {
+      return true;
+    }
+
+    // Server errors (but not 500 which is usually a logic bug)
+    if (error instanceof AgentMailError && error.code) {
+      return error.code === 502 || error.code === 503 || error.code === 504;
+    }
+
+    // Generic "unexpected error" from server - might be recoverable with restart
+    if (message.includes("unexpected error")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// ============================================================================
 // MCP Client
 // ============================================================================
 
@@ -277,7 +535,83 @@ export async function resetRateLimiterCache(): Promise<void> {
 }
 
 /**
- * Call an Agent Mail MCP tool
+ * Execute a single MCP call (no retry)
+ */
+async function mcpCallOnce<T>(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RETRY_CONFIG.timeoutMs);
+
+  try {
+    const response = await fetch(`${AGENT_MAIL_URL}/mcp/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: crypto.randomUUID(),
+        method: "tools/call",
+        params: { name: toolName, arguments: args },
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new AgentMailError(
+        `HTTP ${response.status}: ${response.statusText}`,
+        toolName,
+        response.status,
+      );
+    }
+
+    const json = (await response.json()) as MCPResponse<MCPToolResult<T> | T>;
+
+    if (json.error) {
+      throw new AgentMailError(
+        json.error.message,
+        toolName,
+        json.error.code,
+        json.error.data,
+      );
+    }
+
+    const result = json.result;
+
+    // Handle wrapped response format (real Agent Mail server)
+    // Check for isError first (error responses don't have structuredContent)
+    if (result && typeof result === "object") {
+      const wrapped = result as MCPToolResult<T>;
+
+      // Check for error response (has isError: true but no structuredContent)
+      if (wrapped.isError) {
+        const errorText = wrapped.content?.[0]?.text || "Unknown error";
+        throw new AgentMailError(errorText, toolName);
+      }
+
+      // Check for success response with structuredContent
+      if ("structuredContent" in wrapped) {
+        return wrapped.structuredContent as T;
+      }
+    }
+
+    // Handle direct response format (mock server)
+    return result as T;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+/**
+ * Call an Agent Mail MCP tool with retry and auto-restart
+ *
+ * Features:
+ * - Exponential backoff with jitter on retryable errors
+ * - Auto-restart server after consecutive failures
+ * - Timeout handling per request
  *
  * Handles both direct results (mock server) and wrapped results (real server).
  * Real Agent Mail returns: { content: [...], structuredContent: {...} }
@@ -286,56 +620,73 @@ export async function mcpCall<T>(
   toolName: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const response = await fetch(`${AGENT_MAIL_URL}/mcp/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: crypto.randomUUID(),
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-    }),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    throw new AgentMailError(
-      `HTTP ${response.status}: ${response.statusText}`,
-      toolName,
-    );
-  }
-
-  const json = (await response.json()) as MCPResponse<MCPToolResult<T> | T>;
-
-  if (json.error) {
-    throw new AgentMailError(
-      json.error.message,
-      toolName,
-      json.error.code,
-      json.error.data,
-    );
-  }
-
-  const result = json.result;
-
-  // Handle wrapped response format (real Agent Mail server)
-  // Check for isError first (error responses don't have structuredContent)
-  if (result && typeof result === "object") {
-    const wrapped = result as MCPToolResult<T>;
-
-    // Check for error response (has isError: true but no structuredContent)
-    if (wrapped.isError) {
-      const errorText = wrapped.content?.[0]?.text || "Unknown error";
-      throw new AgentMailError(errorText, toolName);
+  for (let attempt = 0; attempt <= RETRY_CONFIG.maxRetries; attempt++) {
+    // Apply backoff delay (except first attempt)
+    if (attempt > 0) {
+      const delay = calculateBackoffDelay(attempt);
+      console.warn(
+        `[agent-mail] Retry ${attempt}/${RETRY_CONFIG.maxRetries} for ${toolName} after ${delay}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
-    // Check for success response with structuredContent
-    if ("structuredContent" in wrapped) {
-      return wrapped.structuredContent as T;
+    try {
+      const result = await mcpCallOnce<T>(toolName, args);
+
+      // Success - reset failure counter
+      consecutiveFailures = 0;
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Track consecutive failures
+      consecutiveFailures++;
+
+      // Check if we should attempt server restart
+      if (
+        consecutiveFailures >= RECOVERY_CONFIG.failureThreshold &&
+        RECOVERY_CONFIG.enabled
+      ) {
+        console.warn(
+          `[agent-mail] ${consecutiveFailures} consecutive failures, checking server health...`,
+        );
+
+        const healthy = await isServerFunctional();
+        if (!healthy) {
+          console.warn("[agent-mail] Server unhealthy, attempting restart...");
+          const restarted = await restartServer();
+          if (restarted) {
+            // Reset availability cache since server restarted
+            agentMailAvailable = null;
+            // Don't count this attempt against retries - try again
+            attempt--;
+            continue;
+          }
+        }
+      }
+
+      // Check if error is retryable
+      if (!isRetryableError(error)) {
+        console.warn(
+          `[agent-mail] Non-retryable error for ${toolName}: ${lastError.message}`,
+        );
+        throw lastError;
+      }
+
+      // If this was the last retry, throw
+      if (attempt === RETRY_CONFIG.maxRetries) {
+        console.error(
+          `[agent-mail] All ${RETRY_CONFIG.maxRetries} retries exhausted for ${toolName}`,
+        );
+        throw lastError;
+      }
     }
   }
 
-  // Handle direct response format (mock server)
-  return result as T;
+  // Should never reach here, but TypeScript needs it
+  throw lastError || new Error("Unknown error in mcpCall");
 }
 
 /**
@@ -839,4 +1190,10 @@ export {
   sessionStates,
   AGENT_MAIL_URL,
   MAX_INBOX_LIMIT,
+  // Recovery/retry utilities (resetRecoveryState already exported at definition)
+  isServerHealthy,
+  isServerFunctional,
+  restartServer,
+  RETRY_CONFIG,
+  RECOVERY_CONFIG,
 };

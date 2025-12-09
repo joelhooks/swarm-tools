@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-const VERSION = "0.10.0";
+const VERSION = "0.11.0";
 
 // ============================================================================
 // ASCII Art & Branding
@@ -45,6 +45,247 @@ const TAGLINE = "Multi-agent coordination for OpenCode";
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
+
+const PACKAGE_NAME = "opencode-swarm-plugin";
+
+// ============================================================================
+// Seasonal Messages (inspired by Astro's Houston)
+// ============================================================================
+
+type Season = "spooky" | "holiday" | "new-year" | "summer" | "default";
+
+function getSeason(): Season {
+  const date = new Date();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  if (month === 1 && day <= 7) return "new-year";
+  if (month === 10 && day > 7) return "spooky";
+  if (month === 12 && day > 7 && day < 26) return "holiday";
+  if (month >= 6 && month <= 8) return "summer";
+  return "default";
+}
+
+interface SeasonalBee {
+  messages: string[];
+  decorations?: string[];
+}
+
+function getSeasonalBee(): SeasonalBee {
+  const season = getSeason();
+  const year = new Date().getFullYear();
+
+  switch (season) {
+    case "new-year":
+      return {
+        messages: [
+          `New year, new swarm! Let's build something amazing in ${year}!`,
+          `${year} is the year of parallel agents! bzzzz...`,
+          `Kicking off ${year} with coordinated chaos!`,
+          `Happy ${year}! Time to orchestrate some magic.`,
+        ],
+        decorations: ["🎉", "🎊", "✨"],
+      };
+    case "spooky":
+      return {
+        messages: [
+          `Boo! Just kidding. Let's spawn some agents!`,
+          `The hive is buzzing with spooky energy...`,
+          `No tricks here, only parallel treats!`,
+          `Let's conjure up a swarm of worker bees!`,
+          `Something wicked this way computes...`,
+        ],
+        decorations: ["🎃", "👻", "🕷️", "🦇"],
+      };
+    case "holiday":
+      return {
+        messages: [
+          `'Tis the season to parallelize!`,
+          `The hive is warm and cozy. Let's build!`,
+          `Ho ho ho! Time to unwrap some agents!`,
+          `Jingle bells, agents swell, tasks get done today!`,
+          `The best gift? A well-coordinated swarm.`,
+        ],
+        decorations: ["🎄", "🎁", "❄️", "⭐"],
+      };
+    case "summer":
+      return {
+        messages: [
+          `Summer vibes and parallel pipelines!`,
+          `The hive is buzzing in the sunshine!`,
+          `Hot code, cool agents. Let's go!`,
+          `Beach day? Nah, build day!`,
+        ],
+        decorations: ["☀️", "🌻", "🌴"],
+      };
+    default:
+      return {
+        messages: [
+          `The hive awaits your command.`,
+          `Ready to coordinate the swarm!`,
+          `Let's build something awesome together.`,
+          `Parallel agents, standing by.`,
+          `Time to orchestrate some magic!`,
+          `The bees are ready to work.`,
+          `Bzzzz... initializing swarm intelligence.`,
+          `Many agents, one mission.`,
+        ],
+      };
+  }
+}
+
+function getRandomMessage(): string {
+  const { messages } = getSeasonalBee();
+  return messages[Math.floor(Math.random() * messages.length)];
+}
+
+function getDecoratedBee(): string {
+  const { decorations } = getSeasonalBee();
+  if (!decorations || Math.random() > 0.5) return cyan(BEE);
+
+  const decoration =
+    decorations[Math.floor(Math.random() * decorations.length)];
+  // Add decoration to the bee
+  return cyan(BEE.replace("bzzzz...", `bzzzz... ${decoration}`));
+}
+
+// ============================================================================
+// Model Configuration
+// ============================================================================
+
+interface ModelOption {
+  value: string;
+  label: string;
+  hint: string;
+}
+
+const COORDINATOR_MODELS: ModelOption[] = [
+  {
+    value: "anthropic/claude-sonnet-4-5",
+    label: "Claude Sonnet 4.5",
+    hint: "Best balance of speed and capability (recommended)",
+  },
+  {
+    value: "anthropic/claude-opus-4-5",
+    label: "Claude Opus 4.5",
+    hint: "Most capable, slower and more expensive",
+  },
+  {
+    value: "openai/gpt-4o",
+    label: "GPT-4o",
+    hint: "Fast, good for most tasks",
+  },
+  {
+    value: "google/gemini-2.0-flash",
+    label: "Gemini 2.0 Flash",
+    hint: "Fast and capable",
+  },
+  {
+    value: "google/gemini-1.5-pro",
+    label: "Gemini 1.5 Pro",
+    hint: "More capable, larger context",
+  },
+];
+
+const WORKER_MODELS: ModelOption[] = [
+  {
+    value: "anthropic/claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+    hint: "Fast and cost-effective (recommended)",
+  },
+  {
+    value: "anthropic/claude-sonnet-4-5",
+    label: "Claude Sonnet 4.5",
+    hint: "More capable, slower",
+  },
+  {
+    value: "openai/gpt-4o-mini",
+    label: "GPT-4o Mini",
+    hint: "Fast and cheap",
+  },
+  {
+    value: "google/gemini-2.0-flash",
+    label: "Gemini 2.0 Flash",
+    hint: "Fast and capable",
+  },
+];
+
+// ============================================================================
+// Update Checking
+// ============================================================================
+
+interface UpdateInfo {
+  current: string;
+  latest: string;
+  updateAvailable: boolean;
+}
+
+async function checkForUpdates(): Promise<UpdateInfo | null> {
+  try {
+    const response = await fetch(
+      `https://registry.npmjs.org/${PACKAGE_NAME}/latest`,
+      {
+        signal: AbortSignal.timeout(3000), // 3 second timeout
+      },
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const latest = data.version;
+    const updateAvailable =
+      latest !== VERSION && compareVersions(latest, VERSION) > 0;
+    return { current: VERSION, latest, updateAvailable };
+  } catch {
+    return null; // Silently fail - don't block CLI
+  }
+}
+
+function compareVersions(a: string, b: string): number {
+  const partsA = a.split(".").map(Number);
+  const partsB = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (partsA[i] > partsB[i]) return 1;
+    if (partsA[i] < partsB[i]) return -1;
+  }
+  return 0;
+}
+
+function showUpdateNotification(info: UpdateInfo) {
+  if (info.updateAvailable) {
+    console.log();
+    console.log(
+      yellow("  ╭─────────────────────────────────────────────────────╮"),
+    );
+    console.log(
+      yellow("  │") +
+        "  Update available! " +
+        dim(info.current) +
+        " → " +
+        green(info.latest) +
+        "                " +
+        yellow("│"),
+    );
+    console.log(
+      yellow("  │") +
+        "  Run: " +
+        cyan("npm install -g " + PACKAGE_NAME + "@latest") +
+        "  " +
+        yellow("│"),
+    );
+    console.log(
+      yellow("  │") +
+        "  Or:  " +
+        cyan("swarm update") +
+        "                                " +
+        yellow("│"),
+    );
+    console.log(
+      yellow("  ╰─────────────────────────────────────────────────────╯"),
+    );
+    console.log();
+  }
+}
 
 // ============================================================================
 // Types
@@ -220,7 +461,7 @@ You are a swarm coordinator. Take a complex task, break it into beads, and unlea
 2. **Decompose**: Use \`swarm_select_strategy\` then \`swarm_plan_prompt\` to break down the task
 3. **Create beads**: \`beads_create_epic\` with subtasks and file assignments
 4. **Reserve files**: \`agentmail_reserve\` for each subtask's files
-5. **Spawn agents**: Use Task tool with \`swarm_spawn_subtask\` prompts - spawn ALL in parallel
+5. **Spawn agents**: Use Task tool with \`swarm_spawn_subtask\` prompts (or use @swarm-worker for sequential/single-file tasks)
 6. **Monitor**: Check \`agentmail_inbox\` for progress, use \`agentmail_summarize_thread\` for overview
 7. **Complete**: \`swarm_complete\` when done, then \`beads_sync\` to push
 
@@ -237,10 +478,10 @@ The plugin auto-selects decomposition strategy based on task keywords:
 Begin decomposition now.
 `;
 
-const PLANNER_AGENT = `---
+const getPlannerAgent = (model: string) => `---
 name: swarm-planner
 description: Strategic task decomposition for swarm coordination
-model: claude-sonnet-4-5
+model: ${model}
 ---
 
 You are a swarm planner. Decompose tasks into optimal parallel subtasks.
@@ -275,6 +516,27 @@ You are a swarm planner. Decompose tasks into optimal parallel subtasks.
 - No file overlap between subtasks
 - Include tests with the code they test
 - Order by dependency (if B needs A, A comes first)
+`;
+
+const getWorkerAgent = (model: string) => `---
+name: swarm-worker
+description: Executes subtasks in a swarm - fast, focused, cost-effective
+model: ${model}
+---
+
+You are a swarm worker agent. Execute your assigned subtask efficiently.
+
+## Rules
+- Focus ONLY on your assigned files
+- Report progress via Agent Mail
+- Use beads_update to track status
+- Call swarm_complete when done
+
+## Workflow
+1. Read assigned files
+2. Implement changes
+3. Verify (typecheck if applicable)
+4. Report completion
 `;
 
 // ============================================================================
@@ -339,10 +601,20 @@ async function doctor() {
   } else {
     p.outro("All dependencies installed!");
   }
+
+  // Check for updates (non-blocking)
+  const updateInfo = await checkForUpdates();
+  if (updateInfo) showUpdateNotification(updateInfo);
 }
 
 async function setup() {
   console.clear();
+  console.log(yellow(BANNER));
+  console.log(getDecoratedBee());
+  console.log();
+  console.log(magenta("  " + getRandomMessage()));
+  console.log();
+
   p.intro("opencode-swarm-plugin v" + VERSION);
 
   const s = p.spinner();
@@ -468,6 +740,103 @@ async function setup() {
     }
   }
 
+  // Model selection
+  p.log.step("Configure swarm agents...");
+
+  const coordinatorModel = await p.select({
+    message: "Select coordinator model (for orchestration/planning):",
+    options: [
+      {
+        value: "anthropic/claude-sonnet-4-5",
+        label: "Claude Sonnet 4.5",
+        hint: "Best balance of speed and capability (recommended)",
+      },
+      {
+        value: "anthropic/claude-haiku-4-5",
+        label: "Claude Haiku 4.5",
+        hint: "Fast and cost-effective",
+      },
+      {
+        value: "anthropic/claude-opus-4-5",
+        label: "Claude Opus 4.5",
+        hint: "Most capable, slower",
+      },
+      {
+        value: "openai/gpt-4o",
+        label: "GPT-4o",
+        hint: "Fast, good for most tasks",
+      },
+      {
+        value: "openai/gpt-4-turbo",
+        label: "GPT-4 Turbo",
+        hint: "Powerful, more expensive",
+      },
+      {
+        value: "google/gemini-2.0-flash",
+        label: "Gemini 2.0 Flash",
+        hint: "Fast and capable",
+      },
+      {
+        value: "google/gemini-1.5-pro",
+        label: "Gemini 1.5 Pro",
+        hint: "More capable",
+      },
+    ],
+    initialValue: "anthropic/claude-sonnet-4-5",
+  });
+
+  if (p.isCancel(coordinatorModel)) {
+    p.cancel("Setup cancelled");
+    process.exit(0);
+  }
+
+  const workerModel = await p.select({
+    message: "Select worker model (for task execution):",
+    options: [
+      {
+        value: "anthropic/claude-haiku-4-5",
+        label: "Claude Haiku 4.5",
+        hint: "Fast and cost-effective (recommended)",
+      },
+      {
+        value: "anthropic/claude-sonnet-4-5",
+        label: "Claude Sonnet 4.5",
+        hint: "Best balance of speed and capability",
+      },
+      {
+        value: "anthropic/claude-opus-4-5",
+        label: "Claude Opus 4.5",
+        hint: "Most capable, slower",
+      },
+      {
+        value: "openai/gpt-4o",
+        label: "GPT-4o",
+        hint: "Fast, good for most tasks",
+      },
+      {
+        value: "openai/gpt-4-turbo",
+        label: "GPT-4 Turbo",
+        hint: "Powerful, more expensive",
+      },
+      {
+        value: "google/gemini-2.0-flash",
+        label: "Gemini 2.0 Flash",
+        hint: "Fast and capable",
+      },
+      {
+        value: "google/gemini-1.5-pro",
+        label: "Gemini 1.5 Pro",
+        hint: "More capable",
+      },
+    ],
+    initialValue: "anthropic/claude-haiku-4-5",
+  });
+
+  if (p.isCancel(workerModel)) {
+    p.cancel("Setup cancelled");
+    process.exit(0);
+  }
+
   p.log.step("Setting up OpenCode integration...");
 
   const configDir = join(homedir(), ".config", "opencode");
@@ -483,7 +852,8 @@ async function setup() {
 
   const pluginPath = join(pluginsDir, "swarm.ts");
   const commandPath = join(commandsDir, "swarm.md");
-  const agentPath = join(agentsDir, "swarm-planner.md");
+  const plannerAgentPath = join(agentsDir, "swarm-planner.md");
+  const workerAgentPath = join(agentsDir, "swarm-worker.md");
 
   writeFileSync(pluginPath, PLUGIN_WRAPPER);
   p.log.success("Plugin: " + pluginPath);
@@ -491,8 +861,11 @@ async function setup() {
   writeFileSync(commandPath, SWARM_COMMAND);
   p.log.success("Command: " + commandPath);
 
-  writeFileSync(agentPath, PLANNER_AGENT);
-  p.log.success("Agent: " + agentPath);
+  writeFileSync(plannerAgentPath, getPlannerAgent(coordinatorModel as string));
+  p.log.success("Planner agent: " + plannerAgentPath);
+
+  writeFileSync(workerAgentPath, getWorkerAgent(workerModel as string));
+  p.log.success("Worker agent: " + workerAgentPath);
 
   p.note(
     'cd your-project\nbd init\nopencode\n/swarm "your task"',
@@ -586,20 +959,25 @@ async function init() {
   }
 }
 
-function version() {
+async function version() {
   console.log(yellow(BANNER));
   console.log(dim("  " + TAGLINE));
   console.log();
   console.log("  Version: " + VERSION);
   console.log("  Docs:    https://github.com/joelhooks/opencode-swarm-plugin");
   console.log();
+
+  // Check for updates (non-blocking)
+  const updateInfo = await checkForUpdates();
+  if (updateInfo) showUpdateNotification(updateInfo);
 }
 
 function config() {
   const configDir = join(homedir(), ".config", "opencode");
   const pluginPath = join(configDir, "plugins", "swarm.ts");
   const commandPath = join(configDir, "commands", "swarm.md");
-  const agentPath = join(configDir, "agents", "swarm-planner.md");
+  const plannerAgentPath = join(configDir, "agents", "swarm-planner.md");
+  const workerAgentPath = join(configDir, "agents", "swarm-worker.md");
 
   console.log(yellow(BANNER));
   console.log(dim("  " + TAGLINE + " v" + VERSION));
@@ -610,7 +988,8 @@ function config() {
   const files = [
     { path: pluginPath, desc: "Plugin loader", emoji: "🔌" },
     { path: commandPath, desc: "/swarm command prompt", emoji: "📜" },
-    { path: agentPath, desc: "@swarm-planner agent", emoji: "🤖" },
+    { path: plannerAgentPath, desc: "@swarm-planner agent", emoji: "🤖" },
+    { path: workerAgentPath, desc: "@swarm-worker agent", emoji: "🐝" },
   ];
 
   for (const { path, desc, emoji } of files) {
@@ -627,31 +1006,94 @@ function config() {
   console.log();
 }
 
-function help() {
+async function update() {
+  p.intro("swarm update v" + VERSION);
+
+  const s = p.spinner();
+  s.start("Checking for updates...");
+
+  const updateInfo = await checkForUpdates();
+
+  if (!updateInfo) {
+    s.stop("Failed to check for updates");
+    p.log.error("Could not reach npm registry");
+    p.outro("Try again later or update manually:");
+    console.log("  " + cyan("npm install -g " + PACKAGE_NAME + "@latest"));
+    process.exit(1);
+  }
+
+  if (!updateInfo.updateAvailable) {
+    s.stop("Already on latest version");
+    p.log.success("You're running " + VERSION);
+    p.outro("No update needed!");
+    return;
+  }
+
+  s.stop("Update available: " + VERSION + " → " + updateInfo.latest);
+
+  const confirmUpdate = await p.confirm({
+    message: "Update to v" + updateInfo.latest + "?",
+    initialValue: true,
+  });
+
+  if (p.isCancel(confirmUpdate) || !confirmUpdate) {
+    p.outro("Update cancelled");
+    return;
+  }
+
+  const updateSpinner = p.spinner();
+  updateSpinner.start("Updating to v" + updateInfo.latest + "...");
+
+  const success = await runInstall(
+    "npm install -g " + PACKAGE_NAME + "@latest",
+  );
+
+  if (success) {
+    updateSpinner.stop("Updated to v" + updateInfo.latest);
+    p.outro("Success! Restart your terminal to use the new version.");
+  } else {
+    updateSpinner.stop("Update failed");
+    p.log.error("Failed to update via npm");
+    p.log.message("Try manually:");
+    console.log("  " + cyan("npm install -g " + PACKAGE_NAME + "@latest"));
+    p.outro("Update failed");
+    process.exit(1);
+  }
+}
+
+async function help() {
   console.log(yellow(BANNER));
   console.log(dim("  " + TAGLINE + " v" + VERSION));
-  console.log(cyan(BEE));
+  console.log(getDecoratedBee());
+  console.log(magenta("  " + getRandomMessage()));
   console.log(`
 ${cyan("Commands:")}
   swarm setup     Interactive installer - checks and installs dependencies
   swarm doctor    Health check - shows status of all dependencies
   swarm init      Initialize beads in current project
   swarm config    Show paths to generated config files
+  swarm update    Update to latest version
   swarm version   Show version and banner
   swarm help      Show this help
 
 ${cyan("Usage in OpenCode:")}
   /swarm "Add user authentication with OAuth"
-  @swarm-planner "Refactor all components to use hooks"
+  @swarm-planner "Decompose this into parallel tasks"
+  @swarm-worker "Execute this specific subtask"
 
 ${cyan("Customization:")}
   Edit the generated files to customize behavior:
-  ${dim("~/.config/opencode/commands/swarm.md")}    - /swarm command prompt
-  ${dim("~/.config/opencode/agents/swarm-planner.md")} - @swarm-planner agent
-  ${dim("~/.config/opencode/plugins/swarm.ts")}     - Plugin loader
+  ${dim("~/.config/opencode/commands/swarm.md")}      - /swarm command prompt
+  ${dim("~/.config/opencode/agents/swarm-planner.md")} - @swarm-planner (coordinator)
+  ${dim("~/.config/opencode/agents/swarm-worker.md")}  - @swarm-worker (fast executor)
+  ${dim("~/.config/opencode/plugins/swarm.ts")}       - Plugin loader
 
 ${dim("Docs: https://github.com/joelhooks/opencode-swarm-plugin")}
 `);
+
+  // Check for updates (non-blocking)
+  const updateInfo = await checkForUpdates();
+  if (updateInfo) showUpdateNotification(updateInfo);
 }
 
 // ============================================================================
@@ -673,15 +1115,18 @@ switch (command) {
   case "config":
     config();
     break;
+  case "update":
+    await update();
+    break;
   case "version":
   case "--version":
   case "-v":
-    version();
+    await version();
     break;
   case "help":
   case "--help":
   case "-h":
-    help();
+    await help();
     break;
   case undefined:
     await setup();

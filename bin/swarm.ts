@@ -375,13 +375,13 @@ const DEPENDENCIES: Dependency[] = [
     description: "Cross-agent session search",
   },
   {
-    name: "UBS",
+    name: "UBS (Ultimate Bug Scanner)",
     command: "ubs",
     checkArgs: ["--help"],
     required: false,
-    install: "https://github.com/joelhooks/ubs",
+    install: "https://github.com/Dicklesworthstone/ultimate_bug_scanner",
     installType: "manual",
-    description: "Pre-commit bug scanning",
+    description: "AI-powered static analysis for pre-completion bug scanning",
   },
   {
     name: "semantic-memory",

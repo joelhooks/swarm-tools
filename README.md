@@ -194,11 +194,23 @@ Edit these files to customize behavior. Run `swarm setup` to regenerate defaults
 | [Go](https://go.dev) | Required for Agent Mail | No |
 | [Agent Mail](https://github.com/joelhooks/agent-mail) | Multi-agent coordination, file reservations | No |
 | [CASS](https://github.com/Dicklesworthstone/cass) | Historical context from past sessions | No |
-| [UBS](https://github.com/joelhooks/ubs) | Pre-completion bug scanning | No |
+| [UBS (Ultimate Bug Scanner)](https://github.com/Dicklesworthstone/ultimate_bug_scanner) | Pre-completion bug scanning using AI-powered static analysis | No |
 | [semantic-memory](https://github.com/joelhooks/semantic-memory) | Learning persistence | No |
 | [Redis](https://redis.io) | Rate limiting (SQLite fallback available) | No |
 
 All dependencies are checked and can be installed via `swarm setup`.
+
+### Installing Optional Dependencies
+
+**UBS (Ultimate Bug Scanner)** - Scans code for bugs before task completion:
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh" | bash
+```
+
+**CASS** - Cross-agent session search for historical context:
+```bash
+# See https://github.com/Dicklesworthstone/cass for installation
+```
 
 ## Tools Reference
 
@@ -214,7 +226,7 @@ All dependencies are checked and can be installed via `swarm setup`.
 | `swarm_spawn_subtask` | Generate worker agent prompt with Agent Mail/beads instructions |
 | `swarm_status` | Get swarm progress by epic ID |
 | `swarm_progress` | Report subtask progress to coordinator |
-| `swarm_complete` | Complete subtask - runs UBS scan, releases reservations |
+| `swarm_complete` | Complete subtask - runs UBS (Ultimate Bug Scanner), releases reservations |
 | `swarm_record_outcome` | Record outcome for learning (duration, errors, retries) |
 
 ### Beads

@@ -177,10 +177,16 @@ swarm_complete with project_key=$PWD, agent_name=<YOUR_NAME>, bead_id="<epic-id>
 
 This:
 
-- Runs UBS bug scan on touched files
+- Runs [UBS (Ultimate Bug Scanner)](https://github.com/Dicklesworthstone/ultimate_bug_scanner) on touched files to detect bugs before completion
 - Releases file reservations
 - Closes the bead
 - Records outcome for learning
+
+> **Note:** UBS is optional but recommended. If not installed, swarm completion proceeds with a warning that manual review is advised. Install via:
+> ```bash
+> curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh" | bash
+> ```
+> See the [UBS repo](https://github.com/Dicklesworthstone/ultimate_bug_scanner) for more options (Docker, Nix, etc.).
 
 Then sync beads:
 

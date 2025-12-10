@@ -30,6 +30,7 @@ import {
 } from "./agent-mail";
 import { structuredTools } from "./structured";
 import { swarmTools } from "./swarm";
+import { repoCrawlTools } from "./repo-crawl";
 
 /**
  * OpenCode Swarm Plugin
@@ -39,6 +40,7 @@ import { swarmTools } from "./swarm";
  * - agent-mail:* - Multi-agent coordination via Agent Mail MCP
  * - structured:* - Structured output parsing and validation
  * - swarm:* - Swarm orchestration and task decomposition
+ * - repo-crawl:* - GitHub API tools for repository research
  *
  * @param input - Plugin context from OpenCode
  * @returns Plugin hooks including tools, events, and tool execution hooks
@@ -102,12 +104,14 @@ export const SwarmPlugin: Plugin = async (
      * Tools are namespaced by module:
      * - beads:create, beads:query, beads:update, etc.
      * - agent-mail:init, agent-mail:send, agent-mail:reserve, etc.
+     * - repo-crawl:readme, repo-crawl:structure, etc.
      */
     tool: {
       ...beadsTools,
       ...agentMailTools,
       ...structuredTools,
       ...swarmTools,
+      ...repoCrawlTools,
     },
 
     /**
@@ -295,6 +299,7 @@ export const allTools = {
   ...agentMailTools,
   ...structuredTools,
   ...swarmTools,
+  ...repoCrawlTools,
 } as const;
 
 /**
@@ -361,3 +366,19 @@ export {
   type ToolStatus,
   type ToolAvailability,
 } from "./tool-availability";
+
+/**
+ * Re-export repo-crawl module
+ *
+ * Includes:
+ * - repoCrawlTools - All GitHub API repository research tools
+ * - repo_readme, repo_structure, repo_tree, repo_file, repo_search - Individual tools
+ * - RepoCrawlError - Error class
+ *
+ * Features:
+ * - Parse repos from various formats (owner/repo, URLs)
+ * - Optional GITHUB_TOKEN auth for higher rate limits (5000 vs 60 req/hour)
+ * - Tech stack detection from file patterns
+ * - Graceful rate limit handling
+ */
+export { repoCrawlTools, RepoCrawlError } from "./repo-crawl";

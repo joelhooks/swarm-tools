@@ -116,6 +116,21 @@ export const DecompositionStrategySchema = z.enum([
 export type DecompositionStrategy = z.infer<typeof DecompositionStrategySchema>;
 
 /**
+ * Failure mode taxonomy (imported from evaluation.ts)
+ */
+export const FailureModeSchema = z.enum([
+  "timeout",
+  "conflict",
+  "validation",
+  "tool_failure",
+  "context_overflow",
+  "dependency_blocked",
+  "user_cancelled",
+  "unknown",
+]);
+export type FailureMode = z.infer<typeof FailureModeSchema>;
+
+/**
  * Outcome signals from a completed subtask
  *
  * These implicit signals help score decomposition quality without
@@ -138,6 +153,10 @@ export const OutcomeSignalsSchema = z.object({
   timestamp: z.string(), // ISO-8601
   /** Decomposition strategy used for this task */
   strategy: DecompositionStrategySchema.optional(),
+  /** Failure classification (only when success=false) */
+  failure_mode: FailureModeSchema.optional(),
+  /** Detailed failure context */
+  failure_details: z.string().optional(),
 });
 export type OutcomeSignals = z.infer<typeof OutcomeSignalsSchema>;
 

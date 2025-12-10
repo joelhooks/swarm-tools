@@ -25,7 +25,7 @@ import {
   type SpawnedAgent,
   type Bead,
 } from "./schemas";
-import { mcpCall } from "./agent-mail";
+import { mcpCall, requireState } from "./agent-mail";
 import {
   OutcomeSignalsSchema,
   DecompositionStrategySchema,
@@ -678,51 +678,46 @@ Begin work on your subtask now.`;
  */
 export const SUBTASK_PROMPT_V2 = `You are a swarm agent working on: **{subtask_title}**
 
-## Identity
-- **Bead ID**: {bead_id}
-- **Epic ID**: {epic_id}
+## [IDENTITY]
+Agent: (assigned at spawn)
+Bead: {bead_id}
+Epic: {epic_id}
 
-## Task
+## [TASK]
 {subtask_description}
 
-## Files (exclusive reservation)
+## [FILES]
+Reserved (exclusive):
 {file_list}
 
 Only modify these files. Need others? Message the coordinator.
 
-## Context
+## [CONTEXT]
 {shared_context}
 
 {compressed_context}
 
 {error_context}
 
-## MANDATORY: Use These Tools
+## [TOOLS]
+### Beads
+- beads_update (status: blocked)
+- beads_create (new bugs)
+- beads_close (via swarm_complete)
 
-### Agent Mail - communicate with the swarm
-\`\`\`typescript
-// Report progress, ask questions, announce blockers
-agentmail_send({
-  to: ["coordinator"],
-  subject: "Progress update",
-  body: "What you did or need",
-  thread_id: "{epic_id}"
-})
-\`\`\`
+### Agent Mail
+- agentmail_send (thread_id: {epic_id})
 
-### Beads - track your work
-- **Blocked?** \`beads_update({ id: "{bead_id}", status: "blocked" })\`
-- **Found bug?** \`beads_create({ title: "Bug description", type: "bug" })\`
-- **Done?** \`swarm_complete({ bead_id: "{bead_id}", summary: "What you did", files_touched: [...] })\`
+### Completion
+- swarm_complete (REQUIRED when done)
 
-## Workflow
+## [OUTPUT]
+1. Read files first
+2. Implement changes
+3. Verify (typecheck)
+4. Complete with swarm_complete
 
-1. **Read** the files first
-2. **Plan** your approach (message coordinator if complex)
-3. **Implement** the changes
-4. **Verify** (typecheck, tests)
-5. **Report** progress via Agent Mail
-6. **Complete** with swarm_complete when done
+Return: Summary of changes made
 
 **Never work silently.** Communicate progress and blockers immediately.
 
@@ -1756,6 +1751,92 @@ async function runUbsScan(files: string[]): Promise<UbsScanResult | null> {
 }
 
 /**
+ * Broadcast context updates to all agents in the epic
+ *
+ * Enables mid-task coordination by sharing discoveries, warnings, or blockers
+ * with all agents working on the same epic. Agents can broadcast without
+ * waiting for task completion.
+ *
+ * Based on "Patterns for Building AI Agents" p.31: "Ensure subagents can share context along the way"
+ */
+export const swarm_broadcast = tool({
+  description:
+    "Broadcast context update to all agents working on the same epic",
+  args: {
+    epic_id: tool.schema.string().describe("Epic ID (e.g., bd-abc123)"),
+    message: tool.schema
+      .string()
+      .describe("Context update to share (what changed, what was learned)"),
+    importance: tool.schema
+      .enum(["info", "warning", "blocker"])
+      .default("info")
+      .describe("Priority level (default: info)"),
+    files_affected: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("Files this context relates to"),
+  },
+  async execute(args, ctx) {
+    // Get agent state - requires prior initialization
+    const state = requireState(ctx.sessionID);
+
+    // Extract bead_id from context if available (for traceability)
+    // In the swarm flow, ctx might have the current bead being worked on
+    const beadId = (ctx as { beadId?: string }).beadId || "unknown";
+
+    // Format the broadcast message
+    const body = [
+      `## Context Update`,
+      "",
+      `**From**: ${state.agentName} (${beadId})`,
+      `**Priority**: ${args.importance.toUpperCase()}`,
+      "",
+      args.message,
+      "",
+      args.files_affected && args.files_affected.length > 0
+        ? `**Files affected**:\n${args.files_affected.map((f) => `- \`${f}\``).join("\n")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Map importance to Agent Mail importance
+    const mailImportance =
+      args.importance === "blocker"
+        ? "urgent"
+        : args.importance === "warning"
+          ? "high"
+          : "normal";
+
+    // Send as broadcast to thread (empty 'to' = all agents in thread)
+    await mcpCall("send_message", {
+      project_key: state.projectKey,
+      sender_name: state.agentName,
+      to: [], // Broadcast to thread
+      subject: `[${args.importance.toUpperCase()}] Context update from ${state.agentName}`,
+      body_md: body,
+      thread_id: args.epic_id,
+      importance: mailImportance,
+      ack_required: args.importance === "blocker", // Require ack for blockers
+    });
+
+    return JSON.stringify(
+      {
+        broadcast: true,
+        epic_id: args.epic_id,
+        from: state.agentName,
+        bead_id: beadId,
+        importance: args.importance,
+        recipients: "all agents in epic",
+        ack_required: args.importance === "blocker",
+      },
+      null,
+      2,
+    );
+  },
+});
+
+/**
  * Mark a subtask as complete
  *
  * Closes bead, releases reservations, notifies coordinator.
@@ -1920,6 +2001,40 @@ export const swarm_complete = tool({
 });
 
 /**
+ * Classify failure based on error message heuristics
+ *
+ * Simple pattern matching to categorize why a task failed.
+ * Used when failure_mode is not explicitly provided.
+ *
+ * @param error - Error object or message
+ * @returns FailureMode classification
+ */
+function classifyFailure(error: Error | string): string {
+  const msg = (typeof error === "string" ? error : error.message).toLowerCase();
+
+  if (msg.includes("timeout")) return "timeout";
+  if (msg.includes("conflict") || msg.includes("reservation"))
+    return "conflict";
+  if (msg.includes("validation") || msg.includes("schema")) return "validation";
+  if (msg.includes("context") || msg.includes("token"))
+    return "context_overflow";
+  if (msg.includes("blocked") || msg.includes("dependency"))
+    return "dependency_blocked";
+  if (msg.includes("cancel")) return "user_cancelled";
+
+  // Check for tool failure patterns
+  if (
+    msg.includes("tool") ||
+    msg.includes("command") ||
+    msg.includes("failed to execute")
+  ) {
+    return "tool_failure";
+  }
+
+  return "unknown";
+}
+
+/**
  * Record outcome signals from a completed subtask
  *
  * Tracks implicit feedback (duration, errors, retries) to score
@@ -1968,6 +2083,25 @@ export const swarm_record_outcome = tool({
       .enum(["file-based", "feature-based", "risk-based", "research-based"])
       .optional()
       .describe("Decomposition strategy used for this task"),
+    failure_mode: tool.schema
+      .enum([
+        "timeout",
+        "conflict",
+        "validation",
+        "tool_failure",
+        "context_overflow",
+        "dependency_blocked",
+        "user_cancelled",
+        "unknown",
+      ])
+      .optional()
+      .describe(
+        "Failure classification (only when success=false). Auto-classified if not provided.",
+      ),
+    failure_details: tool.schema
+      .string()
+      .optional()
+      .describe("Detailed failure context (error message, stack trace, etc.)"),
   },
   async execute(args) {
     // Build outcome signals
@@ -1980,7 +2114,14 @@ export const swarm_record_outcome = tool({
       files_touched: args.files_touched ?? [],
       timestamp: new Date().toISOString(),
       strategy: args.strategy as LearningDecompositionStrategy | undefined,
+      failure_mode: args.failure_mode,
+      failure_details: args.failure_details,
     };
+
+    // If task failed but no failure_mode provided, try to classify from failure_details
+    if (!args.success && !args.failure_mode && args.failure_details) {
+      signals.failure_mode = classifyFailure(args.failure_details) as any;
+    }
 
     // Validate signals
     const validated = OutcomeSignalsSchema.parse(signals);
@@ -2039,6 +2180,8 @@ export const swarm_record_outcome = tool({
           retry_count: args.retry_count ?? 0,
           success: args.success,
           strategy: args.strategy,
+          failure_mode: validated.failure_mode,
+          failure_details: validated.failure_details,
           accumulated_errors: errorStats.total,
           unresolved_errors: errorStats.unresolved,
         },
@@ -2559,6 +2702,7 @@ export const swarmTools = {
   swarm_validate_decomposition: swarm_validate_decomposition,
   swarm_status: swarm_status,
   swarm_progress: swarm_progress,
+  swarm_broadcast: swarm_broadcast,
   swarm_complete: swarm_complete,
   swarm_record_outcome: swarm_record_outcome,
   swarm_subtask_prompt: swarm_subtask_prompt,

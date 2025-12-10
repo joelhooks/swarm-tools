@@ -131,3 +131,24 @@ export const ValidationResultSchema = z.object({
   extractionMethod: z.string().optional(),
 });
 export type ValidationResult = z.infer<typeof ValidationResultSchema>;
+
+/**
+ * Failure mode taxonomy for task failures
+ *
+ * Classifies WHY tasks fail, not just that they failed.
+ * Used in outcome tracking to learn from failure patterns.
+ *
+ * @see src/learning.ts OutcomeSignalsSchema
+ * @see "Patterns for Building AI Agents" p.46
+ */
+export const FailureModeSchema = z.enum([
+  "timeout", // Task exceeded time limit
+  "conflict", // File reservation conflict
+  "validation", // Output failed schema validation
+  "tool_failure", // Tool call returned error
+  "context_overflow", // Ran out of context window
+  "dependency_blocked", // Waiting on another subtask
+  "user_cancelled", // User interrupted
+  "unknown", // Unclassified
+]);
+export type FailureMode = z.infer<typeof FailureModeSchema>;

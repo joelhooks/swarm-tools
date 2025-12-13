@@ -18,7 +18,7 @@
     }
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node && bun build ./src/plugin.ts --outfile ./dist/plugin.js --target node",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @electric-sql/pglite && bun build ./src/plugin.ts --outfile ./dist/plugin.js --target node --external @electric-sql/pglite",
     "dev": "bun --watch src/index.ts",
     "test": "bun test src/schemas src/skills.test.ts src/streams/index.test.ts src/streams/events.test.ts src/streams/projections.test.ts src/streams/migrations.test.ts src/streams/debug.test.ts src/streams/agent-mail.test.ts src/streams/effect/deferred.test.ts src/streams/effect/mailbox.test.ts",
     "test:watch": "bun test --watch src/schemas src/skills.test.ts",

@@ -8,9 +8,27 @@
  * or ~/.opencode/streams.db (global fallback)
  */
 import { PGlite } from "@electric-sql/pglite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+
+// ============================================================================
+// Debug Logging
+// ============================================================================
+
+const DEBUG_LOG_PATH = join(homedir(), ".opencode", "streams-debug.log");
+
+function debugLog(message: string, data?: unknown): void {
+  const timestamp = new Date().toISOString();
+  const logLine = data
+    ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
+    : `[${timestamp}] ${message}\n`;
+  try {
+    appendFileSync(DEBUG_LOG_PATH, logLine);
+  } catch {
+    // Ignore write errors
+  }
+}
 
 // ============================================================================
 // Configuration
@@ -147,21 +165,32 @@ async function createDatabaseInstance(dbPath: string): Promise<PGlite> {
   // Evict LRU if cache is full
   evictLRU();
 
+  debugLog("createDatabaseInstance called", { dbPath, cwd: process.cwd() });
+
   let db: PGlite;
 
   // Try to create new instance
   try {
+    debugLog("Creating PGlite instance", { dbPath });
     db = new PGlite(dbPath);
+    debugLog("PGlite instance created successfully");
 
     // Initialize schema if needed
     if (!schemaInitialized.get(dbPath)) {
+      debugLog("Initializing schema");
       await initializeSchema(db);
       schemaInitialized.set(dbPath, true);
+      debugLog("Schema initialized");
     }
 
     return db;
   } catch (error) {
     const err = error as Error;
+    debugLog("Failed to initialize database", {
+      dbPath,
+      error: err.message,
+      stack: err.stack,
+    });
     console.error(
       `[swarm-mail] Failed to initialize database at ${dbPath}:`,
       err.message,

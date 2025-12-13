@@ -10,6 +10,7 @@
  * - Deadlock detection (lock not held)
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
 import {
@@ -20,15 +21,19 @@ import {
   withLock,
   type LockHandle,
 } from "./lock";
-import { closeAllDatabases, resetDatabase } from "../index";
+import { closeDatabase, resetDatabase } from "../index";
+
+// Isolated test path for each test run
+let testDbPath: string;
 
 describe("DurableLock", () => {
   beforeEach(async () => {
-    await resetDatabase();
+    testDbPath = `/tmp/lock-test-${randomUUID()}`;
+    await resetDatabase(testDbPath);
   });
 
   afterEach(async () => {
-    await closeAllDatabases();
+    await closeDatabase(testDbPath);
   });
 
   describe("Basic acquire/release", () => {

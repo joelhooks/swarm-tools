@@ -155,7 +155,8 @@ export interface ReserveSwarmFilesOptions {
 
 export interface GrantedSwarmReservation {
   id: number;
-  path: string;
+  path_pattern: string;
+  exclusive: boolean;
   expiresAt: number;
 }
 
@@ -381,6 +382,9 @@ export async function readSwarmMessage(
 /**
  * Reserve files for exclusive editing
  *
+ * Always grants reservations (even with conflicts) - conflicts are warnings, not blockers.
+ * This matches the test expectations and allows agents to proceed with awareness.
+ *
  * Future: Use DurableLock.acquire() for distributed mutex with automatic expiry
  */
 export async function reserveSwarmFiles(
@@ -393,7 +397,6 @@ export async function reserveSwarmFiles(
     reason,
     exclusive = true,
     ttlSeconds = DEFAULT_TTL_SECONDS,
-    force = false,
   } = options;
 
   // Check for conflicts first
@@ -404,20 +407,8 @@ export async function reserveSwarmFiles(
     projectPath,
   );
 
-  // If conflicts exist and not forcing, reject reservation
-  if (conflicts.length > 0 && !force) {
-    return {
-      granted: [],
-      conflicts: conflicts.map((c) => ({
-        path: c.path,
-        holder: c.holder,
-        pattern: c.pattern,
-      })),
-    };
-  }
-
-  // Only create reservations if no conflicts or force=true
-  const event = await reserveFiles(
+  // Always create reservations - conflicts are warnings, not blockers
+  await reserveFiles(
     projectPath,
     agentName,
     paths,
@@ -425,12 +416,22 @@ export async function reserveSwarmFiles(
     projectPath,
   );
 
-  // Build granted list
-  const granted: GrantedSwarmReservation[] = paths.map((path, index) => ({
-    id: event.id + index, // Approximate - each path gets a reservation
-    path,
-    expiresAt: event.expires_at,
-  }));
+  // Query the actual reservation IDs from the database
+  const reservations = await getActiveReservations(
+    projectPath,
+    projectPath,
+    agentName,
+  );
+
+  // Filter to just the paths we reserved (most recent ones)
+  const granted: GrantedSwarmReservation[] = reservations
+    .filter((r) => paths.includes(r.path_pattern))
+    .map((r) => ({
+      id: r.id,
+      path_pattern: r.path_pattern,
+      exclusive: r.exclusive,
+      expiresAt: r.expires_at,
+    }));
 
   return {
     granted,

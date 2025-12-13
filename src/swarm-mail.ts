@@ -127,9 +127,10 @@ export function setSwarmMailProjectDirectory(directory: string): void {
 
 /**
  * Get the default project directory
+ * Returns undefined if not set - let getDatabasePath use global fallback
  */
-export function getSwarmMailProjectDirectory(): string {
-  return swarmMailProjectDirectory || process.cwd();
+export function getSwarmMailProjectDirectory(): string | undefined {
+  return swarmMailProjectDirectory;
 }
 
 // ============================================================================
@@ -207,7 +208,9 @@ export const swarmmail_init = tool({
       .describe("Description of the task this agent is working on"),
   },
   async execute(args: InitArgs, ctx: ToolContext): Promise<string> {
-    const projectPath = args.project_path || getSwarmMailProjectDirectory();
+    // For init, we need a project path - use provided, stored, or cwd
+    const projectPath =
+      args.project_path || getSwarmMailProjectDirectory() || process.cwd();
     const sessionID = ctx.sessionID || "default";
 
     // Check if already initialized
@@ -672,6 +675,7 @@ export const swarmmail_health = tool({
   ): Promise<string> {
     const sessionID = ctx.sessionID || "default";
     const state = loadSessionState(sessionID);
+    // For health check, undefined is OK - database layer uses global fallback
     const projectPath = state?.projectKey || getSwarmMailProjectDirectory();
 
     try {

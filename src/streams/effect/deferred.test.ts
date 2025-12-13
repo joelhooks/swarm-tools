@@ -38,8 +38,10 @@ describe("DurableDeferred", () => {
   });
 
   afterEach(async () => {
-    await closeDatabase(TEST_PROJECT_PATH);
     try {
+      await closeDatabase(TEST_PROJECT_PATH);
+      // Small delay to let PGLite fully release file handles
+      await new Promise((r) => setTimeout(r, 50));
       await rm(join(TEST_PROJECT_PATH, ".opencode"), {
         recursive: true,
         force: true,

@@ -304,7 +304,7 @@ curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_sess
 curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh" | bash -s -- --yes
 ```
 
-> **Note:** You can use either MCP Agent Mail (external Go server) or the embedded Swarm Mail (PGLite in-process). The embedded version is experimental - for production multi-agent workflows, MCP Agent Mail is recommended.
+> **Note:** The embedded Swarm Mail (PGLite in-process) is now the primary option and works out of the box with no external dependencies. MCP Agent Mail (external Go server) is still supported for advanced use cases requiring a separate server process.
 
 ## Tools Reference
 
@@ -337,7 +337,20 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/m
 | `beads_sync`        | Sync to git and push                           |
 | `beads_link_thread` | Link bead to Swarm Mail thread                 |
 
-### Swarm Mail
+### Swarm Mail (Embedded - Primary)
+
+| Tool                     | Description                                   |
+| ------------------------ | --------------------------------------------- |
+| `swarmmail_init`         | Initialize session, register agent            |
+| `swarmmail_send`         | Send message to agents                        |
+| `swarmmail_inbox`        | Fetch inbox (max 5, no bodies - context safe) |
+| `swarmmail_read_message` | Fetch single message body by ID               |
+| `swarmmail_reserve`      | Reserve file paths for exclusive editing      |
+| `swarmmail_release`      | Release file reservations                     |
+| `swarmmail_ack`          | Acknowledge message                           |
+| `swarmmail_health`       | Check embedded database health                |
+
+### Agent Mail (Legacy MCP - Optional)
 
 | Tool                         | Description                                    |
 | ---------------------------- | ---------------------------------------------- |
@@ -350,7 +363,7 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/m
 | `agentmail_release`          | Release file reservations                      |
 | `agentmail_ack`              | Acknowledge message                            |
 | `agentmail_search`           | Search messages by keyword                     |
-| `agentmail_health`           | Check if Swarm Mail server is running          |
+| `agentmail_health`           | Check if MCP Agent Mail server is running      |
 
 ## Event-Sourced Architecture (Embedded)
 

@@ -8,9 +8,27 @@
  * or ~/.opencode/streams.db (global fallback)
  */
 import { PGlite } from "@electric-sql/pglite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+
+// ============================================================================
+// Debug Logging
+// ============================================================================
+
+const DEBUG_LOG_PATH = join(homedir(), ".opencode", "streams-debug.log");
+
+function debugLog(message: string, data?: unknown): void {
+  const timestamp = new Date().toISOString();
+  const logLine = data
+    ? `[${timestamp}] ${message}: ${JSON.stringify(data, null, 2)}\n`
+    : `[${timestamp}] ${message}\n`;
+  try {
+    appendFileSync(DEBUG_LOG_PATH, logLine);
+  } catch {
+    // Ignore write errors
+  }
+}
 
 // ============================================================================
 // Configuration
@@ -49,38 +67,130 @@ export function getDatabasePath(projectPath?: string): string {
 /** Singleton database instances keyed by path */
 const instances = new Map<string, PGlite>();
 
+/** Pending database initialization promises to prevent race conditions */
+const pendingInstances = new Map<string, Promise<PGlite>>();
+
 /** Whether schema has been initialized for each instance */
 const schemaInitialized = new Map<string, boolean>();
 
 /** Track degraded instances (path -> error) */
 const degradedInstances = new Map<string, Error>();
 
+/** LRU tracking: path -> last access timestamp */
+const lastAccess = new Map<string, number>();
+
+/** Maximum number of cached database instances */
+const MAX_CACHE_SIZE = 10;
+
+/**
+ * Evict least recently used instance if cache is full
+ */
+function evictLRU(): void {
+  if (instances.size < MAX_CACHE_SIZE) {
+    return;
+  }
+
+  let oldestPath: string | null = null;
+  let oldestTime = Number.POSITIVE_INFINITY;
+
+  for (const [path, time] of lastAccess) {
+    if (time < oldestTime) {
+      oldestTime = time;
+      oldestPath = path;
+    }
+  }
+
+  if (oldestPath) {
+    const db = instances.get(oldestPath);
+    if (db) {
+      db.close().catch((err) => {
+        console.error(
+          `[swarm-mail] Failed to close evicted database: ${err.message}`,
+        );
+      });
+    }
+    instances.delete(oldestPath);
+    pendingInstances.delete(oldestPath);
+    schemaInitialized.delete(oldestPath);
+    degradedInstances.delete(oldestPath);
+    lastAccess.delete(oldestPath);
+  }
+}
+
 /**
  * Get or create a PGLite instance for the given path
  *
  * If initialization fails, falls back to in-memory database and marks instance as degraded.
+ *
+ * Uses Promise-based caching to prevent race conditions when multiple concurrent
+ * calls occur before the first one completes.
  */
 export async function getDatabase(projectPath?: string): Promise<PGlite> {
   const dbPath = getDatabasePath(projectPath);
 
   // Return existing instance if available
-  let db = instances.get(dbPath);
-  if (db) {
-    return db;
+  const existingDb = instances.get(dbPath);
+  if (existingDb) {
+    lastAccess.set(dbPath, Date.now());
+    return existingDb;
   }
+
+  // Return pending promise if initialization is in progress (fixes race condition)
+  const pendingPromise = pendingInstances.get(dbPath);
+  if (pendingPromise) {
+    return pendingPromise;
+  }
+
+  // Create new initialization promise
+  const initPromise = createDatabaseInstance(dbPath);
+  pendingInstances.set(dbPath, initPromise);
+
+  try {
+    const db = await initPromise;
+    instances.set(dbPath, db);
+    lastAccess.set(dbPath, Date.now());
+    return db;
+  } finally {
+    // Clean up pending promise once resolved/rejected
+    pendingInstances.delete(dbPath);
+  }
+}
+
+/**
+ * Create and initialize a database instance
+ *
+ * Separated from getDatabase for cleaner Promise-based caching logic
+ */
+async function createDatabaseInstance(dbPath: string): Promise<PGlite> {
+  // Evict LRU if cache is full
+  evictLRU();
+
+  debugLog("createDatabaseInstance called", { dbPath, cwd: process.cwd() });
+
+  let db: PGlite;
 
   // Try to create new instance
   try {
+    debugLog("Creating PGlite instance", { dbPath });
     db = new PGlite(dbPath);
-    instances.set(dbPath, db);
+    debugLog("PGlite instance created successfully");
 
     // Initialize schema if needed
     if (!schemaInitialized.get(dbPath)) {
+      debugLog("Initializing schema");
       await initializeSchema(db);
       schemaInitialized.set(dbPath, true);
+      debugLog("Schema initialized");
     }
+
+    return db;
   } catch (error) {
     const err = error as Error;
+    debugLog("Failed to initialize database", {
+      dbPath,
+      error: err.message,
+      stack: err.stack,
+    });
     console.error(
       `[swarm-mail] Failed to initialize database at ${dbPath}:`,
       err.message,
@@ -94,11 +204,12 @@ export async function getDatabase(projectPath?: string): Promise<PGlite> {
 
     try {
       db = new PGlite(); // in-memory mode
-      instances.set(dbPath, db);
 
       // Initialize schema for in-memory instance
       await initializeSchema(db);
       schemaInitialized.set(dbPath, true);
+
+      return db;
     } catch (fallbackError) {
       const fallbackErr = fallbackError as Error;
       console.error(
@@ -110,8 +221,6 @@ export async function getDatabase(projectPath?: string): Promise<PGlite> {
       );
     }
   }
-
-  return db;
 }
 
 /**
@@ -123,8 +232,10 @@ export async function closeDatabase(projectPath?: string): Promise<void> {
   if (db) {
     await db.close();
     instances.delete(dbPath);
+    pendingInstances.delete(dbPath);
     schemaInitialized.delete(dbPath);
     degradedInstances.delete(dbPath);
+    lastAccess.delete(dbPath);
   }
 }
 
@@ -137,7 +248,9 @@ export async function closeAllDatabases(): Promise<void> {
     instances.delete(path);
     schemaInitialized.delete(path);
   }
+  pendingInstances.clear();
   degradedInstances.clear();
+  lastAccess.clear();
 }
 
 /**
@@ -151,6 +264,8 @@ export async function resetDatabase(projectPath?: string): Promise<void> {
     DELETE FROM reservations;
     DELETE FROM agents;
     DELETE FROM events;
+    DELETE FROM locks;
+    DELETE FROM cursors;
   `);
 }
 
@@ -166,8 +281,11 @@ export async function resetDatabase(projectPath?: string): Promise<void> {
  * - agents: Materialized view of registered agents
  * - messages: Materialized view of messages
  * - reservations: Materialized view of file reservations
+ * - cursors, deferred: Effect-TS durable primitives (via migrations)
+ * - locks: Distributed mutual exclusion (DurableLock)
  */
 async function initializeSchema(db: PGlite): Promise<void> {
+  // Create core event store tables
   await db.exec(`
     -- Events table: The source of truth (append-only)
     CREATE TABLE IF NOT EXISTS events (
@@ -246,7 +364,23 @@ async function initializeSchema(db: PGlite): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_reservations_agent ON reservations(agent_name);
     CREATE INDEX IF NOT EXISTS idx_reservations_expires ON reservations(expires_at);
     CREATE INDEX IF NOT EXISTS idx_reservations_active ON reservations(project_key, released_at) WHERE released_at IS NULL;
+
+    -- Locks table for distributed mutual exclusion (DurableLock)
+    CREATE TABLE IF NOT EXISTS locks (
+      resource TEXT PRIMARY KEY,
+      holder TEXT NOT NULL,
+      seq INTEGER NOT NULL DEFAULT 0,
+      acquired_at BIGINT NOT NULL,
+      expires_at BIGINT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_locks_expires ON locks(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_locks_holder ON locks(holder);
   `);
+
+  // Run schema migrations for Effect-TS durable primitives (cursors, deferred)
+  const { runMigrations } = await import("./migrations");
+  await runMigrations(db);
 }
 
 // ============================================================================
@@ -265,8 +399,9 @@ export async function isDatabaseHealthy(
 
   // Check if instance is degraded
   if (degradedInstances.has(dbPath)) {
-    console.warn(
-      `[swarm-mail] Database is in degraded mode (using in-memory fallback)`,
+    const err = degradedInstances.get(dbPath);
+    console.error(
+      `[swarm-mail] Database is in degraded mode (using in-memory fallback). Original error: ${err?.message}`,
     );
     return false;
   }
@@ -275,7 +410,9 @@ export async function isDatabaseHealthy(
     const db = await getDatabase(projectPath);
     const result = await db.query("SELECT 1 as ok");
     return result.rows.length > 0;
-  } catch {
+  } catch (error) {
+    const err = error as Error;
+    console.error(`[swarm-mail] Health check failed: ${err.message}`);
     return false;
   }
 }
@@ -309,12 +446,47 @@ export async function getDatabaseStats(projectPath?: string): Promise<{
 }
 
 // ============================================================================
+// Process Exit Handlers
+// ============================================================================
+
+/**
+ * Close all databases on process exit
+ */
+function handleExit() {
+  // Use sync version if available, otherwise fire-and-forget
+  const dbsToClose = Array.from(instances.values());
+  for (const db of dbsToClose) {
+    try {
+      // PGlite doesn't have a sync close, so we just attempt async
+      db.close().catch(() => {
+        // Ignore errors during shutdown
+      });
+    } catch {
+      // Ignore errors
+    }
+  }
+}
+
+// Register exit handlers
+process.on("exit", handleExit);
+process.on("SIGINT", () => {
+  handleExit();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  handleExit();
+  process.exit(0);
+});
+
+// ============================================================================
 // Exports
 // ============================================================================
 
 export { PGlite };
-export * from "./events";
-export * from "./store";
-export * from "./projections";
 export * from "./agent-mail";
 export * from "./debug";
+export * from "./events";
+export * from "./migrations";
+export * from "./projections";
+export * from "./store";
+export * from "./swarm-mail";

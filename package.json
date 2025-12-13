@@ -18,12 +18,13 @@
     }
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node && bun build ./src/plugin.ts --outfile ./dist/plugin.js --target node",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @electric-sql/pglite && bun build ./src/plugin.ts --outfile ./dist/plugin.js --target node --external @electric-sql/pglite",
     "dev": "bun --watch src/index.ts",
-    "test": "bun test src/schemas src/skills",
-    "test:watch": "bun test --watch src/schemas src/skills",
+    "test": "bun test src/schemas src/skills.test.ts src/streams/index.test.ts src/streams/events.test.ts src/streams/projections.test.ts src/streams/migrations.test.ts src/streams/debug.test.ts src/streams/agent-mail.test.ts src/streams/effect/deferred.test.ts src/streams/effect/mailbox.test.ts",
+    "test:watch": "bun test --watch src/schemas src/skills.test.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:all": "bun test src/schemas src/skills && vitest run --config vitest.integration.config.ts",
+    "test:swarm": "bun test src/swarm-mail.integration.test.ts",
+    "test:all": "bun run test && bun run test:swarm",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "release": "npm run build && npm version patch && git push && npm run publish:otp",
@@ -33,8 +34,10 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
+    "@effect/schema": "^0.75.5",
     "@electric-sql/pglite": "0.3.14",
     "@opencode-ai/plugin": "^1.0.134",
+    "effect": "^3.19.12",
     "gray-matter": "^4.0.3",
     "ioredis": "^5.4.1",
     "minimatch": "^10.1.1",

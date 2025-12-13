@@ -17,7 +17,7 @@
  * @example
  * ```typescript
  * // Programmatic usage
- * import { beadsTools, agentMailTools } from "opencode-swarm-plugin"
+ * import { beadsTools, agentMailTools, swarmMailTools } from "opencode-swarm-plugin"
  * ```
  */
 import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
@@ -29,6 +29,11 @@ import {
   type AgentMailState,
   AGENT_MAIL_URL,
 } from "./agent-mail";
+import {
+  swarmMailTools,
+  setSwarmMailProjectDirectory,
+  type SwarmMailState,
+} from "./swarm-mail";
 import { structuredTools } from "./structured";
 import { swarmTools } from "./swarm";
 import { repoCrawlTools } from "./repo-crawl";
@@ -39,7 +44,8 @@ import { skillsTools, setSkillsProjectDirectory } from "./skills";
  *
  * Registers all swarm coordination tools:
  * - beads:* - Type-safe beads issue tracker wrappers
- * - agent-mail:* - Multi-agent coordination via Agent Mail MCP
+ * - agent-mail:* - Multi-agent coordination via Agent Mail MCP (legacy)
+ * - swarm-mail:* - Multi-agent coordination with embedded event sourcing (recommended)
  * - structured:* - Structured output parsing and validation
  * - swarm:* - Swarm orchestration and task decomposition
  * - repo-crawl:* - GitHub API tools for repository research
@@ -61,10 +67,14 @@ export const SwarmPlugin: Plugin = async (
   // Skills are discovered from .opencode/skills/, .claude/skills/, or skills/
   setSkillsProjectDirectory(directory);
 
-  // Set the project directory for Agent Mail
+  // Set the project directory for Agent Mail (legacy MCP-based)
   // This ensures agentmail_init uses the correct project path by default
   // (prevents using plugin directory when working in a different project)
   setAgentMailProjectDirectory(directory);
+
+  // Set the project directory for Swarm Mail (embedded event-sourced)
+  // This ensures swarmmail_init uses the correct project path by default
+  setSwarmMailProjectDirectory(directory);
 
   /** Track active sessions for cleanup */
   let activeAgentMailState: AgentMailState | null = null;
@@ -119,12 +129,14 @@ export const SwarmPlugin: Plugin = async (
      *
      * Tools are namespaced by module:
      * - beads:create, beads:query, beads:update, etc.
-     * - agent-mail:init, agent-mail:send, agent-mail:reserve, etc.
+     * - agent-mail:init, agent-mail:send, agent-mail:reserve, etc. (legacy MCP)
+     * - swarm-mail:init, swarm-mail:send, swarm-mail:reserve, etc. (embedded)
      * - repo-crawl:readme, repo-crawl:structure, etc.
      */
     tool: {
       ...beadsTools,
       ...agentMailTools,
+      ...swarmMailTools,
       ...structuredTools,
       ...swarmTools,
       ...repoCrawlTools,
@@ -236,7 +248,7 @@ export * from "./schemas";
 export * from "./beads";
 
 /**
- * Re-export agent-mail module
+ * Re-export agent-mail module (legacy MCP-based)
  *
  * Includes:
  * - agentMailTools - All agent mail tool definitions
@@ -245,6 +257,8 @@ export * from "./beads";
  *
  * NOTE: For OpenCode plugin usage, import from "opencode-swarm-plugin/plugin" instead
  * to avoid the plugin loader trying to call these classes as functions.
+ *
+ * DEPRECATED: Use swarm-mail module instead for embedded event-sourced implementation.
  */
 export {
   agentMailTools,
@@ -259,6 +273,30 @@ export {
   isAgentNotFoundError,
   type AgentMailState,
 } from "./agent-mail";
+
+/**
+ * Re-export swarm-mail module (embedded event-sourced)
+ *
+ * Includes:
+ * - swarmMailTools - All swarm mail tool definitions
+ * - setSwarmMailProjectDirectory, getSwarmMailProjectDirectory - Directory management
+ * - clearSessionState - Session cleanup
+ * - SwarmMailState - Session state type
+ *
+ * Features:
+ * - Embedded PGLite storage (no external server dependency)
+ * - Event sourcing for full audit trail
+ * - Offset-based resumability
+ * - Materialized views for fast queries
+ * - File reservation with conflict detection
+ */
+export {
+  swarmMailTools,
+  setSwarmMailProjectDirectory,
+  getSwarmMailProjectDirectory,
+  clearSessionState,
+  type SwarmMailState,
+} from "./swarm-mail";
 
 /**
  * Re-export structured module
@@ -320,6 +358,7 @@ export {
 export const allTools = {
   ...beadsTools,
   ...agentMailTools,
+  ...swarmMailTools,
   ...structuredTools,
   ...swarmTools,
   ...repoCrawlTools,

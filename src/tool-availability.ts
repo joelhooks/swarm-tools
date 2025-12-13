@@ -9,14 +9,18 @@
  * - cass: Cross-agent session search for historical context
  * - ubs: Universal bug scanner for pre-commit checks
  * - beads (bd): Git-backed issue tracking
- * - agent-mail: Multi-agent coordination server
+ * - swarm-mail: Embedded multi-agent coordination (PGLite-based)
+ * - agent-mail: DEPRECATED - Legacy MCP server (use swarm-mail instead)
  */
+
+import { checkSwarmHealth } from "./streams/swarm-mail";
 
 export type ToolName =
   | "semantic-memory"
   | "cass"
   | "ubs"
   | "beads"
+  | "swarm-mail"
   | "agent-mail";
 
 export interface ToolStatus {
@@ -199,6 +203,32 @@ const toolCheckers: Record<ToolName, () => Promise<ToolStatus>> = {
     }
   },
 
+  "swarm-mail": async () => {
+    try {
+      // Note: checkSwarmHealth() accepts optional projectPath parameter.
+      // For tool availability checking, we call it without args to check global health.
+      // This is intentional - we're verifying the embedded Swarm Mail system is functional,
+      // not checking health for a specific project.
+      const healthResult = await checkSwarmHealth();
+      return {
+        available: healthResult.healthy,
+        checkedAt: new Date().toISOString(),
+        error: healthResult.healthy
+          ? undefined
+          : "Swarm Mail database not healthy",
+        version: "embedded",
+      };
+    } catch (e) {
+      return {
+        available: false,
+        checkedAt: new Date().toISOString(),
+        error: String(e),
+      };
+    }
+  },
+
+  // DEPRECATED: Use swarm-mail instead
+  // Kept for backward compatibility only
   "agent-mail": async () => {
     const reachable = await urlReachable(
       "http://127.0.0.1:8765/health/liveness",
@@ -220,8 +250,10 @@ const fallbackBehaviors: Record<ToolName, string> = {
   cass: "Decomposition proceeds without historical context from past sessions",
   ubs: "Subtask completion skips bug scanning - manual review recommended",
   beads: "Swarm cannot track issues - task coordination will be less reliable",
-  "agent-mail":
+  "swarm-mail":
     "Multi-agent coordination disabled - file conflicts possible if multiple agents active",
+  "agent-mail":
+    "DEPRECATED: Use swarm-mail instead. Legacy MCP server mode - file conflicts possible if multiple agents active",
 };
 
 /**
@@ -276,6 +308,7 @@ export async function checkAllTools(): Promise<
     "cass",
     "ubs",
     "beads",
+    "swarm-mail",
     "agent-mail",
   ];
 

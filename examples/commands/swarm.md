@@ -41,12 +41,28 @@ pdf-brain_search(query="<domain concepts>", limit=5)
 skills_list()
 ```
 
+**Load coordinator skills based on task type:**
+
+```
+# For swarm coordination (ALWAYS load this)
+skills_use(name="swarm-coordination")
+
+# For architectural decisions
+skills_use(name="system-design")
+
+# If task involves testing
+skills_use(name="testing-patterns")
+
+# If building CLI tools
+skills_use(name="cli-builder")
+```
+
 Synthesize findings into shared context for workers. Note:
 
 - Relevant patterns from pdf-brain
 - Similar past approaches from CASS
 - Project-specific learnings from semantic-memory
-- Skills to recommend for subtasks
+- **Skills to recommend for each subtask** (critical for worker effectiveness)
 
 ### 3. Create Feature Branch (unless --to-main)
 
@@ -107,6 +123,21 @@ swarm_spawn_subtask(
 )
 ```
 
+**Include skill recommendations in shared_context:**
+
+```markdown
+## Recommended Skills
+
+Load these skills before starting work:
+
+- skills_use(name="testing-patterns") - if adding tests or breaking dependencies
+- skills_use(name="swarm-coordination") - if coordinating with other agents
+- skills_use(name="system-design") - if making architectural decisions
+- skills_use(name="cli-builder") - if working on CLI components
+
+See full skill list with skills_list().
+```
+
 Then spawn:
 
 ```
@@ -148,12 +179,25 @@ gh pr create --title "feat: <epic title>" --body "## Summary\n<bullets>\n\n## Be
 
 ## Strategy Reference
 
-| Strategy       | Best For                 | Keywords                              |
-| -------------- | ------------------------ | ------------------------------------- |
-| file-based     | Refactoring, migrations  | refactor, migrate, rename, update all |
-| feature-based  | New features             | add, implement, build, create, new    |
-| risk-based     | Bug fixes, security      | fix, bug, security, critical, urgent  |
-| research-based | Investigation, discovery | research, investigate, explore, learn |
+| Strategy       | Best For                 | Keywords                              | Recommended Skills                |
+| -------------- | ------------------------ | ------------------------------------- | --------------------------------- |
+| file-based     | Refactoring, migrations  | refactor, migrate, rename, update all | system-design, testing-patterns   |
+| feature-based  | New features             | add, implement, build, create, new    | system-design, swarm-coordination |
+| risk-based     | Bug fixes, security      | fix, bug, security, critical, urgent  | testing-patterns                  |
+| research-based | Investigation, discovery | research, investigate, explore, learn | system-design                     |
+
+## Skill Triggers (Auto-load based on task type)
+
+**Task Analysis** → Recommend these skills in shared_context:
+
+| Task Pattern           | Skills to Load                                          |
+| ---------------------- | ------------------------------------------------------- |
+| Contains "test"        | `skills_use(name="testing-patterns")`                   |
+| Contains "refactor"    | `skills_use(name="testing-patterns")` + `system-design` |
+| Contains "CLI"         | `skills_use(name="cli-builder")`                        |
+| Multi-agent work       | `skills_use(name="swarm-coordination")`                 |
+| Architecture decisions | `skills_use(name="system-design")`                      |
+| Breaking dependencies  | `skills_use(name="testing-patterns")`                   |
 
 ## Quick Checklist
 

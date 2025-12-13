@@ -25,7 +25,12 @@ import {
   type SpawnedAgent,
   type Bead,
 } from "./schemas";
-import { mcpCall, mcpCallWithAutoInit, requireState } from "./agent-mail";
+import {
+  sendSwarmMessage,
+  getSwarmInbox,
+  readSwarmMessage,
+  releaseSwarmFiles,
+} from "./streams/swarm-mail";
 import {
   OutcomeSignalsSchema,
   DecompositionStrategySchema,
@@ -959,15 +964,19 @@ async function querySwarmMessages(
   }
 
   try {
-    interface ThreadSummary {
-      summary: { total_messages: number };
-    }
-    const summary = await mcpCall<ThreadSummary>("summarize_thread", {
-      project_key: projectKey,
-      thread_id: threadId,
-      llm_mode: false, // Just need the count
+    // Use embedded swarm-mail inbox to count messages in thread
+    const inbox = await getSwarmInbox({
+      projectPath: projectKey,
+      agentName: "coordinator", // Dummy agent name for thread query
+      limit: 5,
+      includeBodies: false,
     });
-    return summary.summary.total_messages;
+
+    // Count messages that match the thread ID
+    const threadMessages = inbox.messages.filter(
+      (m) => m.thread_id === threadId,
+    );
+    return threadMessages.length;
   } catch (error) {
     // Thread might not exist yet, or query failed
     console.warn(
@@ -1312,9 +1321,10 @@ export const swarm_plan_prompt = tool({
 
     // Fetch skills context
     let skillsContext = "";
-    let skillsInfo: { included: boolean; count?: number; relevant?: string[] } = {
-      included: false,
-    };
+    let skillsInfo: { included: boolean; count?: number; relevant?: string[] } =
+      {
+        included: false,
+      };
 
     if (args.include_skills !== false) {
       const allSkills = await listSkills();
@@ -1769,15 +1779,14 @@ export const swarm_progress = tool({
       ? args.bead_id.split(".")[0]
       : args.bead_id;
 
-    // Send progress message to thread (with auto-reinit on server restart)
-    await mcpCallWithAutoInit("send_message", {
-      project_key: args.project_key,
-      agent_name: args.agent_name,
-      sender_name: args.agent_name,
-      to: [], // Coordinator will pick it up from thread
+    // Send progress message to thread using embedded swarm-mail
+    await sendSwarmMessage({
+      projectPath: args.project_key,
+      fromAgent: args.agent_name,
+      toAgents: [], // Coordinator will pick it up from thread
       subject: `Progress: ${args.bead_id} - ${args.status}`,
-      body_md: formatProgressMessage(validated),
-      thread_id: epicId,
+      body: formatProgressMessage(validated),
+      threadId: epicId,
       importance: args.status === "blocked" ? "high" : "normal",
     });
 
@@ -1895,6 +1904,12 @@ export const swarm_broadcast = tool({
   description:
     "Broadcast context update to all agents working on the same epic",
   args: {
+    project_path: tool.schema
+      .string()
+      .describe("Absolute path to project root"),
+    agent_name: tool.schema
+      .string()
+      .describe("Name of the agent broadcasting the message"),
     epic_id: tool.schema.string().describe("Epic ID (e.g., bd-abc123)"),
     message: tool.schema
       .string()
@@ -1909,18 +1924,14 @@ export const swarm_broadcast = tool({
       .describe("Files this context relates to"),
   },
   async execute(args, ctx) {
-    // Get agent state - requires prior initialization
-    const state = requireState(ctx.sessionID);
-
     // Extract bead_id from context if available (for traceability)
-    // In the swarm flow, ctx might have the current bead being worked on
     const beadId = (ctx as { beadId?: string }).beadId || "unknown";
 
     // Format the broadcast message
     const body = [
       `## Context Update`,
       "",
-      `**From**: ${state.agentName} (${beadId})`,
+      `**From**: ${args.agent_name} (${beadId})`,
       `**Priority**: ${args.importance.toUpperCase()}`,
       "",
       args.message,
@@ -1940,25 +1951,23 @@ export const swarm_broadcast = tool({
           ? "high"
           : "normal";
 
-    // Send as broadcast to thread (empty 'to' = all agents in thread)
-    // Uses auto-reinit wrapper to handle server restarts gracefully
-    await mcpCallWithAutoInit("send_message", {
-      project_key: state.projectKey,
-      agent_name: state.agentName,
-      sender_name: state.agentName,
-      to: [], // Broadcast to thread
-      subject: `[${args.importance.toUpperCase()}] Context update from ${state.agentName}`,
-      body_md: body,
-      thread_id: args.epic_id,
+    // Send as broadcast to thread using embedded swarm-mail
+    await sendSwarmMessage({
+      projectPath: args.project_path,
+      fromAgent: args.agent_name,
+      toAgents: [], // Broadcast to thread
+      subject: `[${args.importance.toUpperCase()}] Context update from ${args.agent_name}`,
+      body,
+      threadId: args.epic_id,
       importance: mailImportance,
-      ack_required: args.importance === "blocker", // Require ack for blockers
+      ackRequired: args.importance === "blocker",
     });
 
     return JSON.stringify(
       {
         broadcast: true,
         epic_id: args.epic_id,
-        from: state.agentName,
+        from: args.agent_name,
         bead_id: beadId,
         importance: args.importance,
         recipients: "all agents in epic",
@@ -2070,16 +2079,15 @@ export const swarm_complete = tool({
       );
     }
 
-    // Release file reservations for this agent
-    // Uses auto-reinit wrapper to handle server restarts - this was the original
-    // failure point that prompted the self-healing implementation
+    // Release file reservations for this agent using embedded swarm-mail
     try {
-      await mcpCallWithAutoInit("release_file_reservations", {
-        project_key: args.project_key,
-        agent_name: args.agent_name,
+      await releaseSwarmFiles({
+        projectPath: args.project_key,
+        agentName: args.agent_name,
+        // Release all reservations for this agent
       });
     } catch (error) {
-      // Even with auto-reinit, release might fail (e.g., no reservations existed)
+      // Release might fail (e.g., no reservations existed)
       // This is non-fatal - log and continue
       console.warn(
         `[swarm] Failed to release file reservations for ${args.agent_name}:`,
@@ -2092,7 +2100,7 @@ export const swarm_complete = tool({
       ? args.bead_id.split(".")[0]
       : args.bead_id;
 
-    // Send completion message
+    // Send completion message using embedded swarm-mail
     const completionBody = [
       `## Subtask Complete: ${args.bead_id}`,
       "",
@@ -2108,14 +2116,13 @@ export const swarm_complete = tool({
       .filter(Boolean)
       .join("\n");
 
-    await mcpCallWithAutoInit("send_message", {
-      project_key: args.project_key,
-      agent_name: args.agent_name,
-      sender_name: args.agent_name,
-      to: [], // Thread broadcast
+    await sendSwarmMessage({
+      projectPath: args.project_key,
+      fromAgent: args.agent_name,
+      toAgents: [], // Thread broadcast
       subject: `Complete: ${args.bead_id}`,
-      body_md: completionBody,
-      thread_id: epicId,
+      body: completionBody,
+      threadId: epicId,
       importance: "normal",
     });
 
@@ -2650,7 +2657,14 @@ This tool helps you formalize learnings into a skill that future agents can disc
       .string()
       .describe("Brief summary of what was learned (1-2 sentences)"),
     pattern_type: tool.schema
-      .enum(["code-pattern", "best-practice", "gotcha", "tool-usage", "domain-knowledge", "workflow"])
+      .enum([
+        "code-pattern",
+        "best-practice",
+        "gotcha",
+        "tool-usage",
+        "domain-knowledge",
+        "workflow",
+      ])
       .describe("Category of the learning"),
     details: tool.schema
       .string()
@@ -2669,7 +2683,9 @@ This tool helps you formalize learnings into a skill that future agents can disc
     create_skill: tool.schema
       .boolean()
       .optional()
-      .describe("Create a skill from this learning (default: false, just document)"),
+      .describe(
+        "Create a skill from this learning (default: false, just document)",
+      ),
     skill_name: tool.schema
       .string()
       .regex(/^[a-z0-9-]+$/)
@@ -2737,7 +2753,8 @@ ${args.files_context && args.files_context.length > 0 ? `## Reference Files\n\n$
             error: `Skill '${args.skill_name}' already exists`,
             existing_path: existing.path,
             learning: learning,
-            suggestion: "Use skills_update to add to existing skill, or choose a different name",
+            suggestion:
+              "Use skills_update to add to existing skill, or choose a different name",
           },
           null,
           2,
@@ -2745,7 +2762,12 @@ ${args.files_context && args.files_context.length > 0 ? `## Reference Files\n\n$
       }
 
       // Create skill directory and file
-      const skillDir = join(process.cwd(), ".opencode", "skills", args.skill_name);
+      const skillDir = join(
+        process.cwd(),
+        ".opencode",
+        "skills",
+        args.skill_name,
+      );
       const skillPath = join(skillDir, "SKILL.md");
 
       const frontmatter = [
@@ -2798,8 +2820,10 @@ ${args.files_context && args.files_context.length > 0 ? `## Reference Files\n\n$
         success: true,
         skill_created: false,
         learning: learning,
-        message: "Learning documented. Use create_skill=true to persist as a skill for future agents.",
-        suggested_skill_name: args.skill_name ||
+        message:
+          "Learning documented. Use create_skill=true to persist as a skill for future agents.",
+        suggested_skill_name:
+          args.skill_name ||
           args.summary
             .toLowerCase()
             .replace(/[^a-z0-9\s-]/g, "")
@@ -3029,7 +3053,8 @@ export const swarm_init = tool({
     if (availableSkills.length > 0) {
       skillsGuidance = `Found ${availableSkills.length} skill(s). Use skills_list to see details, skills_use to activate.`;
     } else {
-      skillsGuidance = "No skills found. Add skills to .opencode/skills/ or .claude/skills/ for specialized guidance.";
+      skillsGuidance =
+        "No skills found. Add skills to .opencode/skills/ or .claude/skills/ for specialized guidance.";
     }
 
     return JSON.stringify(

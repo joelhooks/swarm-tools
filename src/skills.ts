@@ -25,7 +25,7 @@
  */
 
 import { tool } from "@opencode-ai/plugin";
-import { readdir, readFile, stat } from "fs/promises";
+import { readdir, readFile, stat, mkdir, writeFile, rm } from "fs/promises";
 import { join, basename, dirname } from "path";
 
 // =============================================================================
@@ -229,13 +229,29 @@ function validateSkillMetadata(
 // =============================================================================
 
 /**
- * Skill discovery locations relative to project root
+ * Skill discovery locations relative to project root (checked first)
  */
-const SKILL_DIRECTORIES = [
+const PROJECT_SKILL_DIRECTORIES = [
   ".opencode/skills",
   ".claude/skills",
   "skills",
 ] as const;
+
+/**
+ * Global skills directory (user-level, checked after project)
+ */
+function getGlobalSkillsDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || "~";
+  return join(home, ".config", "opencode", "skills");
+}
+
+/**
+ * Claude Code global skills directory (compatibility)
+ */
+function getClaudeGlobalSkillsDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || "~";
+  return join(home, ".claude", "skills");
+}
 
 /**
  * Find all SKILL.md files in a directory
@@ -308,7 +324,14 @@ async function loadSkill(skillPath: string): Promise<Skill> {
 }
 
 /**
- * Discover all skills in the project
+ * Discover all skills in the project and global directories
+ *
+ * Priority order (first match wins):
+ * 1. Project: .opencode/skills/
+ * 2. Project: .claude/skills/
+ * 3. Project: skills/
+ * 4. Global: ~/.config/opencode/skills/
+ * 5. Global: ~/.claude/skills/
  */
 export async function discoverSkills(
   projectDir?: string
@@ -323,16 +346,17 @@ export async function discoverSkills(
   const skills = new Map<string, Skill>();
   const seenNames = new Set<string>();
 
-  // Check each skill directory in priority order
-  for (const relPath of SKILL_DIRECTORIES) {
-    const skillsDir = join(dir, relPath);
+  /**
+   * Helper to load skills from a directory
+   */
+  async function loadSkillsFromDir(skillsDir: string): Promise<void> {
     const skillFiles = await findSkillFiles(skillsDir);
 
     for (const skillPath of skillFiles) {
       try {
         const skill = await loadSkill(skillPath);
 
-        // First definition wins (project overrides user)
+        // First definition wins (project overrides global)
         if (!seenNames.has(skill.metadata.name)) {
           skills.set(skill.metadata.name, skill);
           seenNames.add(skill.metadata.name);
@@ -345,6 +369,17 @@ export async function discoverSkills(
       }
     }
   }
+
+  // 1. Check project skill directories first (highest priority)
+  for (const relPath of PROJECT_SKILL_DIRECTORIES) {
+    await loadSkillsFromDir(join(dir, relPath));
+  }
+
+  // 2. Check global OpenCode skills directory
+  await loadSkillsFromDir(getGlobalSkillsDir());
+
+  // 3. Check global Claude skills directory (compatibility)
+  await loadSkillsFromDir(getClaudeGlobalSkillsDir());
 
   // Cache for future lookups
   if (!projectDir) {
@@ -599,6 +634,377 @@ Use this to access supplementary skill resources.`,
 });
 
 // =============================================================================
+// Skill Creation & Maintenance Tools
+// =============================================================================
+
+/**
+ * Default skills directory for new skills
+ */
+const DEFAULT_SKILLS_DIR = ".opencode/skills";
+
+/**
+ * Generate SKILL.md content from metadata and body
+ */
+function generateSkillContent(
+  name: string,
+  description: string,
+  body: string,
+  options?: { tags?: string[]; tools?: string[] }
+): string {
+  const frontmatter: string[] = [
+    "---",
+    `name: ${name}`,
+    `description: ${description}`,
+  ];
+
+  if (options?.tags && options.tags.length > 0) {
+    frontmatter.push("tags:");
+    for (const tag of options.tags) {
+      frontmatter.push(`  - ${tag}`);
+    }
+  }
+
+  if (options?.tools && options.tools.length > 0) {
+    frontmatter.push("tools:");
+    for (const t of options.tools) {
+      frontmatter.push(`  - ${t}`);
+    }
+  }
+
+  frontmatter.push("---");
+
+  return `${frontmatter.join("\n")}\n\n${body}`;
+}
+
+/**
+ * Create a new skill in the project
+ *
+ * Agents can use this to codify learned patterns, best practices,
+ * or domain-specific knowledge into reusable skills.
+ */
+export const skills_create = tool({
+  description: `Create a new skill in the project.
+
+Use this to codify learned patterns, best practices, or domain knowledge
+into a reusable skill that future agents can discover and use.
+
+Skills are stored in .opencode/skills/<name>/SKILL.md by default.
+
+Good skills have:
+- Clear, specific descriptions explaining WHEN to use them
+- Actionable instructions with examples
+- Tags for discoverability`,
+  args: {
+    name: tool.schema
+      .string()
+      .regex(/^[a-z0-9-]+$/)
+      .max(64)
+      .describe("Skill name (lowercase, hyphens only, max 64 chars)"),
+    description: tool.schema
+      .string()
+      .max(1024)
+      .describe("What the skill does and when to use it (max 1024 chars)"),
+    body: tool.schema
+      .string()
+      .describe("Markdown content with instructions, examples, guidelines"),
+    tags: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("Tags for categorization (e.g., ['testing', 'frontend'])"),
+    tools: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("Tools this skill commonly uses"),
+    directory: tool.schema
+      .enum([".opencode/skills", ".claude/skills", "skills", "global", "global-claude"])
+      .optional()
+      .describe("Where to create the skill (default: .opencode/skills). Use 'global' for ~/.config/opencode/skills/, 'global-claude' for ~/.claude/skills/"),
+  },
+  async execute(args) {
+    // Check if skill already exists
+    const existing = await getSkill(args.name);
+    if (existing) {
+      return `Skill '${args.name}' already exists at ${existing.path}. Use skills_update to modify it.`;
+    }
+
+    // Determine target directory
+    let skillDir: string;
+    if (args.directory === "global") {
+      skillDir = join(getGlobalSkillsDir(), args.name);
+    } else if (args.directory === "global-claude") {
+      skillDir = join(getClaudeGlobalSkillsDir(), args.name);
+    } else {
+      const baseDir = args.directory || DEFAULT_SKILLS_DIR;
+      skillDir = join(skillsProjectDirectory, baseDir, args.name);
+    }
+    const skillPath = join(skillDir, "SKILL.md");
+
+    try {
+      // Create skill directory
+      await mkdir(skillDir, { recursive: true });
+
+      // Generate and write SKILL.md
+      const content = generateSkillContent(
+        args.name,
+        args.description,
+        args.body,
+        { tags: args.tags, tools: args.tools }
+      );
+
+      await writeFile(skillPath, content, "utf-8");
+
+      // Invalidate cache so new skill is discoverable
+      invalidateSkillsCache();
+
+      return JSON.stringify(
+        {
+          success: true,
+          skill: args.name,
+          path: skillPath,
+          message: `Created skill '${args.name}'. It's now discoverable via skills_list.`,
+          next_steps: [
+            "Test with skills_use to verify instructions are clear",
+            "Add examples.md or reference.md for supplementary content",
+            "Add scripts/ directory for executable helpers",
+          ],
+        },
+        null,
+        2
+      );
+    } catch (error) {
+      return `Failed to create skill: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+/**
+ * Update an existing skill
+ *
+ * Modify a skill's metadata or content based on learned improvements.
+ */
+export const skills_update = tool({
+  description: `Update an existing skill's content or metadata.
+
+Use this to refine skills based on experience:
+- Clarify instructions that were confusing
+- Add examples from successful usage
+- Update descriptions for better discoverability
+- Add new tags or tool references`,
+  args: {
+    name: tool.schema.string().describe("Name of the skill to update"),
+    description: tool.schema
+      .string()
+      .max(1024)
+      .optional()
+      .describe("New description (replaces existing)"),
+    body: tool.schema
+      .string()
+      .optional()
+      .describe("New body content (replaces existing)"),
+    append_body: tool.schema
+      .string()
+      .optional()
+      .describe("Content to append to existing body"),
+    tags: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("New tags (replaces existing)"),
+    add_tags: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("Tags to add to existing"),
+    tools: tool.schema
+      .array(tool.schema.string())
+      .optional()
+      .describe("New tools list (replaces existing)"),
+  },
+  async execute(args) {
+    const skill = await getSkill(args.name);
+    if (!skill) {
+      const available = await listSkills();
+      const names = available.map((s) => s.name).join(", ");
+      return `Skill '${args.name}' not found. Available: ${names || "none"}`;
+    }
+
+    // Build updated metadata
+    const newDescription = args.description ?? skill.metadata.description;
+
+    // Handle body updates
+    let newBody = skill.body;
+    if (args.body) {
+      newBody = args.body;
+    } else if (args.append_body) {
+      newBody = `${skill.body}\n\n${args.append_body}`;
+    }
+
+    // Handle tags
+    let newTags = skill.metadata.tags;
+    if (args.tags) {
+      newTags = args.tags;
+    } else if (args.add_tags) {
+      newTags = [...(skill.metadata.tags || []), ...args.add_tags];
+      // Deduplicate
+      newTags = [...new Set(newTags)];
+    }
+
+    // Handle tools
+    const newTools = args.tools ?? skill.metadata.tools;
+
+    try {
+      // Generate and write updated SKILL.md
+      const content = generateSkillContent(
+        args.name,
+        newDescription,
+        newBody,
+        { tags: newTags, tools: newTools }
+      );
+
+      await writeFile(skill.path, content, "utf-8");
+
+      // Invalidate cache
+      invalidateSkillsCache();
+
+      return JSON.stringify(
+        {
+          success: true,
+          skill: args.name,
+          path: skill.path,
+          updated: {
+            description: args.description ? true : false,
+            body: args.body || args.append_body ? true : false,
+            tags: args.tags || args.add_tags ? true : false,
+            tools: args.tools ? true : false,
+          },
+          message: `Updated skill '${args.name}'.`,
+        },
+        null,
+        2
+      );
+    } catch (error) {
+      return `Failed to update skill: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+/**
+ * Delete a skill from the project
+ */
+export const skills_delete = tool({
+  description: `Delete a skill from the project.
+
+Use sparingly - only delete skills that are:
+- Obsolete or superseded by better skills
+- Incorrect or harmful
+- Duplicates of other skills
+
+Consider updating instead of deleting when possible.`,
+  args: {
+    name: tool.schema.string().describe("Name of the skill to delete"),
+    confirm: tool.schema
+      .boolean()
+      .describe("Must be true to confirm deletion"),
+  },
+  async execute(args) {
+    if (!args.confirm) {
+      return "Deletion not confirmed. Set confirm=true to delete the skill.";
+    }
+
+    const skill = await getSkill(args.name);
+    if (!skill) {
+      return `Skill '${args.name}' not found.`;
+    }
+
+    try {
+      // Remove the entire skill directory
+      await rm(skill.directory, { recursive: true, force: true });
+
+      // Invalidate cache
+      invalidateSkillsCache();
+
+      return JSON.stringify(
+        {
+          success: true,
+          skill: args.name,
+          deleted_path: skill.directory,
+          message: `Deleted skill '${args.name}' and its directory.`,
+        },
+        null,
+        2
+      );
+    } catch (error) {
+      return `Failed to delete skill: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+/**
+ * Add a script to a skill
+ *
+ * Skills can include helper scripts for automation.
+ */
+export const skills_add_script = tool({
+  description: `Add a helper script to an existing skill.
+
+Scripts are stored in the skill's scripts/ directory and can be
+executed with skills_execute. Use for:
+- Automation helpers
+- Validation scripts
+- Setup/teardown utilities`,
+  args: {
+    skill: tool.schema.string().describe("Name of the skill"),
+    script_name: tool.schema
+      .string()
+      .describe("Script filename (e.g., 'validate.sh', 'setup.py')"),
+    content: tool.schema.string().describe("Script content"),
+    executable: tool.schema
+      .boolean()
+      .default(true)
+      .describe("Make script executable (default: true)"),
+  },
+  async execute(args) {
+    const skill = await getSkill(args.skill);
+    if (!skill) {
+      return `Skill '${args.skill}' not found.`;
+    }
+
+    // Security: validate script name
+    if (args.script_name.includes("..") || args.script_name.includes("/")) {
+      return "Invalid script name. Use simple filenames without paths.";
+    }
+
+    const scriptsDir = join(skill.directory, "scripts");
+    const scriptPath = join(scriptsDir, args.script_name);
+
+    try {
+      // Create scripts directory if needed
+      await mkdir(scriptsDir, { recursive: true });
+
+      // Write script
+      await writeFile(scriptPath, args.content, { mode: args.executable ? 0o755 : 0o644 });
+
+      // Invalidate cache to update hasScripts
+      invalidateSkillsCache();
+
+      return JSON.stringify(
+        {
+          success: true,
+          skill: args.skill,
+          script: args.script_name,
+          path: scriptPath,
+          executable: args.executable,
+          message: `Added script '${args.script_name}' to skill '${args.skill}'.`,
+          usage: `Run with: skills_execute(skill: "${args.skill}", script: "${args.script_name}")`,
+        },
+        null,
+        2
+      );
+    } catch (error) {
+      return `Failed to add script: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+// =============================================================================
 // Tool Registry
 // =============================================================================
 
@@ -610,6 +1016,10 @@ export const skillsTools = {
   skills_use,
   skills_execute,
   skills_read,
+  skills_create,
+  skills_update,
+  skills_delete,
+  skills_add_script,
 };
 
 // =============================================================================

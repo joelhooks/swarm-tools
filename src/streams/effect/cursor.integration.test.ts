@@ -3,7 +3,7 @@
  *
  * Tests for Effect-TS cursor service with checkpointing
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
 import type { AgentRegisteredEvent } from "../events";
 import { DurableCursor, DurableCursorLayer, type CursorConfig } from "./cursor";
@@ -22,6 +22,10 @@ const TEST_PROJECT = "/tmp/cursor-test";
 
 beforeEach(async () => {
   await resetDatabase(TEST_PROJECT);
+});
+
+afterEach(async () => {
+  await closeDatabase(TEST_PROJECT);
 });
 
 async function cleanup() {

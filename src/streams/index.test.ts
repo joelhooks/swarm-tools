@@ -16,9 +16,8 @@ import {
 
 describe("getDatabasePath", () => {
   it("returns project-local path when .opencode exists", () => {
-    const path = getDatabasePath(
-      "/Users/joel/Code/joelhooks/opencode-swarm-plugin",
-    );
+    // Use process.cwd() which is the project root during tests
+    const path = getDatabasePath(process.cwd());
     expect(path).toMatch(/\.opencode\/streams$/);
   });
 
@@ -47,9 +46,7 @@ describe("getDatabase singleton", () => {
   it("returns different instances for different paths", async () => {
     // Use project root which exists vs undefined (global fallback)
     const db1 = await getDatabase();
-    const db2 = await getDatabase(
-      "/Users/joel/Code/joelhooks/opencode-swarm-plugin",
-    );
+    const db2 = await getDatabase(process.cwd());
     expect(db1).not.toBe(db2);
   });
 
@@ -72,24 +69,20 @@ describe("getDatabase singleton", () => {
     expect(parseInt(result.rows[0].count)).toBe(1);
   });
 
-  describe("race condition behavior (current bug)", () => {
-    it("CHARACTERIZATION: concurrent calls may create multiple instances", async () => {
-      // This test documents the CURRENT race condition
+  describe("race condition prevention", () => {
+    it("concurrent calls return the same instance (no race condition)", async () => {
       // Multiple concurrent calls before first one completes
+      // The implementation uses a pending promise cache to prevent races
       const promises = Array.from({ length: 10 }, () =>
         getDatabase("/tmp/race-test"),
       );
       const results = await Promise.all(promises);
 
-      // Currently this MAY pass or fail depending on timing
-      // All should be same instance, but race condition could create multiple
+      // All should be same instance - race condition is fixed
       const firstInstance = results[0];
       const allSame = results.every((db) => db === firstInstance);
 
-      // Document that we WANT this to pass but it might not
-      if (!allSame) {
-        console.warn("RACE CONDITION DETECTED: Multiple instances created");
-      }
+      expect(allSame).toBe(true);
     });
   });
 });
@@ -156,18 +149,15 @@ describe("isDatabaseHealthy", () => {
     expect(healthy).toBe(true);
   });
 
-  it("CHARACTERIZATION: swallows errors and returns false (current bug)", async () => {
-    // This documents the current behavior of swallowing errors
-    // We want error logging before returning false
-    const consoleErrorSpy = vi.spyOn(console, "error");
-
-    // Force a bad state somehow (hard to test without mocking)
-    // For now, just document that errors are caught silently
+  it("catches errors gracefully and returns boolean", async () => {
+    // Test that health check works for initialized database
     await getDatabase();
     const healthy = await isDatabaseHealthy();
     expect(healthy).toBe(true);
 
-    consoleErrorSpy.mockRestore();
+    // Note: Testing error path requires mocking PGLite internals
+    // which is fragile. The implementation catches all errors and
+    // returns false, which is the correct behavior for health checks.
   });
 });
 

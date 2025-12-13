@@ -2,18 +2,21 @@
  * Composed Layers for Durable Streams Services
  *
  * Provides pre-configured Layer compositions for common use cases.
- * All services are provided together in DurableStreamsLive.
  *
  * @example
  * ```typescript
+ * // For ask pattern (request/response):
+ * const program = Effect.gen(function* () {
+ *   const mailbox = yield* DurableMailbox;
+ *   const deferred = yield* DurableDeferred;
+ *   // Use services...
+ * }).pipe(Effect.provide(DurableAskLive));
+ *
+ * // For cursor + deferred only:
  * const program = Effect.gen(function* () {
  *   const cursor = yield* DurableCursor;
  *   const deferred = yield* DurableDeferred;
- *   const lock = yield* DurableLock;
- *   const mailbox = yield* DurableMailbox;
- *
- *   // Use all services...
- * }).pipe(Effect.provide(DurableStreamsLive));
+ * }).pipe(Effect.provide(DurableCursorDeferredLive));
  * ```
  */
 

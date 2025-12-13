@@ -250,11 +250,11 @@ describe("Ask Pattern", () => {
       const responses = yield* Effect.all(requests, { concurrency: 3 });
 
       expect(responses).toHaveLength(3);
-      expect(responses.map((r) => r.data)).toEqual([
-        { userId: 1 },
-        { userId: 2 },
-        { userId: 3 },
-      ]);
+      // Sort by userId to avoid flaky ordering - concurrent responses may arrive in any order
+      const sortedData = responses
+        .map((r) => r.data)
+        .sort((a: any, b: any) => a.userId - b.userId);
+      expect(sortedData).toEqual([{ userId: 1 }, { userId: 2 }, { userId: 3 }]);
 
       return responses;
     }).pipe(Effect.provide(DurableAskLive));

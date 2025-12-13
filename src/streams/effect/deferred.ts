@@ -164,11 +164,12 @@ async function ensureDeferredTable(projectPath?: string): Promise<void> {
 async function cleanupExpired(projectPath?: string): Promise<number> {
   const db = await getDatabase(projectPath);
   const now = Date.now();
-  const result = await db.query<{ count: number }>(
-    `DELETE FROM deferred WHERE expires_at < $1 RETURNING (SELECT COUNT(*) FROM deferred WHERE expires_at < $1) as count`,
+  // DELETE...RETURNING returns the deleted rows, so count them directly
+  const result = await db.query<{ url: string }>(
+    `DELETE FROM deferred WHERE expires_at < $1 RETURNING url`,
     [now],
   );
-  return result.rows[0]?.count || 0;
+  return result.rows.length;
 }
 
 /**

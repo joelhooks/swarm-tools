@@ -78,7 +78,7 @@ Beads is a local-first issue tracking system designed for AI agents. This skill 
 
 ## Workflow States
 
-```
+```text
 open → in_progress → closed
          ↓
       blocked (optional)
@@ -88,7 +88,7 @@ open → in_progress → closed
 
 **Open → In Progress**
 
-```
+```typescript
 beads_update(id: "abc123", state: "in_progress")
 ```
 
@@ -96,7 +96,7 @@ Use when you start working on a bead.
 
 **In Progress → Closed**
 
-```
+```typescript
 beads_close(id: "abc123", resolution: "Fixed in commit abc1234")
 ```
 
@@ -104,7 +104,7 @@ Use when work is complete.
 
 **In Progress → Blocked**
 
-```
+```typescript
 beads_update(id: "abc123", state: "blocked", body: "Blocked by #xyz789")
 ```
 
@@ -114,19 +114,19 @@ Use when you can't proceed due to a dependency.
 
 ### Find Open Work
 
-```
+```typescript
 beads_query(state: "open", type: "bug")
 ```
 
 ### Search by Keywords
 
-```
+```typescript
 beads_query(search: "authentication")
 ```
 
 ### List Recent Activity
 
-```
+```typescript
 beads_query(limit: 10, sort: "updated")
 ```
 
@@ -156,13 +156,13 @@ Modernize the authentication system
 
 1. Create the epic first:
 
-```
+```typescript
 beads_create(type: "epic", title: "User Auth Overhaul", body: "...")
 ```
 
 2. Create subtasks linked to the epic:
 
-```
+```typescript
 beads_create(type: "task", title: "Implement OAuth2", parent: "epic-id")
 ```
 
@@ -181,7 +181,7 @@ Beads sync automatically with the central server:
 
 - Changes push on close
 - Conflicts merge automatically
-- Use `bd sync` to force sync
+- Use `beads_sync()` to force sync
 
 ## Integration with Swarm
 

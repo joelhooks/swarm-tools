@@ -454,9 +454,10 @@ process.on("SIGTERM", () => {
 // ============================================================================
 
 export { PGlite };
-export * from "./events";
-export * from "./store";
-export * from "./projections";
 export * from "./agent-mail";
 export * from "./debug";
+export * from "./events";
 export * from "./migrations";
+export * from "./projections";
+export * from "./store";
+export * from "./swarm-mail";

@@ -32,7 +32,7 @@
     "@opencode-ai/plugin": "^1.0.134",
     "gray-matter": "^4.0.3",
     "ioredis": "^5.4.1",
-    "swarm-mail": "^0.1.0",
+    "swarm-mail": "workspace:*",
     "zod": "4.1.8"
   },
   "devDependencies": {

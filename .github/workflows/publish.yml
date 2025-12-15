@@ -31,7 +31,7 @@ jobs:
         run: bun install
 
       - name: Build packages
-        run: bun turbo build
+        run: bun turbo build --filter='!@swarmtools/web'
 
       - name: Setup npmrc
         run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc

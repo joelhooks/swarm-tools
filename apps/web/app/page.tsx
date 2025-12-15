@@ -29,7 +29,7 @@ export default function Home() {
 
 			{/* Tagline */}
 			<p className="mt-8 text-lg sm:text-xl text-neutral-400 text-center max-w-xl">
-				Framework-agnostic primitives for{' '}
+				🐝 framework-agnostic primitives for{' '}
 				<span className="text-amber-500 font-semibold">agentic systems</span>
 			</p>
 

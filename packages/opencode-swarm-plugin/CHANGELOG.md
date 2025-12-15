@@ -1,5 +1,13 @@
 # opencode-swarm-plugin
 
+## 0.23.1
+
+### Patch Changes
+
+- [`64ad0e4`](https://github.com/joelhooks/opencode-swarm-plugin/commit/64ad0e4fc033597027e3b0614865cfbf955b5983) Thanks [@joelhooks](https://github.com/joelhooks)! - Fix workspace:\* protocol resolution in npm publish
+
+  Use bun publish instead of npm publish to properly resolve workspace:\* protocols to actual versions.
+
 ## 0.23.0
 
 ### Minor Changes

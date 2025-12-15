@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Custom publish script that resolves workspace:* protocols before npm publish
+ * Publish script for bun workspaces with changesets
  * 
- * 1. Runs bun install to update lockfile with current package.json versions
- * 2. Uses bun pm pack to create tarball (resolves workspace:*)
- * 3. Uses npm publish on the tarball (supports OIDC trusted publishers)
+ * Uses bun pm pack (resolves workspace:*) + npm publish (uses NPM_TOKEN)
+ * 
+ * Why not `bunx changeset publish`? Doesn't resolve workspace:* protocol
+ * Why not `bun publish`? No npm token support yet (https://github.com/oven-sh/bun/issues/15601)
+ * 
+ * Lockfile sync is handled by ci:version running `bun update` after `changeset version`
  */
 
 import { $ } from "bun";
@@ -20,7 +23,7 @@ async function getPublishedVersion(name: string): Promise<string | null> {
     const result = await $`npm view ${name} version`.quiet().text();
     return result.trim();
   } catch {
-    return null; // Not published yet
+    return null;
   }
 }
 
@@ -37,55 +40,37 @@ async function findTarball(pkgPath: string): Promise<string> {
 }
 
 async function main() {
-  console.log("🦋 Checking packages for publishing...\n");
+  console.log("🦋 Publishing packages...\n");
 
-  // CRITICAL: Update lockfile to ensure workspace:* resolves to current versions
-  // Without this, bun pack uses stale versions from the lockfile
-  console.log("📋 Updating lockfile to ensure workspace versions are current...");
-  await $`bun install`.quiet();
-  console.log("✅ Lockfile updated\n");
+  let published = 0;
 
   for (const pkgPath of packages) {
     const { name, version } = await getLocalVersion(pkgPath);
-    const publishedVersion = await getPublishedVersion(name);
+    const npmVersion = await getPublishedVersion(name);
 
-    if (publishedVersion === version) {
-      console.log(`⏭️  ${name}@${version} already published, skipping`);
+    if (npmVersion === version) {
+      console.log(`⏭️  ${name}@${version} already on npm`);
       continue;
     }
 
-    console.log(`📦 Publishing ${name}@${version} (npm has ${publishedVersion ?? "nothing"})...`);
+    console.log(`📦 ${name}@${version} (npm: ${npmVersion ?? "none"})...`);
     
     try {
-      // Step 1: Use bun pack to create tarball (resolves workspace:* protocols)
-      console.log(`   📋 Creating tarball with bun pack...`);
       await $`bun pm pack`.cwd(pkgPath).quiet();
-      
-      // Step 2: Find the tarball
       const tarball = await findTarball(pkgPath);
-      console.log(`   📦 Found tarball: ${tarball}`);
-      
-      // Step 3: Publish tarball with npm (supports OIDC)
-      console.log(`   🚀 Publishing with npm...`);
       await $`npm publish ${tarball} --access public`.quiet();
-      
-      // Step 4: Clean up tarball
       await unlink(tarball);
       
-      console.log(`✅ ${name}@${version} published successfully`);
-      
-      // Create git tag
-      const tag = `${name}@${version}`;
-      await $`git tag ${tag}`.quiet();
-      await $`git push origin ${tag}`.quiet();
-      console.log(`🏷️  Created and pushed tag: ${tag}`);
+      console.log(`✅ Published ${name}@${version}`);
+      published++;
     } catch (error) {
-      console.error(`❌ Failed to publish ${name}:`, error);
+      console.error(`❌ Failed: ${name}`, error);
       process.exit(1);
     }
   }
 
-  console.log("\n✨ Done!");
+  // Let changesets handle git tags
+  console.log(published > 0 ? `\n🎉 Published ${published} package(s)` : "\n✨ Nothing to publish");
 }
 
 main();

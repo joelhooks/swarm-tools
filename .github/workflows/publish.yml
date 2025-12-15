@@ -8,7 +8,6 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
-  id-token: write
   contents: write
   pull-requests: write
 
@@ -28,21 +27,21 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Update npm to latest (for trusted publishing)
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: bun install
 
       - name: Build packages
         run: bun turbo build
 
+      - name: Setup npmrc
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
-          version: bunx changeset version
-          publish: bun run release
+          version: bun run ci:version
+          publish: bun run ci:publish
           title: "chore: release packages"
           commit: "chore: release packages"
         env:

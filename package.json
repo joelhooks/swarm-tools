@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "version": "bunx changeset version",
-    "release": "bun scripts/publish.ts",
+    "ci:version": "changeset version && bun update",
+    "ci:publish": "bun scripts/publish.ts",
     "test:integration": "bun --filter=opencode-swarm-plugin test:integration"
   },
   "devDependencies": {

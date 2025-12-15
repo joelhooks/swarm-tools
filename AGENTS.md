@@ -286,3 +286,13 @@ bunx changeset publish
    - Repository: `opencode-swarm-plugin`
    - Workflow: `publish.yml`
 4. Future releases handled automatically via changesets
+
+### Lockfile Sync (CRITICAL)
+
+**Problem:** `bun pm pack` resolves `workspace:*` from the lockfile, not package.json. If lockfile is stale, you get old versions.
+
+**Solution:** `scripts/publish.ts` runs `bun install` before packing to sync the lockfile.
+
+**Tracking:** 
+- Bun native npm token support: https://github.com/oven-sh/bun/issues/15601
+- When resolved, can switch to `bun publish` directly

@@ -1,5 +1,14 @@
 # opencode-swarm-plugin
 
+## 0.23.5
+
+### Patch Changes
+
+- [`3826c6d`](https://github.com/joelhooks/opencode-swarm-plugin/commit/3826c6d887f937ccb201b7c4322cbc7b46823658) Thanks [@joelhooks](https://github.com/joelhooks)! - Fix workspace:\* resolution by running bun install before pack
+
+  The lockfile was stale, causing bun pack to resolve workspace:\* to old versions.
+  Now runs bun install first to ensure lockfile matches current package.json versions.
+
 ## 0.23.4
 
 ### Patch Changes

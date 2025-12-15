@@ -6,8 +6,8 @@ export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 export default async function Image() {
-	// Use Google Fonts API to get the full font
-	const fontUrl = 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@700&display=swap';
+	// Use Google Fonts API - IBM Plex Mono has box-drawing chars
+	const fontUrl = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@700&display=swap';
 	const css = await (await fetch(fontUrl)).text();
 	
 	// Get the font URL (truetype format)
@@ -18,19 +18,21 @@ export default async function Image() {
 	
 	const fontData = await fetch(match[1]).then((res) => res.arrayBuffer());
 
-	// ASCII art using block characters
+	// ASCII art matching home page
 	const asciiLines = [
-		'███████ ██     ██  █████  ██████  ███    ███',
-		'██      ██     ██ ██   ██ ██   ██ ████  ████',
-		'███████ ██  █  ██ ███████ ██████  ██ ████ ██',
-		'     ██ ██ ███ ██ ██   ██ ██   ██ ██  ██  ██',
-		'███████  ███ ███  ██   ██ ██   ██ ██      ██',
+		'███████╗██╗    ██╗ █████╗ ██████╗ ███╗   ███╗',
+		'██╔════╝██║    ██║██╔══██╗██╔══██╗████╗ ████║',
+		'███████╗██║ █╗ ██║███████║██████╔╝██╔████╔██║',
+		'╚════██║██║███╗██║██╔══██║██╔══██╗██║╚██╔╝██║',
+		'███████║╚███╔███╔╝██║  ██║██║  ██║██║ ╚═╝ ██║',
+		'╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝',
 		'',
-		'████████  ██████   ██████  ██      ███████',
-		'   ██    ██    ██ ██    ██ ██      ██     ',
-		'   ██    ██    ██ ██    ██ ██      ███████',
-		'   ██    ██    ██ ██    ██ ██           ██',
-		'   ██     ██████   ██████  ███████ ███████',
+		'████████╗ ██████╗  ██████╗ ██╗     ███████╗',
+		'╚══██╔══╝██╔═══██╗██╔═══██╗██║     ██╔════╝',
+		'   ██║   ██║   ██║██║   ██║██║     ███████╗',
+		'   ██║   ██║   ██║██║   ██║██║     ╚════██║',
+		'   ██║   ╚██████╔╝╚██████╔╝███████╗███████║',
+		'   ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝╚══════╝',
 	];
 
 	return new ImageResponse(
@@ -70,7 +72,7 @@ export default async function Image() {
 						fontSize: '20px',
 						lineHeight: 1.15,
 						textShadow: '0 0 40px rgba(245, 158, 11, 0.5)',
-						fontFamily: 'Fira Code',
+						fontFamily: 'IBM Plex Mono',
 						fontWeight: 700,
 					}}
 				>
@@ -88,7 +90,7 @@ export default async function Image() {
 						flexDirection: 'row',
 						marginTop: '48px',
 						fontSize: '28px',
-						fontFamily: 'Fira Code',
+						fontFamily: 'IBM Plex Mono',
 					}}
 				>
 					<span style={{ color: '#a3a3a3' }}>Framework-agnostic primitives for</span>
@@ -112,7 +114,7 @@ export default async function Image() {
 			...size,
 			fonts: [
 				{
-					name: 'Fira Code',
+					name: 'IBM Plex Mono',
 					data: fontData,
 					style: 'normal' as const,
 					weight: 700 as const,

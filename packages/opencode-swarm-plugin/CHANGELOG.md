@@ -1,5 +1,22 @@
 # opencode-swarm-plugin
 
+## 0.25.1
+
+### Patch Changes
+
+- [`757f4a6`](https://github.com/joelhooks/swarm-tools/commit/757f4a690721b3f04a414e4c1694660862504e54) Thanks [@joelhooks](https://github.com/joelhooks)! - Fix skills_update tool - add `content` parameter as primary (with `body` as backwards-compat alias)
+
+  The tool was only accepting `body` but users expected `content`. Now both work:
+
+  - `skills_update(name="foo", content="new stuff")` - preferred
+  - `skills_update(name="foo", body="new stuff")` - still works for backwards compat
+
+- [`3d619ff`](https://github.com/joelhooks/swarm-tools/commit/3d619ffda78b2e6066491f053e8fad8dac7b5b71) Thanks [@joelhooks](https://github.com/joelhooks)! - Fix swarm_complete failing when bead project doesn't match CWD
+
+  - Use `project_key` as working directory for `bd close` command
+  - Improved error messages with context-specific recovery steps
+  - Added planning guardrails to warn when todowrite is used for parallel work (should use swarm)
+
 ## 0.25.0
 
 ### Minor Changes

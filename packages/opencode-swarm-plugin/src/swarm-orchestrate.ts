@@ -871,30 +871,8 @@ export const swarm_progress = tool({
           });
           await appendEvent(event, args.project_key);
 
-          // Update swarm_contexts table
-          const { getDatabase } = await import("swarm-mail");
-          const db = await getDatabase(args.project_key);
-          const now = Date.now();
-          await db.query(
-            `INSERT INTO swarm_contexts (id, epic_id, bead_id, strategy, files, dependencies, directives, recovery, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             ON CONFLICT (id) DO UPDATE SET
-               files = EXCLUDED.files,
-               recovery = EXCLUDED.recovery,
-               updated_at = EXCLUDED.updated_at`,
-            [
-              args.bead_id,
-              epicId,
-              args.bead_id,
-              checkpoint.strategy,
-              JSON.stringify(checkpoint.files),
-              JSON.stringify(checkpoint.dependencies),
-              JSON.stringify(checkpoint.directives),
-              JSON.stringify(checkpoint.recovery),
-              now,
-              now,
-            ],
-          );
+          // NOTE: The event handler (handleSwarmCheckpointed in store.ts) updates
+          // the swarm_contexts table. We follow event sourcing pattern here.
           checkpointCreated = true;
         } catch (error) {
           // Non-fatal - log and continue
@@ -2114,31 +2092,11 @@ export const swarm_checkpoint = tool({
 
       await appendEvent(event, args.project_key);
 
-      // Update swarm_contexts table for fast recovery
-      const { getDatabase } = await import("swarm-mail");
-      const db = await getDatabase(args.project_key);
+      // NOTE: The event handler (handleSwarmCheckpointed in store.ts) updates
+      // the swarm_contexts table. We don't write directly here to follow
+      // event sourcing pattern - single source of truth is the event log.
 
       const now = Date.now();
-      await db.query(
-        `INSERT INTO swarm_contexts (id, epic_id, bead_id, strategy, files, dependencies, directives, recovery, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         ON CONFLICT (id) DO UPDATE SET
-           files = EXCLUDED.files,
-           recovery = EXCLUDED.recovery,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          args.bead_id, // Use bead_id as unique ID
-          args.epic_id,
-          args.bead_id,
-          checkpoint.strategy,
-          JSON.stringify(checkpoint.files),
-          JSON.stringify(checkpoint.dependencies),
-          JSON.stringify(checkpoint.directives),
-          JSON.stringify(checkpoint.recovery),
-          now,
-          now,
-        ],
-      );
 
       return JSON.stringify(
         {
@@ -2227,15 +2185,21 @@ export const swarm_recover = tool({
       }
 
       const row = result.rows[0];
+      // PGLite auto-parses JSON columns, so we need to handle both cases
+      const parseIfString = <T>(val: unknown): T =>
+        typeof val === "string" ? JSON.parse(val) : (val as T);
+
       const context: SwarmBeadContext = {
         id: row.id,
         epic_id: row.epic_id,
         bead_id: row.bead_id,
         strategy: row.strategy as SwarmBeadContext["strategy"],
-        files: JSON.parse(row.files),
-        dependencies: JSON.parse(row.dependencies),
-        directives: JSON.parse(row.directives),
-        recovery: JSON.parse(row.recovery),
+        files: parseIfString<string[]>(row.files),
+        dependencies: parseIfString<string[]>(row.dependencies),
+        directives: parseIfString<SwarmBeadContext["directives"]>(
+          row.directives,
+        ),
+        recovery: parseIfString<SwarmBeadContext["recovery"]>(row.recovery),
         created_at: row.created_at,
         updated_at: row.updated_at,
       };

@@ -21,7 +21,7 @@ OpenCode plugin for multi-agent swarm coordination with learning capabilities.
 - **Agent Mail** - Inter-agent messaging with file reservations
 - **Learning System** - Pattern maturity, anti-pattern detection, confidence decay
 - **Skills System** - Knowledge injection with bundled and custom skills
-- **Checkpointing** - Survive context compaction, resume from last checkpoint
+- **Checkpoint & Recovery** - Auto-checkpoint at 25/50/75%, survive context death (9 integration tests ✅)
 
 ## Install
 
@@ -79,8 +79,8 @@ swarm setup
 | `swarm_progress`               | Report subtask progress to coordinator          |
 | `swarm_complete`               | Complete subtask (runs UBS scan, releases)      |
 | `swarm_record_outcome`         | Record outcome for learning                     |
-| `swarm_checkpoint`             | Save progress snapshot                          |
-| `swarm_recover`                | Resume from checkpoint                          |
+| `swarm_checkpoint`             | Save progress snapshot (auto at 25/50/75%)      |
+| `swarm_recover`                | Resume from checkpoint (returns full context)   |
 | `swarm_learn`                  | Extract learnings from outcome                  |
 | `swarm_broadcast`              | Send message to all active agents               |
 | `swarm_accumulate_error`       | Track recurring errors (3-strike system)        |
@@ -96,6 +96,69 @@ swarm setup
 | `skills_use`    | Load skill into context |
 | `skills_read`   | Read skill content      |
 | `skills_create` | Create new skill        |
+
+## Checkpoint & Recovery
+
+Ensures work survives context compaction or crashes. Proven by 9 integration tests.
+
+### Auto-Checkpoint Milestones
+
+When `swarm_progress` reports 25%, 50%, or 75% completion, a checkpoint is automatically saved to PGLite:
+
+```typescript
+// Stored in .swarm-mail/ directory (no external database needed)
+{
+  epic_id: "bd-123",
+  bead_id: "bd-123.1",
+  strategy: "file-based",
+  files: ["src/auth.ts", "src/middleware.ts"],
+  progress_percent: 50,
+  directives: {
+    shared_context: "OAuth implementation notes",
+    skills_to_load: ["testing-patterns"],
+    coordinator_notes: "Watch for race conditions"
+  },
+  recovery: {
+    last_checkpoint: 1234567890,
+    files_modified: ["src/auth.ts"],
+    error_context: "Optional: error details if checkpoint during error"
+  }
+}
+```
+
+### Tools
+
+**swarm_checkpoint** - Manually save a checkpoint:
+```typescript
+swarm_checkpoint({
+  project_key: "/abs/path",
+  agent_name: "WorkerA",
+  bead_id: "bd-123.1",
+  epic_id: "bd-123",
+  files_modified: ["src/auth.ts"],
+  progress_percent: 30,
+  directives: { shared_context: "..." },
+  error_context: "Optional"
+})
+```
+
+**swarm_recover** - Resume from last checkpoint:
+```typescript
+swarm_recover({
+  project_key: "/abs/path",
+  epic_id: "bd-123"
+})
+// Returns:
+// {
+//   found: true,
+//   context: { epic_id, bead_id, files, strategy, directives, recovery },
+//   age_seconds: 120
+// }
+```
+
+### Failure Handling
+
+Checkpoint failures are **non-fatal**—work continues even if checkpointing fails. Prevents infrastructure from blocking actual work.
 
 ## Bundled Skills
 
@@ -128,6 +191,74 @@ src/
 ```
 
 ## Dependencies
+
+### Required
+
+| Dependency | Purpose |
+|------------|---------|
+| [OpenCode](https://opencode.ai) | AI coding agent (the plugin runs inside OpenCode) |
+| [Beads](https://github.com/steveyegge/beads) | Git-backed issue tracking |
+
+### Optional (Highly Recommended)
+
+These tools significantly enhance the swarm experience:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| [CASS](https://github.com/Dicklesworthstone/coding_agent_session_search) | Historical context - queries past sessions for similar decompositions | See below |
+| [UBS](https://github.com/Dicklesworthstone/ultimate_bug_scanner) | Bug scanning - runs on subtask completion to catch issues | See below |
+| [semantic-memory](https://github.com/joelhooks/semantic-memory) | Learning persistence - stores patterns across sessions | See below |
+
+#### Installing CASS
+
+```bash
+# Clone and install
+git clone https://github.com/Dicklesworthstone/coding_agent_session_search
+cd coding_agent_session_search
+pip install -e .
+
+# Build the index (run periodically to index new sessions)
+cass index
+```
+
+#### Installing UBS
+
+```bash
+# Clone and install
+git clone https://github.com/Dicklesworthstone/ultimate_bug_scanner
+cd ultimate_bug_scanner
+pip install -e .
+```
+
+#### Installing semantic-memory
+
+Requires [Ollama](https://ollama.ai) with an embedding model:
+
+```bash
+# 1. Install Ollama (macOS)
+brew install ollama
+
+# 2. Start Ollama service
+ollama serve
+
+# 3. Pull an embedding model
+ollama pull mxbai-embed-large
+
+# 4. Install the OpenCode plugin
+# Add to your OpenCode config
+```
+
+The `semantic-memory_check` tool verifies Ollama is ready.
+
+**Why install these?**
+
+- **CASS** - When you run `/swarm "Add OAuth"`, the coordinator queries CASS for similar past tasks. Without it, decomposition is based only on the current task description.
+- **UBS** - Every `swarm_complete` runs UBS to scan for bugs. Without it, you lose automatic bug detection.
+- **semantic-memory** - Pattern maturity and anti-pattern detection persist across sessions. Without it, learning resets each session.
+
+Run `swarm doctor` to check which dependencies are installed.
+
+### npm Dependencies
 
 - [swarm-mail](../swarm-mail) - Event sourcing primitives (workspace dependency)
 - [@opencode-ai/plugin](https://www.npmjs.com/package/@opencode-ai/plugin) - OpenCode plugin API

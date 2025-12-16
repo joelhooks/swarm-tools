@@ -158,6 +158,41 @@ export const migrations: Migration[] = [
     `,
     down: `DROP TABLE IF EXISTS swarm_contexts;`,
   },
+  {
+    version: 5,
+    description: "Add project_key and checkpointed_at to swarm_contexts, change primary key",
+    up: `
+      -- Add new columns
+      ALTER TABLE swarm_contexts ADD COLUMN IF NOT EXISTS project_key TEXT;
+      ALTER TABLE swarm_contexts ADD COLUMN IF NOT EXISTS checkpointed_at BIGINT;
+      ALTER TABLE swarm_contexts ADD COLUMN IF NOT EXISTS recovered_at BIGINT;
+      ALTER TABLE swarm_contexts ADD COLUMN IF NOT EXISTS recovered_from_checkpoint BIGINT;
+      
+      -- Drop old primary key constraint on id
+      ALTER TABLE swarm_contexts DROP CONSTRAINT IF EXISTS swarm_contexts_pkey;
+      
+      -- Make id nullable since we're switching to composite key
+      ALTER TABLE swarm_contexts ALTER COLUMN id DROP NOT NULL;
+      
+      -- Create new indexes
+      CREATE INDEX IF NOT EXISTS idx_swarm_contexts_project ON swarm_contexts(project_key);
+      DROP INDEX IF EXISTS idx_swarm_contexts_epic;
+      DROP INDEX IF EXISTS idx_swarm_contexts_bead;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_swarm_contexts_unique ON swarm_contexts(project_key, epic_id, bead_id);
+    `,
+    down: `
+      DROP INDEX IF EXISTS idx_swarm_contexts_unique;
+      DROP INDEX IF EXISTS idx_swarm_contexts_project;
+      ALTER TABLE swarm_contexts DROP COLUMN IF EXISTS project_key;
+      ALTER TABLE swarm_contexts DROP COLUMN IF EXISTS checkpointed_at;
+      ALTER TABLE swarm_contexts DROP COLUMN IF EXISTS recovered_at;
+      ALTER TABLE swarm_contexts DROP COLUMN IF EXISTS recovered_from_checkpoint;
+      ALTER TABLE swarm_contexts ALTER COLUMN id SET NOT NULL;
+      ALTER TABLE swarm_contexts ADD CONSTRAINT swarm_contexts_pkey PRIMARY KEY (id);
+      CREATE INDEX IF NOT EXISTS idx_swarm_contexts_epic ON swarm_contexts(epic_id);
+      CREATE INDEX IF NOT EXISTS idx_swarm_contexts_bead ON swarm_contexts(bead_id);
+    `,
+  },
 ];
 
 // ============================================================================

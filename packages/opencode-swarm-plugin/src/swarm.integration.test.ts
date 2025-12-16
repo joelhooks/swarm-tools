@@ -20,6 +20,8 @@ import {
   swarm_plan_prompt,
   formatSubtaskPromptV2,
   SUBTASK_PROMPT_V2,
+  swarm_checkpoint,
+  swarm_recover,
 } from "./swarm";
 import { mcpCall, setState, clearState, AGENT_MAIL_URL } from "./agent-mail";
 
@@ -1479,5 +1481,494 @@ describe("Swarm Prompt V2 (with Swarm Mail/Beads)", () => {
         }
       },
     );
+  });
+});
+
+// ============================================================================
+// Checkpoint/Recovery Flow Integration Tests
+// ============================================================================
+
+describe("Checkpoint/Recovery Flow (integration)", () => {
+  describe("swarm_checkpoint", () => {
+    it("creates swarm_checkpointed event and updates swarm_contexts table", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-checkpoint-${Date.now()}`;
+      const sessionID = `checkpoint-session-${Date.now()}`;
+
+      // Initialize swarm-mail database directly (no Agent Mail needed)
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const epicId = "bd-test-epic-123";
+        const beadId = "bd-test-epic-123.1";
+        const agentName = "TestAgent";
+
+        // Execute checkpoint
+        const result = await swarm_checkpoint.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            epic_id: epicId,
+            files_modified: ["src/test.ts", "src/test2.ts"],
+            progress_percent: 50,
+            directives: {
+              shared_context: "Testing checkpoint functionality",
+              skills_to_load: ["testing-patterns"],
+              coordinator_notes: "Mid-task checkpoint",
+            },
+          },
+          ctx,
+        );
+
+        const parsed = JSON.parse(result);
+
+        // Verify checkpoint was created
+        expect(parsed.success).toBe(true);
+        expect(parsed.bead_id).toBe(beadId);
+        expect(parsed.epic_id).toBe(epicId);
+        expect(parsed.files_tracked).toBe(2);
+        expect(parsed.summary).toContain("50%");
+        expect(parsed).toHaveProperty("checkpoint_timestamp");
+
+        // Verify swarm_contexts table was updated
+        const dbResult = await db.query<{
+          id: string;
+          epic_id: string;
+          bead_id: string;
+          strategy: string;
+          files: string;
+          recovery: string;
+        }>(
+          `SELECT id, epic_id, bead_id, strategy, files, recovery 
+           FROM swarm_contexts 
+           WHERE bead_id = $1`,
+          [beadId],
+        );
+
+        expect(dbResult.rows.length).toBe(1);
+        const row = dbResult.rows[0];
+        expect(row.epic_id).toBe(epicId);
+        expect(row.bead_id).toBe(beadId);
+        expect(row.strategy).toBe("file-based");
+
+        // PGLite auto-parses JSON columns, so we get objects directly
+        const files =
+          typeof row.files === "string" ? JSON.parse(row.files) : row.files;
+        expect(files).toEqual(["src/test.ts", "src/test2.ts"]);
+
+        const recovery =
+          typeof row.recovery === "string"
+            ? JSON.parse(row.recovery)
+            : row.recovery;
+        expect(recovery.progress_percent).toBe(50);
+        expect(recovery.files_modified).toEqual(["src/test.ts", "src/test2.ts"]);
+        expect(recovery).toHaveProperty("last_checkpoint");
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+
+    it("handles checkpoint with error_context", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-checkpoint-error-${Date.now()}`;
+      const sessionID = `checkpoint-error-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const result = await swarm_checkpoint.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: "TestAgent",
+            bead_id: "bd-error-test.1",
+            epic_id: "bd-error-test",
+            files_modified: ["src/buggy.ts"],
+            progress_percent: 75,
+            error_context:
+              "Hit type error on line 42, need to add explicit types",
+          },
+          ctx,
+        );
+
+        const parsed = JSON.parse(result);
+        expect(parsed.success).toBe(true);
+
+        // Verify error_context was stored
+        const dbResult = await db.query<{ recovery: string }>(
+          `SELECT recovery FROM swarm_contexts WHERE bead_id = $1`,
+          ["bd-error-test.1"],
+        );
+
+        const recoveryRaw = dbResult.rows[0].recovery;
+        const recovery =
+          typeof recoveryRaw === "string" ? JSON.parse(recoveryRaw) : recoveryRaw;
+        expect(recovery.error_context).toBe(
+          "Hit type error on line 42, need to add explicit types",
+        );
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+  });
+
+  describe("swarm_recover", () => {
+    it("retrieves checkpoint data from swarm_contexts table", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-recover-${Date.now()}`;
+      const sessionID = `recover-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const epicId = "bd-recover-epic-456";
+        const beadId = "bd-recover-epic-456.1";
+        const agentName = "TestAgent";
+
+        // First create a checkpoint
+        await swarm_checkpoint.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            epic_id: epicId,
+            files_modified: ["src/auth.ts", "src/middleware.ts"],
+            progress_percent: 75,
+            directives: {
+              shared_context: "OAuth implementation in progress",
+              skills_to_load: ["testing-patterns", "swarm-coordination"],
+            },
+          },
+          ctx,
+        );
+
+        // Now recover it
+        const result = await swarm_recover.execute(
+          {
+            project_key: uniqueProjectKey,
+            epic_id: epicId,
+          },
+          ctx,
+        );
+
+        const parsed = JSON.parse(result);
+
+        // Verify recovery succeeded
+        expect(parsed.found).toBe(true);
+        expect(parsed).toHaveProperty("context");
+        expect(parsed).toHaveProperty("summary");
+        expect(parsed).toHaveProperty("age_seconds");
+
+        const { context } = parsed;
+        expect(context.epic_id).toBe(epicId);
+        expect(context.bead_id).toBe(beadId);
+        expect(context.strategy).toBe("file-based");
+        expect(context.files).toEqual(["src/auth.ts", "src/middleware.ts"]);
+        expect(context.recovery.progress_percent).toBe(75);
+        expect(context.directives.shared_context).toBe(
+          "OAuth implementation in progress",
+        );
+        expect(context.directives.skills_to_load).toEqual([
+          "testing-patterns",
+          "swarm-coordination",
+        ]);
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+
+    it("returns found:false when no checkpoint exists", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-recover-notfound-${Date.now()}`;
+      const sessionID = `recover-notfound-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        // Try to recover non-existent checkpoint
+        const result = await swarm_recover.execute(
+          {
+            project_key: uniqueProjectKey,
+            epic_id: "bd-nonexistent-epic",
+          },
+          ctx,
+        );
+
+        const parsed = JSON.parse(result);
+
+        expect(parsed.found).toBe(false);
+        expect(parsed.message).toContain("No checkpoint found");
+        expect(parsed.epic_id).toBe("bd-nonexistent-epic");
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+  });
+
+  describe("Auto-checkpoint at progress milestones", () => {
+    it("creates checkpoint at 25% progress", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-auto25-${Date.now()}`;
+      const sessionID = `auto25-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const beadId = "bd-auto-test.1";
+        const agentName = "TestAgent";
+
+        // Report progress at 25% - should trigger auto-checkpoint
+        const result = await swarm_progress.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            status: "in_progress",
+            progress_percent: 25,
+            message: "Quarter done",
+            files_touched: ["src/component.tsx"],
+          },
+          ctx,
+        );
+
+        // Verify checkpoint was created (indicated in response)
+        expect(result).toContain("Progress reported");
+        expect(result).toContain("25%");
+        expect(result).toContain("[checkpoint created]");
+
+        // Verify checkpoint exists in database
+        const dbResult = await db.query<{ recovery: string }>(
+          `SELECT recovery FROM swarm_contexts WHERE bead_id = $1`,
+          [beadId],
+        );
+
+        expect(dbResult.rows.length).toBe(1);
+        const recoveryRaw = dbResult.rows[0].recovery;
+        const recovery =
+          typeof recoveryRaw === "string" ? JSON.parse(recoveryRaw) : recoveryRaw;
+        expect(recovery.progress_percent).toBe(25);
+        expect(recovery.files_modified).toEqual(["src/component.tsx"]);
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+
+    it("creates checkpoint at 50% progress", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-auto50-${Date.now()}`;
+      const sessionID = `auto50-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const beadId = "bd-auto50-test.1";
+        const agentName = "TestAgent";
+
+        // Report progress at 50%
+        const result = await swarm_progress.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            status: "in_progress",
+            progress_percent: 50,
+            message: "Halfway there",
+            files_touched: ["src/api.ts", "src/types.ts"],
+          },
+          ctx,
+        );
+
+        expect(result).toContain("[checkpoint created]");
+
+        // Verify checkpoint
+        const dbResult = await db.query<{ recovery: string }>(
+          `SELECT recovery FROM swarm_contexts WHERE bead_id = $1`,
+          [beadId],
+        );
+
+        const recoveryRaw50 = dbResult.rows[0].recovery;
+        const recovery =
+          typeof recoveryRaw50 === "string"
+            ? JSON.parse(recoveryRaw50)
+            : recoveryRaw50;
+        expect(recovery.progress_percent).toBe(50);
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+
+    it("creates checkpoint at 75% progress", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-auto75-${Date.now()}`;
+      const sessionID = `auto75-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const beadId = "bd-auto75-test.1";
+        const agentName = "TestAgent";
+
+        // Report progress at 75%
+        const result = await swarm_progress.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            status: "in_progress",
+            progress_percent: 75,
+            message: "Almost done",
+            files_touched: ["src/final.ts"],
+          },
+          ctx,
+        );
+
+        expect(result).toContain("[checkpoint created]");
+
+        // Verify checkpoint
+        const dbResult = await db.query<{ recovery: string }>(
+          `SELECT recovery FROM swarm_contexts WHERE bead_id = $1`,
+          [beadId],
+        );
+
+        const recoveryRaw75 = dbResult.rows[0].recovery;
+        const recovery =
+          typeof recoveryRaw75 === "string"
+            ? JSON.parse(recoveryRaw75)
+            : recoveryRaw75;
+        expect(recovery.progress_percent).toBe(75);
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+
+    it("does NOT create checkpoint at non-milestone progress", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-auto-nomilestone-${Date.now()}`;
+      const sessionID = `auto-nomilestone-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const beadId = "bd-auto-nomilestone.1";
+        const agentName = "TestAgent";
+
+        // Report progress at 30% (not a milestone)
+        const result = await swarm_progress.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            status: "in_progress",
+            progress_percent: 30,
+            message: "Not a milestone",
+            files_touched: ["src/random.ts"],
+          },
+          ctx,
+        );
+
+        // Should NOT contain checkpoint indicator
+        expect(result).not.toContain("[checkpoint created]");
+        expect(result).toContain("30%");
+
+        // Verify NO checkpoint was created
+        const dbResult = await db.query(
+          `SELECT * FROM swarm_contexts WHERE bead_id = $1`,
+          [beadId],
+        );
+
+        expect(dbResult.rows.length).toBe(0);
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
+
+    it("checkpoint includes message from progress report", async () => {
+      const uniqueProjectKey = `${TEST_PROJECT_PATH}-auto-message-${Date.now()}`;
+      const sessionID = `auto-message-session-${Date.now()}`;
+
+      const { getDatabase, closeDatabase } = await import("swarm-mail");
+      const db = await getDatabase(uniqueProjectKey);
+
+      try {
+        const ctx = {
+          ...mockContext,
+          sessionID,
+        };
+
+        const beadId = "bd-auto-message.1";
+        const testMessage =
+          "Implemented auth service, working on JWT tokens";
+        const agentName = "TestAgent";
+
+        // Report progress with message
+        await swarm_progress.execute(
+          {
+            project_key: uniqueProjectKey,
+            agent_name: agentName,
+            bead_id: beadId,
+            status: "in_progress",
+            progress_percent: 50,
+            message: testMessage,
+            files_touched: ["src/auth.ts"],
+          },
+          ctx,
+        );
+
+        // Verify message was stored in checkpoint
+        const dbResult = await db.query<{ recovery: string }>(
+          `SELECT recovery FROM swarm_contexts WHERE bead_id = $1`,
+          [beadId],
+        );
+
+        const recoveryRawMsg = dbResult.rows[0].recovery;
+        const recovery =
+          typeof recoveryRawMsg === "string"
+            ? JSON.parse(recoveryRawMsg)
+            : recoveryRawMsg;
+        expect(recovery.last_message).toBe(testMessage);
+      } finally {
+        await closeDatabase(uniqueProjectKey);
+      }
+    });
   });
 });

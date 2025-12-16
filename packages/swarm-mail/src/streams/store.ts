@@ -914,10 +914,11 @@ async function handleSwarmCheckpointed(
 
   await db.query(
     `INSERT INTO swarm_contexts (
-      project_key, epic_id, bead_id, strategy, files, dependencies, 
-      directives, recovery, checkpointed_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-    ON CONFLICT (project_key, epic_id, bead_id) DO UPDATE SET
+      id, project_key, epic_id, bead_id, strategy, files, dependencies, 
+      directives, recovery, created_at, checkpointed_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10)
+    ON CONFLICT (id) DO UPDATE SET
+      project_key = EXCLUDED.project_key,
       strategy = EXCLUDED.strategy,
       files = EXCLUDED.files,
       dependencies = EXCLUDED.dependencies,
@@ -926,6 +927,7 @@ async function handleSwarmCheckpointed(
       checkpointed_at = EXCLUDED.checkpointed_at,
       updated_at = EXCLUDED.updated_at`,
     [
+      event.bead_id, // Use bead_id as the unique id
       event.project_key,
       event.epic_id,
       event.bead_id,

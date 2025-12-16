@@ -1,6 +1,6 @@
 ---
 title: Swarm Tools Documentation
-description: Framework-agnostic primitives for multi-agent AI systems
+description: Multi-agent coordination that survives context death and learns from outcomes
 ---
 
 <div className="ascii-banner glow-amber mb-8">
@@ -17,39 +17,226 @@ description: Framework-agnostic primitives for multi-agent AI systems
 
 Framework-agnostic primitives for building multi-agent AI systems. Works with Claude, GPT, Gemini, or any AI agent framework.
 
-## What Swarm Tools Provides
+## The Problem
 
-Swarm Tools delivers production-ready primitives for agent coordination, task decomposition, and learning systems.
+You're working with an AI coding agent. You ask it to "add OAuth authentication." It starts writing code. Five minutes later, you realize it's going down the wrong path. Or it's touching files it shouldn't. Or it's making changes that conflict with what you just did in another session.
 
-**Core packages:**
-- **swarm-mail** - Event sourcing and actor-model messaging for agent coordination
-- **opencode-swarm-plugin** - OpenCode plugin with swarm orchestration, beads integration, and learning capabilities
+**The fundamental issue:** AI agents are single-threaded, context-limited, and have no memory of what worked before.
 
-**Key capabilities:**
-- Event-sourced coordination with PGLite (no external servers)
-- Parallel task decomposition with conflict detection
-- File reservation system for safe concurrent edits
-- Pattern maturity tracking and anti-pattern detection
-- Skills system for knowledge injection
+## The Solution
+
+What if the agent could:
+- **Break the task into pieces** that can be worked on simultaneously
+- **Spawn parallel workers** that don't step on each other
+- **Remember what worked** and avoid patterns that failed
+- **Survive context compaction** without losing progress
+
+**That's what Swarm does.**
+
+## How It Works
+
+```
+                            "Add OAuth"
+                                 │
+                                 ▼
+                    ┌────────────────────────┐
+                    │      COORDINATOR       │
+                    │                        │
+                    │  1. Query CASS         │
+                    │  2. Pick strategy      │
+                    │  3. Break into pieces  │
+                    └────────────────────────┘
+                                 │
+           ┌─────────────────────┼─────────────────────┐
+           ▼                     ▼                     ▼
+    ┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+    │  Worker A   │       │  Worker B   │       │  Worker C   │
+    │ auth/oauth  │       │ auth/session│       │ auth/tests  │
+    │   🔒 files  │       │   🔒 files  │       │   🔒 files  │
+    └─────────────┘       └─────────────┘       └─────────────┘
+```
+
+The **opencode-swarm-plugin** is what you install and use. It provides:
+
+- **Task decomposition** - Breaks complex requests into parallel subtasks
+- **File reservations** - Prevents edit conflicts between workers
+- **Learning system** - Tracks what strategies work (fast + success = good, slow + errors = bad)
+- **Skills** - Knowledge packages agents can load when needed
+- **Beads** - Git-backed issue tracking integrated with swarm coordination
+
+Under the hood, it uses **swarm-mail** for event sourcing and actor-model messaging. That's the infrastructure layer—interesting if you're building your own coordination system, but you don't need to think about it to use the plugin.
+
+## What Makes It Different
+
+**1. Survives Context Death** ✅ *[Proven - 9 integration tests]*
+
+When `swarm_progress` reports 25%, 50%, or 75% completion, an automatic checkpoint is created and stored in PGLite (embedded Postgres). If context compaction happens or an agent crashes, `swarm_recover` retrieves the last checkpoint with:
+
+- Files modified so far
+- Current strategy (file-based, feature-based, risk-based)
+- Progress percentage
+- Coordinator directives (shared context, skills to load, notes)
+- Error context (if checkpoint happened during error handling)
+
+No external database needed—checkpoints persist in `.swarm-mail/` directory. Non-fatal failures mean work continues even if checkpoint fails.
+
+**2. Learns From Outcomes**
+
+Every completed task records learning signals:
+- Fast completion + zero errors → Pattern gets promoted
+- Slow + retries + errors → Pattern gets demoted
+- >60% failure rate → Pattern auto-inverts to anti-pattern
+
+**3. Has Skills**
+
+Bundled knowledge packages for common domains:
+- `testing-patterns` - Feathers dependency-breaking techniques
+- `swarm-coordination` - Multi-agent orchestration
+- `cli-builder` - Argument parsing, help text, subcommands
+- `learning-systems` - Confidence decay, pattern maturity
+
+## Checkpoint & Recovery
+
+The checkpoint system ensures no work is lost during context compaction or crashes.
+
+### How It Works
+
+**Automatic Checkpoints** - When `swarm_progress` reports:
+- 25% completion → First checkpoint saved
+- 50% completion → Midpoint checkpoint saved
+- 75% completion → Near-completion checkpoint saved
+
+Each checkpoint stores:
+```typescript
+{
+  files: ["src/auth.ts", "src/middleware.ts"],
+  strategy: "file-based",
+  progress_percent: 50,
+  directives: {
+    shared_context: "OAuth implementation notes",
+    skills_to_load: ["testing-patterns"],
+    coordinator_notes: "Watch for race conditions"
+  },
+  recovery: {
+    last_checkpoint: 1234567890,
+    files_modified: ["src/auth.ts"],
+    error_context: "Optional: errors encountered"
+  }
+}
+```
+
+**Manual Checkpoints** - Workers can also create checkpoints explicitly:
+```typescript
+swarm_checkpoint({
+  project_key: "/path/to/project",
+  agent_name: "WorkerA",
+  bead_id: "bd-123.1",
+  epic_id: "bd-123",
+  files_modified: ["src/auth.ts"],
+  progress_percent: 30,
+  directives: { /* optional */ },
+  error_context: "Optional error details"
+})
+```
+
+**Recovery** - Resume from last checkpoint:
+```typescript
+swarm_recover({
+  project_key: "/path/to/project",
+  epic_id: "bd-123"
+})
+// Returns: { found: true, context: { ... }, age_seconds: 120 }
+```
+
+### Storage
+
+Checkpoints are stored in PGLite (embedded Postgres) at `.swarm-mail/` in your project directory. No external database needed. The `swarm_contexts` table tracks all checkpoints with full event sourcing for audit trail.
+
+### Failure Handling
+
+Checkpoint failures are **non-fatal**—if a checkpoint fails, work continues. You'll see a warning in logs but the agent keeps going. This prevents checkpoint infrastructure from blocking actual work.
 
 ## Quick Start
-
-Install the OpenCode plugin (includes all packages):
 
 ```bash
 npm install -g opencode-swarm-plugin@latest
 swarm setup
 ```
 
-Or use swarm-mail standalone:
+Then in OpenCode:
 
-```bash
-bun add swarm-mail
+```typescript
+/swarm "Add user authentication with OAuth"
 ```
 
-## OpenCode Plugin Tools
+The plugin queries past decompositions (via CASS), picks a strategy, creates beads, spawns workers, and tracks learning signals.
 
-The plugin provides 40+ tools organized into four categories:
+## Dependencies
+
+### Required
+
+| Dependency | Purpose |
+|------------|---------|
+| [OpenCode](https://opencode.ai) | AI coding agent (the plugin runs inside OpenCode) |
+| [Beads](https://github.com/steveyegge/beads) | Git-backed issue tracking |
+
+### Optional (Highly Recommended)
+
+These tools significantly enhance the swarm experience:
+
+| Tool | Purpose |
+|------|---------|
+| [CASS](https://github.com/Dicklesworthstone/coding_agent_session_search) | Historical context - queries past sessions for similar decompositions |
+| [UBS](https://github.com/Dicklesworthstone/ultimate_bug_scanner) | Bug scanning - runs on subtask completion to catch issues |
+| [semantic-memory](https://github.com/joelhooks/semantic-memory) | Learning persistence - stores patterns across sessions |
+
+### Installing Optional Dependencies
+
+#### CASS (Cross-Agent Session Search)
+
+```bash
+git clone https://github.com/Dicklesworthstone/coding_agent_session_search
+cd coding_agent_session_search
+pip install -e .
+cass index  # Build the index (run periodically)
+```
+
+#### UBS (Ultimate Bug Scanner)
+
+```bash
+git clone https://github.com/Dicklesworthstone/ultimate_bug_scanner
+cd ultimate_bug_scanner
+pip install -e .
+```
+
+#### semantic-memory
+
+Requires [Ollama](https://ollama.ai) with an embedding model:
+
+```bash
+# Install Ollama (macOS)
+brew install ollama
+
+# Start Ollama service
+ollama serve
+
+# Pull an embedding model
+ollama pull mxbai-embed-large
+```
+
+The `semantic-memory_check` tool verifies Ollama is ready.
+
+**Why install these?**
+
+- **CASS** - When you run `/swarm "Add OAuth"`, the coordinator queries CASS for similar past tasks. Without it, decomposition is based only on the current task description.
+- **UBS** - Every `swarm_complete` runs UBS to scan for bugs. Without it, you lose automatic bug detection.
+- **semantic-memory** - Pattern maturity and anti-pattern detection persist across sessions. Without it, learning resets each session.
+
+Run `swarm doctor` to check which dependencies are installed.
+
+## What's Included
+
+**opencode-swarm-plugin** - The plugin you install (40+ tools):
 
 | Category | Tools | Purpose |
 |----------|-------|---------|
@@ -58,24 +245,54 @@ The plugin provides 40+ tools organized into four categories:
 | **Swarm** | 20+ tools | Task decomposition, parallel orchestration, learning |
 | **Skills** | 4 tools | Knowledge injection with bundled domain expertise |
 
-[View all OpenCode plugin tools →](/docs/packages/opencode-plugin)
+[View all plugin tools →](/docs/packages/opencode-plugin)
 
-## Swarm Mail Primitives
+**swarm-mail** - Event sourcing infrastructure (used by the plugin):
 
-Event sourcing and actor-model primitives for agent coordination:
+If you're building your own agent coordination system, swarm-mail provides the primitives:
 
-| Primitive | Purpose |
-|-----------|---------|
-| **EventStore** | Append-only event log with automatic projections |
-| **Projections** | Materialized views (agents, messages, reservations) |
-| **DurableMailbox** | Actor inbox with typed message envelopes |
-| **DurableLock** | Compare-and-swap based mutual exclusion |
-| **DurableCursor** | Checkpointed stream reader for resumability |
-| **DurableDeferred** | Distributed promise for async coordination |
+```bash
+bun add swarm-mail
+```
 
 [View swarm-mail architecture →](/docs/packages/swarm-mail)
 
-## Example: Event Sourcing
+## Examples
+
+### Swarm Coordination (Plugin)
+
+```typescript
+// In OpenCode, use the /swarm command:
+/swarm "Add user authentication with OAuth"
+
+// The plugin:
+// 1. Queries CASS for similar past decompositions
+// 2. Generates a strategy-specific decomposition
+// 3. Creates epic + subtasks atomically
+// 4. Spawns parallel worker agents
+// 5. Tracks progress via Agent Mail
+// 6. Records learning signals for future improvements
+```
+
+### File Reservations
+
+```typescript
+import { reserveSwarmFiles, releaseSwarmFiles } from 'swarm-mail';
+
+// Reserve files before editing (prevents conflicts)
+await reserveSwarmFiles(
+  'WorkerA',
+  ['src/auth/**', 'src/lib/jwt.ts'],
+  { reason: 'bd-123.2: Auth service implementation' }
+);
+
+// Do work...
+
+// Release when done
+await releaseSwarmFiles('WorkerA');
+```
+
+### Event Sourcing (swarm-mail)
 
 ```typescript
 import { getSwarmMail } from 'swarm-mail';
@@ -96,40 +313,7 @@ const agents = await swarmMail.getAgents();
 const messages = await swarmMail.getInbox('WorkerA', { limit: 5 });
 ```
 
-## Example: Swarm Coordination
-
-```typescript
-// In OpenCode, use the /swarm command:
-/swarm "Add user authentication with OAuth"
-
-// The plugin:
-// 1. Queries CASS for similar past decompositions
-// 2. Generates a strategy-specific decomposition
-// 3. Creates epic + subtasks atomically
-// 4. Spawns parallel worker agents
-// 5. Tracks progress via Agent Mail
-// 6. Records learning signals for future improvements
-```
-
-## Example: File Reservations
-
-```typescript
-import { reserveSwarmFiles, releaseSwarmFiles } from 'swarm-mail';
-
-// Reserve files before editing (prevents conflicts)
-await reserveSwarmFiles(
-  'WorkerA',
-  ['src/auth/**', 'src/lib/jwt.ts'],
-  { reason: 'bd-123.2: Auth service implementation' }
-);
-
-// Do work...
-
-// Release when done
-await releaseSwarmFiles('WorkerA');
-```
-
-## Example: Durable Primitives (Effect-TS)
+### Durable Primitives (swarm-mail + Effect-TS)
 
 ```typescript
 import { DurableMailbox, DurableLock, ask } from 'swarm-mail';
@@ -156,17 +340,9 @@ const response = await Effect.runPromise(
 );
 ```
 
-## Philosophy
+## Technical Details
 
-**Primitives, not frameworks.** Each package solves one problem well.
-
-- **Composable** - Mix and match what you need
-- **Zero lock-in** - Works with any agent framework
-- **Type-safe** - Full TypeScript with Zod schemas
-- **Local-first** - PGLite embedded database, no external servers
-- **Fast** - Bun-native, minimal dependencies
-
-## Architecture
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -189,30 +365,28 @@ const response = await Effect.runPromise(
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Use Cases
+### Philosophy
 
-**Multi-agent task decomposition** - Break complex tasks into parallel subtasks with automatic conflict detection and file reservations.
+**Primitives, not frameworks.** Each package solves one problem well.
 
-**Event-sourced agent coordination** - Full audit trail of agent interactions with ability to replay, debug, and recover from any point.
-
-**Learning systems** - Track pattern maturity, detect anti-patterns, and improve decomposition strategies over time.
-
-**Knowledge injection** - Load domain-specific skills into agent context when relevant work is detected.
-
-**Safe concurrent editing** - Prevent edit conflicts with file reservation system and exclusive locks.
+- **Composable** - Mix and match what you need
+- **Zero lock-in** - Works with any agent framework
+- **Type-safe** - Full TypeScript with Zod schemas
+- **Local-first** - PGLite embedded database, no external servers
+- **Fast** - Bun-native, minimal dependencies
 
 ## Next Steps
 
 **Get Started:**
-- [Quickstart](/docs/getting-started/quickstart) - Install and run your first swarm
+- [Quickstart](/docs/getting-started/quickstart) - Install the plugin and run your first swarm
 - [Philosophy](/docs/getting-started/philosophy) - Why Swarm Tools exists
 
-**Packages:**
-- [swarm-mail](/docs/packages/swarm-mail) - Event sourcing and actor-model primitives
-- [opencode-plugin](/docs/packages/opencode-plugin) - OpenCode integration with beads, swarm, and skills
-
-**Deep Dives:**
+**Using the Plugin:**
+- [OpenCode Plugin Tools](/docs/packages/opencode-plugin) - All 40+ tools (beads, swarm, skills)
 - [Concepts](/docs/concepts) - Event sourcing, actor model, learning systems
+
+**Building Your Own:**
+- [swarm-mail Package](/docs/packages/swarm-mail) - Event sourcing primitives and actor-model API
 - [Decisions](/docs/decisions) - Architecture Decision Records (ADRs)
 
 **Historical:**

@@ -13,9 +13,19 @@
  */
 
 import * as p from "@clack/prompts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { homedir } from "os";
-import { dirname, join } from "path";
+import { basename, dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -455,6 +465,390 @@ async function checkAllDependencies(): Promise<CheckResult[]> {
 }
 
 // ============================================================================
+// Skills Sync Utilities
+// ============================================================================
+
+const BUNDLED_SKILL_MARKER_FILENAME = ".swarm-bundled-skill.json";
+
+function listDirectoryNames(dirPath: string): string[] {
+  if (!existsSync(dirPath)) return [];
+  try {
+    return readdirSync(dirPath, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function copyDirRecursiveSync(srcDir: string, destDir: string): void {
+  mkdirSync(destDir, { recursive: true });
+  const entries = readdirSync(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = join(srcDir, entry.name);
+    const destPath = join(destDir, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirRecursiveSync(srcPath, destPath);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      copyFileSync(srcPath, destPath);
+      try {
+        chmodSync(destPath, statSync(srcPath).mode);
+      } catch {
+        // Best effort
+      }
+    }
+  }
+}
+
+function writeBundledSkillMarker(
+  skillDir: string,
+  info: { version: string },
+): void {
+  const markerPath = join(skillDir, BUNDLED_SKILL_MARKER_FILENAME);
+  writeFileSync(
+    markerPath,
+    JSON.stringify(
+      {
+        managed_by: "opencode-swarm-plugin",
+        version: info.version,
+        synced_at: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function syncBundledSkillsToGlobal({
+  bundledSkillsPath,
+  globalSkillsPath,
+  version,
+}: {
+  bundledSkillsPath: string;
+  globalSkillsPath: string;
+  version: string;
+}): { installed: string[]; updated: string[]; skipped: string[] } {
+  const bundledSkills = listDirectoryNames(bundledSkillsPath);
+
+  const installed: string[] = [];
+  const updated: string[] = [];
+  const skipped: string[] = [];
+
+  for (const name of bundledSkills) {
+    const srcSkillDir = join(bundledSkillsPath, name);
+    const destSkillDir = join(globalSkillsPath, name);
+    const markerPath = join(destSkillDir, BUNDLED_SKILL_MARKER_FILENAME);
+
+    if (!existsSync(destSkillDir)) {
+      copyDirRecursiveSync(srcSkillDir, destSkillDir);
+      writeBundledSkillMarker(destSkillDir, { version });
+      installed.push(name);
+      continue;
+    }
+
+    // Only overwrite skills that we previously installed/managed
+    if (existsSync(markerPath)) {
+      rmSync(destSkillDir, { recursive: true, force: true });
+      copyDirRecursiveSync(srcSkillDir, destSkillDir);
+      writeBundledSkillMarker(destSkillDir, { version });
+      updated.push(name);
+      continue;
+    }
+
+    skipped.push(name);
+  }
+
+  return { installed, updated, skipped };
+}
+
+// ============================================================================
+// AGENTS.md Update Utilities
+// ============================================================================
+
+function detectNewline(content: string): "\r\n" | "\n" {
+  return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function backupFileWithTimestamp(filePath: string): string | null {
+  try {
+    const dir = dirname(filePath);
+    const base = basename(filePath);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "")
+      .replace(/Z$/, "Z");
+    const backupPath = join(dir, `${base}.swarm-backup-${timestamp}`);
+    copyFileSync(filePath, backupPath);
+    return backupPath;
+  } catch {
+    return null;
+  }
+}
+
+function buildAgentsSkillsSection(
+  bundledSkillsCsv: string,
+  newline: string,
+): string {
+  return [
+    "## Skills - Knowledge Injection",
+    "",
+    "Skills are reusable knowledge packages. Load them on-demand for specialized tasks.",
+    "",
+    "### When to Use",
+    "",
+    "- Before unfamiliar work - check if a skill exists",
+    "- When you need domain-specific patterns",
+    "- For complex workflows that benefit from guidance",
+    "",
+    "### Usage",
+    "",
+    "```bash",
+    "skills_list()                              # See available skills",
+    'skills_use(name="swarm-coordination")      # Load a skill',
+    'skills_use(name="cli-builder", context="building a new CLI") # With context',
+    "```",
+    "",
+    `**Bundled Skills:** ${bundledSkillsCsv}`,
+  ].join(newline);
+}
+
+function buildAgentsCassSection(newline: string): string {
+  return [
+    "## CASS - Cross-Agent Session Search",
+    "",
+    "Search across ALL your AI coding agent histories before solving problems from scratch.",
+    "",
+    "### When to Use",
+    "",
+    '- **BEFORE implementing anything**: check if any agent solved it before',
+    '- **Debugging**: "what did I try last time this error happened?"',
+    '- **Learning patterns**: "how did Cursor handle this API?"',
+    "",
+    "### Usage",
+    "",
+    "```bash",
+    "# Search all agents",
+    'cass_search(query="authentication token refresh", limit=5)',
+    "",
+    "# Filter by agent/time",
+    'cass_search(query="useEffect cleanup", agent="claude", days=7)',
+    "",
+    "# View specific result",
+    'cass_view(path="/path/from/search", line=42)',
+    "",
+    "# Expand context around match",
+    'cass_expand(path="/path", line=42, context=10)',
+    "```",
+    "",
+    "**Pro tip:** Query CASS at the START of complex tasks. Past solutions save time.",
+  ].join(newline);
+}
+
+function buildAgentsSemanticMemorySection(newline: string): string {
+  return [
+    "## Semantic Memory - Persistent Learning",
+    "",
+    "Store and retrieve learnings across sessions. Memories persist and are searchable.",
+    "",
+    "### When to Use",
+    "",
+    "- After solving a tricky problem - store the solution",
+    "- After making architectural decisions - store the reasoning",
+    "- Before starting work - search for relevant past learnings",
+    "- When you discover project-specific patterns",
+    "",
+    "### Usage",
+    "",
+    "```bash",
+    "# Store a learning",
+    'semantic-memory_store(information="OAuth refresh tokens need 5min buffer before expiry", metadata="auth, tokens")',
+    "",
+    "# Search for relevant memories",
+    'semantic-memory_find(query="token refresh", limit=5)',
+    "",
+    "# Validate a memory is still accurate (resets decay timer)",
+    'semantic-memory_validate(id="mem_123")',
+    "```",
+    "",
+    "**Pro tip:** Store the WHY, not just the WHAT. Future you needs context.",
+  ].join(newline);
+}
+
+function updateAgentsToolPreferencesBlock(
+  content: string,
+  newline: string,
+): { content: string; changed: boolean } {
+  const lower = content.toLowerCase();
+  const openTag = "<tool_preferences>";
+  const closeTag = "</tool_preferences>";
+  const openIdx = lower.indexOf(openTag);
+  const closeIdx = lower.indexOf(closeTag);
+
+  if (openIdx === -1 || closeIdx === -1 || closeIdx <= openIdx) {
+    return { content, changed: false };
+  }
+
+  const blockStart = openIdx;
+  const blockEnd = closeIdx + closeTag.length;
+  const before = content.slice(0, blockStart);
+  const block = content.slice(blockStart, blockEnd);
+  const after = content.slice(blockEnd);
+
+  const hasSkillsTools =
+    /skills_list/i.test(block) &&
+    /skills_use/i.test(block) &&
+    /skills_read/i.test(block);
+  const hasCassTools =
+    /cass_search/i.test(block) &&
+    /cass_view/i.test(block) &&
+    /cass_expand/i.test(block);
+  const hasSemanticTools =
+    /semantic-memory_find/i.test(block) &&
+    /semantic-memory_store/i.test(block);
+
+  const linesToAdd: string[] = [];
+  if (!hasSkillsTools) {
+    linesToAdd.push(
+      "- **skills_list, skills_use, skills_read** - Knowledge injection (load reusable skills)",
+    );
+  }
+  if (!hasCassTools) {
+    linesToAdd.push(
+      "- **cass_search, cass_view, cass_expand** - Search past agent sessions",
+    );
+  }
+  if (!hasSemanticTools) {
+    linesToAdd.push(
+      "- **semantic-memory_find, semantic-memory_store, semantic-memory_validate** - Persistent learning across sessions",
+    );
+  }
+
+  if (linesToAdd.length === 0) {
+    return { content, changed: false };
+  }
+
+  const headingRe = /^###\s+Other Custom Tools.*$/m;
+  const headingMatch = headingRe.exec(block);
+
+  let updatedBlock: string;
+  const insertion = newline + newline + linesToAdd.join(newline) + newline;
+
+  if (headingMatch) {
+    const insertAt = headingMatch.index + headingMatch[0].length;
+    updatedBlock = block.slice(0, insertAt) + insertion + block.slice(insertAt);
+  } else {
+    const closeInBlock = block.toLowerCase().lastIndexOf(closeTag);
+    updatedBlock =
+      block.slice(0, closeInBlock) + insertion + block.slice(closeInBlock);
+  }
+
+  return { content: before + updatedBlock + after, changed: true };
+}
+
+function updateAgentsMdContent({
+  content,
+  bundledSkillsCsv,
+}: {
+  content: string;
+  bundledSkillsCsv: string;
+}): { updated: string; changed: boolean; changes: string[] } {
+  const newline = detectNewline(content);
+  const changes: string[] = [];
+  let updated = content;
+
+  // Update bundled skills line (common formats)
+  const beforeBundled = updated;
+  updated = updated.replace(
+    /^\*\*Bundled Skills:\*\*.*$/gm,
+    `**Bundled Skills:** ${bundledSkillsCsv}`,
+  );
+  updated = updated.replace(
+    /^\*\*Bundled:\*\*.*$/gm,
+    `**Bundled:** ${bundledSkillsCsv}`,
+  );
+  if (updated !== beforeBundled) {
+    changes.push("Updated bundled skills list");
+  }
+
+  // Update tool preferences block if present
+  const toolPrefsResult = updateAgentsToolPreferencesBlock(updated, newline);
+  if (toolPrefsResult.changed) {
+    updated = toolPrefsResult.content;
+    changes.push("Updated tool_preferences tool list");
+  }
+
+  // Add missing sections (append at end)
+  const hasSkillsSection =
+    /^#{1,6}\s+Skills\b/im.test(updated) || /skills_list\(\)/.test(updated);
+  const hasCassSection =
+    /^#{1,6}\s+.*CASS\b/im.test(updated) || /cass_search\(/.test(updated);
+  const hasSemanticMemorySection =
+    /^#{1,6}\s+Semantic Memory\b/im.test(updated) ||
+    /semantic-memory_store\(/.test(updated);
+
+  const sectionsToAppend: string[] = [];
+  if (!hasSkillsSection) {
+    sectionsToAppend.push(
+      buildAgentsSkillsSection(bundledSkillsCsv, newline),
+    );
+    changes.push("Added Skills section");
+  }
+  if (!hasCassSection) {
+    sectionsToAppend.push(buildAgentsCassSection(newline));
+    changes.push("Added CASS section");
+  }
+  if (!hasSemanticMemorySection) {
+    sectionsToAppend.push(buildAgentsSemanticMemorySection(newline));
+    changes.push("Added Semantic Memory section");
+  }
+
+  if (sectionsToAppend.length > 0) {
+    const trimmed = updated.replace(/\s+$/g, "");
+    const needsRule = !/^\s*---\s*$/m.test(trimmed.slice(-3000));
+    updated =
+      trimmed +
+      newline +
+      newline +
+      (needsRule ? `---${newline}${newline}` : "") +
+      sectionsToAppend.join(newline + newline);
+  }
+
+  // Ensure trailing newline
+  if (!updated.endsWith(newline)) {
+    updated += newline;
+  }
+
+  return { updated, changed: updated !== content, changes };
+}
+
+function updateAgentsMdFile({
+  agentsPath,
+  bundledSkillsCsv,
+}: {
+  agentsPath: string;
+  bundledSkillsCsv: string;
+}): { changed: boolean; backupPath?: string; changes: string[] } {
+  const original = readFileSync(agentsPath, "utf-8");
+  const { updated, changed, changes } = updateAgentsMdContent({
+    content: original,
+    bundledSkillsCsv,
+  });
+
+  if (!changed) {
+    return { changed: false, changes: ["No changes needed"] };
+  }
+
+  const backupPath = backupFileWithTimestamp(agentsPath) || undefined;
+  writeFileSync(agentsPath, updated, "utf-8");
+  return { changed: true, backupPath, changes };
+}
+
+// ============================================================================
 // File Templates
 // ============================================================================
 
@@ -834,6 +1228,8 @@ async function setup() {
 
   p.intro("opencode-swarm-plugin v" + VERSION);
 
+  let isReinstall = false;
+
   // Check if already configured FIRST
   const configDir = join(homedir(), ".config", "opencode");
   const pluginDir = join(configDir, "plugin");
@@ -872,7 +1268,7 @@ async function setup() {
         {
           value: "reinstall",
           label: "Reinstall everything",
-          hint: "Check deps and regenerate all config files",
+          hint: "Check deps, sync bundled skills, regenerate config files",
         },
       ],
     });
@@ -927,6 +1323,9 @@ async function setup() {
       }
       p.outro("Models updated! Your customizations are preserved.");
       return;
+    }
+    if (action === "reinstall") {
+      isReinstall = true;
     }
     // action === "reinstall" - fall through to full setup
   }
@@ -1177,17 +1576,74 @@ async function setup() {
 
   p.log.success("Skills directory: " + skillsDir);
 
-  // Show bundled skills info
+  // Show bundled skills info (and optionally sync to global skills dir)
   const bundledSkillsPath = join(__dirname, "..", "global-skills");
+  const bundledSkills = listDirectoryNames(bundledSkillsPath);
   if (existsSync(bundledSkillsPath)) {
-    try {
-      const { readdirSync } = require("fs");
-      const bundled = readdirSync(bundledSkillsPath, { withFileTypes: true })
-        .filter((d: { isDirectory: () => boolean }) => d.isDirectory())
-        .map((d: { name: string }) => d.name);
-      p.log.message(dim("  Bundled skills: " + bundled.join(", ")));
-    } catch {
-      // Ignore
+    if (bundledSkills.length > 0) {
+      p.log.message(dim("  Bundled skills: " + bundledSkills.join(", ")));
+    }
+  }
+
+  // If the user keeps their skills in ~/.config/opencode/skills, offer to sync the bundled set
+  if (bundledSkills.length > 0) {
+    const globalSkills = listDirectoryNames(skillsDir);
+    const managedBundled = globalSkills.filter((name) =>
+      existsSync(join(skillsDir, name, BUNDLED_SKILL_MARKER_FILENAME)),
+    );
+    const missingBundled = bundledSkills.filter(
+      (name) => !globalSkills.includes(name),
+    );
+
+    if (missingBundled.length > 0 || managedBundled.length > 0) {
+      const shouldSync = await p.confirm({
+        message:
+          "Sync bundled skills into your global skills directory? " +
+          (missingBundled.length > 0
+            ? `(${missingBundled.length} missing)`
+            : "(update managed skills)"),
+        initialValue: isReinstall || missingBundled.length > 0,
+      });
+
+      if (p.isCancel(shouldSync)) {
+        p.cancel("Setup cancelled");
+        process.exit(0);
+      }
+
+      if (shouldSync) {
+        const syncSpinner = p.spinner();
+        syncSpinner.start("Syncing bundled skills...");
+        try {
+          const { installed, updated, skipped } = syncBundledSkillsToGlobal({
+            bundledSkillsPath,
+            globalSkillsPath: skillsDir,
+            version: VERSION,
+          });
+          syncSpinner.stop("Bundled skills synced");
+
+          if (installed.length > 0) {
+            p.log.success("Installed: " + installed.join(", "));
+          }
+          if (updated.length > 0) {
+            p.log.success("Updated: " + updated.join(", "));
+          }
+          if (skipped.length > 0) {
+            p.log.message(
+              dim(
+                "Skipped (already exists, not managed): " + skipped.join(", "),
+              ),
+            );
+          }
+        } catch (error) {
+          syncSpinner.stop("Could not sync bundled skills");
+          p.log.warn(
+            "Bundled skills are still available from the package via skills_list.",
+          );
+          p.log.message(
+            dim(error instanceof Error ? error.message : String(error)),
+          );
+        }
+      }
     }
   }
 
@@ -1203,111 +1659,28 @@ async function setup() {
       const s = p.spinner();
       s.start("Updating AGENTS.md...");
 
-      const agentsPrompt = `You are updating the user's AGENTS.md file to add swarm plugin awareness.
-
-## Task
-Read ${agentsPath} and add sections for Skills, CASS, and Semantic Memory if they don't exist. Update existing sections if present.
-
-## What to Add
-
-1. **Tool Preferences** - If there's a tool_preferences section, add these tools:
-   - skills_list, skills_use, skills_read - knowledge injection
-   - cass_search, cass_view, cass_expand - search past agent sessions
-   - semantic-memory_find, semantic-memory_store - persistent learning
-
-2. **Skills Section** - Add this (adapt style to match the file):
-
-### Skills (Knowledge Injection)
-
-Skills are reusable knowledge packages. Load them on-demand for specialized tasks.
-
-**When to Use:**
-- Before unfamiliar work - check if a skill exists
-- When you need domain-specific patterns
-- For complex workflows that benefit from guidance
-
-**Usage:**
-\`\`\`
-skills_list()                              # See available skills
-skills_use(name="swarm-coordination")      # Load a skill
-skills_use(name="cli-builder", context="building a new CLI") # With context
-\`\`\`
-
-**Bundled Skills:** cli-builder, learning-systems, mcp-tool-authoring, skill-creator, swarm-coordination
-
-3. **CASS Section** - Add this:
-
-### CASS (Cross-Agent Session Search)
-
-Search across ALL your AI coding agent histories before solving problems from scratch.
-
-**When to Use:**
-- BEFORE implementing anything - check if any agent solved it before
-- When debugging - "what did I try last time this error happened?"
-- When learning patterns - "how did Cursor handle this API?"
-
-**Usage:**
-\`\`\`
-cass_search(query="authentication token refresh", limit=5)  # Search all agents
-cass_search(query="useEffect cleanup", agent="claude", days=7)  # Filter by agent/time
-cass_view(path="/path/from/search", line=42)  # View specific result
-cass_expand(path="/path", line=42, context=10)  # Expand context around match
-\`\`\`
-
-**Pro tip:** Query CASS at the START of complex tasks. Past solutions save time.
-
-4. **Semantic Memory Section** - Add this:
-
-### Semantic Memory (Persistent Learning)
-
-Store and retrieve learnings across sessions. Memories persist and are searchable.
-
-**When to Use:**
-- After solving a tricky problem - store the solution
-- After making architectural decisions - store the reasoning
-- Before starting work - search for relevant past learnings
-- When you discover project-specific patterns
-
-**Usage:**
-\`\`\`
-# Store a learning
-semantic-memory_store(information="OAuth refresh tokens need 5min buffer before expiry", metadata="auth, tokens")
-
-# Search for relevant memories
-semantic-memory_find(query="token refresh", limit=5)
-
-# Validate a memory is still accurate (resets decay timer)
-semantic-memory_validate(id="mem_123")
-\`\`\`
-
-**Pro tip:** Store the WHY, not just the WHAT. Future you needs context.
-
-## Rules
-- Preserve existing content and style
-- Don't duplicate - update existing sections if present
-- Keep tone consistent with the rest of the file
-- Place sections in logical order (Skills, CASS, Semantic Memory)
-- If there's a tool_preferences section, add the tools there too
-
-Edit the file now.`;
-
       try {
-        const result = Bun.spawnSync(["opencode", "run", agentsPrompt], {
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: 120000,
-        });
+        const bundledSkillsCsv =
+          bundledSkills.length > 0
+            ? bundledSkills.join(", ")
+            : "cli-builder, learning-systems, skill-creator, swarm-coordination, system-design, testing-patterns";
 
-        if (result.exitCode === 0) {
+        const result = updateAgentsMdFile({ agentsPath, bundledSkillsCsv });
+
+        if (result.changed) {
           s.stop("AGENTS.md updated");
-          p.log.success("Added skill awareness to AGENTS.md");
+          p.log.success("Updated: " + agentsPath);
+          if (result.backupPath) {
+            p.log.message(dim("  Backup: " + result.backupPath));
+          }
         } else {
-          s.stop("Could not update AGENTS.md");
-          p.log.warn("You can manually add skills section later");
+          s.stop("AGENTS.md already up to date");
         }
-      } catch {
+      } catch (error) {
         s.stop("Could not update AGENTS.md");
-        p.log.warn("You can manually add skills section later");
+        p.log.error(
+          error instanceof Error ? error.message : "Unknown error updating file",
+        );
       }
     }
   }
@@ -1786,15 +2159,6 @@ async function agents() {
     return;
   }
 
-  // Check if opencode is available
-  const opencode = await checkCommand("opencode", ["--version"]);
-  if (!opencode.available) {
-    p.log.error("OpenCode not found");
-    p.log.message(dim("Install: npm install -g opencode"));
-    p.outro("Aborted");
-    return;
-  }
-
   const confirm = await p.confirm({
     message: "Update AGENTS.md with skill awareness?",
     initialValue: true,
@@ -1808,82 +2172,28 @@ async function agents() {
   const s = p.spinner();
   s.start("Updating AGENTS.md with skill awareness...");
 
-  const prompt = `You are updating the user's AGENTS.md file to add swarm plugin awareness.
-
-## Task
-Read ~/.config/opencode/AGENTS.md and add sections for Skills, CASS, and Semantic Memory if they don't exist.
-
-## What to Add
-
-1. **Tool Preferences** - Add these tools to any tool_preferences section:
-   - skills_list, skills_use, skills_read - knowledge injection
-   - cass_search, cass_view, cass_expand - search past agent sessions
-   - semantic-memory_find, semantic-memory_store - persistent learning
-
-2. **Skills Section**:
-
-### Skills (Knowledge Injection)
-
-Skills are reusable knowledge packages. Load on-demand for specialized tasks.
-
-**When to Use:** Before unfamiliar work, when you need domain patterns, for complex workflows.
-
-\`\`\`
-skills_list()                              # See available skills
-skills_use(name="swarm-coordination")      # Load a skill
-\`\`\`
-
-**Bundled:** cli-builder, learning-systems, mcp-tool-authoring, skill-creator, swarm-coordination
-
-3. **CASS Section**:
-
-### CASS (Cross-Agent Session Search)
-
-Search ALL your AI coding agent histories before solving from scratch.
-
-**When to Use:** BEFORE implementing - check if solved before. When debugging - what worked last time?
-
-\`\`\`
-cass_search(query="auth token refresh", limit=5)  # Search all agents
-cass_view(path="/path/from/search", line=42)      # View result
-\`\`\`
-
-4. **Semantic Memory Section**:
-
-### Semantic Memory (Persistent Learning)
-
-Store and retrieve learnings across sessions.
-
-**When to Use:** After solving tricky problems, after architectural decisions, before starting work.
-
-\`\`\`
-semantic-memory_store(information="OAuth needs 5min buffer", metadata="auth")
-semantic-memory_find(query="token refresh", limit=5)
-\`\`\`
-
-## Rules
-- Preserve existing content and style
-- Don't duplicate - update if sections exist
-- Keep tone consistent
-
-Edit the file now.`;
+  const bundledSkillsPath = join(__dirname, "..", "global-skills");
+  const bundledSkills = listDirectoryNames(bundledSkillsPath);
 
   try {
-    const result = Bun.spawnSync(["opencode", "run", prompt], {
-      stdio: ["inherit", "pipe", "pipe"],
-      timeout: 120000, // 2 minute timeout
-    });
+    const bundledSkillsCsv =
+      bundledSkills.length > 0
+        ? bundledSkills.join(", ")
+        : "cli-builder, learning-systems, skill-creator, swarm-coordination, system-design, testing-patterns";
 
-    if (result.exitCode === 0) {
+    const result = updateAgentsMdFile({ agentsPath, bundledSkillsCsv });
+
+    if (result.changed) {
       s.stop("AGENTS.md updated with skill awareness");
       p.log.success("Skills section added to " + agentsPath);
       p.log.message(
         dim("Skills available: skills_list, skills_use, skills_read"),
       );
+      if (result.backupPath) {
+        p.log.message(dim("Backup: " + result.backupPath));
+      }
     } else {
-      const stderr = result.stderr?.toString() || "";
-      s.stop("Failed to update AGENTS.md");
-      p.log.error(stderr || "Unknown error");
+      s.stop("AGENTS.md already up to date");
     }
   } catch (error) {
     s.stop("Failed to update AGENTS.md");

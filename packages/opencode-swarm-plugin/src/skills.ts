@@ -35,6 +35,7 @@ import {
   isAbsolute,
   sep,
 } from "path";
+import { fileURLToPath } from "url";
 import matter from "gray-matter";
 
 // =============================================================================
@@ -209,9 +210,15 @@ function getClaudeGlobalSkillsDir(): string {
  * Bundled skills from the package (lowest priority)
  */
 function getPackageSkillsDir(): string {
-  // ES module equivalent of __dirname - resolve relative to this file
-  const currentDir = new URL(".", import.meta.url).pathname;
-  return join(currentDir, "..", "global-skills");
+  // Resolve relative to this file (handles URL-encoding like spaces)
+  try {
+    const currentFilePath = fileURLToPath(import.meta.url);
+    return join(dirname(currentFilePath), "..", "global-skills");
+  } catch {
+    // Fallback for non-file URLs (best-effort)
+    const currentDir = decodeURIComponent(new URL(".", import.meta.url).pathname);
+    return join(currentDir, "..", "global-skills");
+  }
 }
 
 /**

@@ -1,5 +1,32 @@
 # opencode-swarm-plugin
 
+## 0.24.0
+
+### Minor Changes
+
+- [`434f48f`](https://github.com/joelhooks/swarm-tools/commit/434f48f207c3509f6b924caeb47cd6e019dcc0e1) Thanks [@joelhooks](https://github.com/joelhooks)! - Add worker survival checklist and Socratic planning for swarm coordination
+
+  **Worker Survival Checklist (9-step mandatory flow):**
+
+  - Workers now follow a strict initialization sequence: swarmmail_init → semantic-memory_find → skills_use → swarmmail_reserve
+  - Workers reserve their own files (coordinators no longer reserve on behalf of workers)
+  - Auto-checkpoint at 25/50/75% progress milestones
+  - Workers store learnings via semantic-memory before completing
+
+  **Socratic Planning:**
+
+  - New `swarm_plan_interactive` tool with 4 modes: socratic (default), fast, auto, confirm-only
+  - Default mode asks clarifying questions before decomposition
+  - Escape hatches for experienced users: `--fast`, `--auto`, `--confirm-only` flags on /swarm command
+
+  **Updated Skills:**
+
+  - swarm-coordination skill now documents worker survival patterns and coordinator rules
+
+### Patch Changes
+
+- [#15](https://github.com/joelhooks/swarm-tools/pull/15) [`299f2d3`](https://github.com/joelhooks/swarm-tools/commit/299f2d3305796bcb411f9b90715cda3513d17b54) Thanks [@tayiorbeii](https://github.com/tayiorbeii)! - Sync bundled skills into the global skills directory during `swarm setup` reinstall, fix bundled-skill path resolution, and make AGENTS.md skill-awareness updates work without relying on `opencode run`.
+
 ## 0.23.6
 
 ### Patch Changes

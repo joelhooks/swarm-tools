@@ -438,9 +438,28 @@ swarmmail_release()  # Manually release reservations
 **Note:** \`swarm_complete\` automatically releases reservations. Only use manual release if aborting work.
 
 ## [OTHER TOOLS]
-### Beads
+### Beads - You Have Autonomy to File Issues
+You can create new beads against this epic when you discover:
+- **Bugs**: Found a bug while working? File it.
+- **Tech debt**: Spotted something that needs cleanup? File it.
+- **Follow-up work**: Task needs more work than scoped? File a follow-up.
+- **Dependencies**: Need something from another agent? File and link it.
+
+\`\`\`
+beads_create(
+  title="<descriptive title>",
+  type="bug",  # or "task", "chore"
+  priority=2,
+  parent_id="{epic_id}",  # Links to this epic
+  description="Found while working on {bead_id}: <details>"
+)
+\`\`\`
+
+**Don't silently ignore issues.** File them so they get tracked and addressed.
+
+Other bead operations:
 - beads_update(id, status) - Mark blocked if stuck
-- beads_create(title, type) - Log new bugs found
+- beads_query(status="open") - See what else needs work
 
 ### Skills
 - skills_list() - Discover available skills

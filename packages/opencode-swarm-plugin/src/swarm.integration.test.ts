@@ -1347,6 +1347,13 @@ describe("Swarm Prompt V2 (with Swarm Mail/Beads)", () => {
       expect(SUBTASK_PROMPT_V2).toContain("swarm_complete");
     });
 
+    it("grants workers autonomy to file beads against epic", () => {
+      // Workers should be able to file bugs, tech debt, follow-ups
+      expect(SUBTASK_PROMPT_V2).toContain("You Have Autonomy to File Issues");
+      expect(SUBTASK_PROMPT_V2).toContain("parent_id");
+      expect(SUBTASK_PROMPT_V2).toContain("Don't silently ignore issues");
+    });
+
     it("instructs agents to communicate via swarmmail", () => {
       expect(SUBTASK_PROMPT_V2).toContain("don't work silently");
       expect(SUBTASK_PROMPT_V2).toContain("progress");

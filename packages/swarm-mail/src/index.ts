@@ -57,7 +57,7 @@ export {
 export * from "./streams";
 
 // ============================================================================
-// Beads Module Exports
+// Hive Module Exports (work item tracking)
 // ============================================================================
 
-export * from "./beads";
+export * from "./hive";

@@ -1,7 +1,7 @@
 /**
  * OpenCode Swarm Plugin
  *
- * A type-safe plugin for multi-agent coordination with beads issue tracking
+ * A type-safe plugin for multi-agent coordination with hive issue tracking
  * and Agent Mail integration. Provides structured tools for swarm operations.
  *
  * @module opencode-swarm-plugin
@@ -16,13 +16,18 @@
  *
  * @example
  * ```typescript
- * // Programmatic usage
- * import { beadsTools, agentMailTools, swarmMailTools } from "opencode-swarm-plugin"
+ * // Programmatic usage (hive is the new name, beads is deprecated)
+ * import { hiveTools, beadsTools, agentMailTools, swarmMailTools } from "opencode-swarm-plugin"
  * ```
  */
 import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 
-import { beadsTools, setBeadsWorkingDirectory } from "./beads";
+import {
+  hiveTools,
+  beadsTools,
+  setHiveWorkingDirectory,
+  setBeadsWorkingDirectory,
+} from "./hive";
 import {
   agentMailTools,
   setAgentMailProjectDirectory,
@@ -53,7 +58,8 @@ import {
  * OpenCode Swarm Plugin
  *
  * Registers all swarm coordination tools:
- * - beads:* - Type-safe beads issue tracker wrappers
+ * - hive:* - Type-safe hive issue tracker wrappers (primary)
+ * - beads:* - Legacy aliases for hive tools (deprecated, use hive:* instead)
  * - agent-mail:* - Multi-agent coordination via Agent Mail MCP (legacy)
  * - swarm-mail:* - Multi-agent coordination with embedded event sourcing (recommended)
  * - structured:* - Structured output parsing and validation
@@ -70,9 +76,9 @@ export const SwarmPlugin: Plugin = async (
 ): Promise<Hooks> => {
   const { $, directory } = input;
 
-  // Set the working directory for beads commands
-  // This ensures bd runs in the project directory, not ~/.config/opencode
-  setBeadsWorkingDirectory(directory);
+  // Set the working directory for hive commands
+  // This ensures hive operations run in the project directory, not ~/.config/opencode
+  setHiveWorkingDirectory(directory);
 
   // Set the project directory for skills discovery
   // Skills are discovered from .opencode/skills/, .claude/skills/, or skills/
@@ -136,14 +142,15 @@ export const SwarmPlugin: Plugin = async (
      * Register all tools from modules
      *
      * Tools are namespaced by module:
-     * - beads:create, beads:query, beads:update, etc.
+     * - hive:create, hive:query, hive:update, etc. (primary)
+     * - beads:* - Legacy aliases (deprecated, use hive:* instead)
      * - agent-mail:init, agent-mail:send, agent-mail:reserve, etc. (legacy MCP)
      * - swarm-mail:init, swarm-mail:send, swarm-mail:reserve, etc. (embedded)
      * - repo-crawl:readme, repo-crawl:structure, etc.
      * - mandate:file, mandate:vote, mandate:query, etc.
      */
     tool: {
-      ...beadsTools,
+      ...hiveTools,
       ...swarmMailTools,
       ...structuredTools,
       ...swarmTools,
@@ -238,8 +245,8 @@ export const SwarmPlugin: Plugin = async (
         await releaseReservations();
       }
 
-      // Auto-sync beads after closing
-      if (toolName === "beads_close") {
+      // Auto-sync hive after closing (supports both hive_close and legacy beads_close)
+      if (toolName === "hive_close" || toolName === "beads_close") {
         // Trigger async sync without blocking - fire and forget
         void $`bd sync`.quiet().nothrow();
       }
@@ -267,14 +274,18 @@ export default SwarmPlugin;
 export * from "./schemas";
 
 /**
- * Re-export beads module
+ * Re-export hive module (primary) and beads module (deprecated aliases)
  *
  * Includes:
- * - beadsTools - All bead tool definitions
- * - Individual tool exports (beads_create, beads_query, etc.)
- * - BeadError, BeadValidationError - Error classes
+ * - hiveTools - All hive tool definitions (primary)
+ * - beadsTools - Legacy aliases for backward compatibility (deprecated)
+ * - Individual tool exports (hive_create, hive_query, etc.)
+ * - Legacy aliases (beads_create, beads_query, etc.)
+ * - HiveError, HiveValidationError (and BeadError, BeadValidationError aliases)
+ *
+ * DEPRECATED: Use hive_* tools instead of beads_* tools
  */
-export * from "./beads";
+export * from "./hive";
 
 /**
  * Re-export agent-mail module (legacy MCP-based)
@@ -391,9 +402,11 @@ export {
  *
  * This is used by `swarm tool <name>` command to dynamically execute tools.
  * Each tool has an `execute` function that takes (args, ctx) and returns a string.
+ *
+ * Note: hiveTools includes both hive_* and beads_* (legacy aliases)
  */
 export const allTools = {
-  ...beadsTools,
+  ...hiveTools,
   ...swarmMailTools,
   ...structuredTools,
   ...swarmTools,

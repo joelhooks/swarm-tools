@@ -31,17 +31,17 @@ export const DECOMPOSITION_PROMPT = `You are decomposing a task into paralleliza
 
 {context_section}
 
-## MANDATORY: Beads Issue Tracking
+## MANDATORY: Hive Issue Tracking
 
-**Every subtask MUST become a bead.** This is non-negotiable.
+**Every subtask MUST become a cell.** This is non-negotiable.
 
 After decomposition, the coordinator will:
-1. Create an epic bead for the overall task
-2. Create child beads for each subtask
-3. Track progress through bead status updates
-4. Close beads with summaries when complete
+1. Create an epic cell for the overall task
+2. Create child cells for each subtask
+3. Track progress through cell status updates
+4. Close cells with summaries when complete
 
-Agents MUST update their bead status as they work. No silent progress.
+Agents MUST update their cell status as they work. No silent progress.
 
 ## Requirements
 
@@ -59,7 +59,7 @@ Respond with a JSON object matching this schema:
 \`\`\`typescript
 {
   epic: {
-    title: string,        // Epic title for the beads tracker
+    title: string,        // Epic title for the hive tracker
     description?: string  // Brief description of the overall goal
   },
   subtasks: [
@@ -108,17 +108,17 @@ export const STRATEGY_DECOMPOSITION_PROMPT = `You are decomposing a task into pa
 
 {skills_context}
 
-## MANDATORY: Beads Issue Tracking
+## MANDATORY: Hive Issue Tracking
 
-**Every subtask MUST become a bead.** This is non-negotiable.
+**Every subtask MUST become a cell.** This is non-negotiable.
 
 After decomposition, the coordinator will:
-1. Create an epic bead for the overall task
-2. Create child beads for each subtask
-3. Track progress through bead status updates
-4. Close beads with summaries when complete
+1. Create an epic cell for the overall task
+2. Create child cells for each subtask
+3. Track progress through cell status updates
+4. Close cells with summaries when complete
 
-Agents MUST update their bead status as they work. No silent progress.
+Agents MUST update their cell status as they work. No silent progress.
 
 ## Requirements
 
@@ -136,7 +136,7 @@ Respond with a JSON object matching this schema:
 \`\`\`typescript
 {
   epic: {
-    title: string,        // Epic title for the beads tracker
+    title: string,        // Epic title for the hive tracker
     description?: string  // Brief description of the overall goal
   },
   subtasks: [
@@ -182,16 +182,16 @@ send a message to the coordinator requesting the change.
 ## Shared Context
 {shared_context}
 
-## MANDATORY: Beads Tracking
+## MANDATORY: Hive Tracking
 
-You MUST keep your bead updated as you work:
+You MUST keep your cell updated as you work:
 
-1. **Your bead is already in_progress** - don't change this unless blocked
-2. **If blocked**: \`bd update {bead_id} --status blocked\` and message coordinator
-3. **When done**: Use \`swarm_complete\` - it closes your bead automatically
-4. **Discovered issues**: Create new beads with \`bd create "issue" -t bug\`
+1. **Your cell is already in_progress** - don't change this unless blocked
+2. **If blocked**: \`beads_update {bead_id} --status blocked\` and message coordinator
+3. **When done**: Use \`swarm_complete\` - it closes your cell automatically
+4. **Discovered issues**: Create new cells with \`beads_create "issue" -t bug\`
 
-**Never work silently.** Your bead status is how the swarm tracks progress.
+**Never work silently.** Your cell status is how the swarm tracks progress.
 
 ## MANDATORY: Swarm Mail Communication
 
@@ -214,11 +214,11 @@ swarmmail_send(
 
 ## Coordination Protocol
 
-1. **Start**: Your bead is already marked in_progress
+1. **Start**: Your cell is already marked in_progress
 2. **Progress**: Use swarm_progress to report status updates
 3. **Blocked**: Report immediately via Swarm Mail - don't spin
 4. **Complete**: Use swarm_complete when done - it handles:
-   - Closing your bead with a summary
+   - Closing your cell with a summary
    - Releasing file reservations
    - Notifying the coordinator
 
@@ -243,10 +243,10 @@ Before writing code:
 Begin work on your subtask now.`;
 
 /**
- * Streamlined subtask prompt (V2) - uses Swarm Mail and beads
+ * Streamlined subtask prompt (V2) - uses Swarm Mail and hive tracking
  *
  * This is a cleaner version of SUBTASK_PROMPT that's easier to parse.
- * Agents MUST use Swarm Mail for communication and beads for tracking.
+ * Agents MUST use Swarm Mail for communication and hive cells for tracking.
  *
  * Supports {error_context} placeholder for retry prompts.
  */
@@ -398,7 +398,7 @@ swarm_complete(
 - Records learning signals
 - Notifies coordinator
 
-**DO NOT manually close the bead with beads_close.** Use swarm_complete.
+**DO NOT manually close the cell with beads_close.** Use swarm_complete.
 
 ## [SWARM MAIL COMMUNICATION]
 
@@ -438,8 +438,8 @@ swarmmail_release()  # Manually release reservations
 **Note:** \`swarm_complete\` automatically releases reservations. Only use manual release if aborting work.
 
 ## [OTHER TOOLS]
-### Beads - You Have Autonomy to File Issues
-You can create new beads against this epic when you discover:
+### Hive - You Have Autonomy to File Issues
+You can create new cells against this epic when you discover:
 - **Bugs**: Found a bug while working? File it.
 - **Tech debt**: Spotted something that needs cleanup? File it.
 - **Follow-up work**: Task needs more work than scoped? File a follow-up.
@@ -457,7 +457,7 @@ beads_create(
 
 **Don't silently ignore issues.** File them so they get tracked and addressed.
 
-Other bead operations:
+Other cell operations:
 - beads_update(id, status) - Mark blocked if stuck
 - beads_query(status="open") - See what else needs work
 
@@ -691,12 +691,12 @@ export const swarm_subtask_prompt = tool({
 /**
  * Prepare a subtask for spawning with Task tool (V2 prompt)
  *
- * Generates a streamlined prompt that tells agents to USE Agent Mail and beads.
+ * Generates a streamlined prompt that tells agents to USE Agent Mail and hive tracking.
  * Returns JSON that can be directly used with Task tool.
  */
 export const swarm_spawn_subtask = tool({
   description:
-    "Prepare a subtask for spawning. Returns prompt with Agent Mail/beads instructions. IMPORTANT: Pass project_path for swarmmail_init.",
+    "Prepare a subtask for spawning. Returns prompt with Agent Mail/hive tracking instructions. IMPORTANT: Pass project_path for swarmmail_init.",
   args: {
     bead_id: tool.schema.string().describe("Subtask bead ID"),
     epic_id: tool.schema.string().describe("Parent epic bead ID"),

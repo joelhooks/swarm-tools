@@ -4,16 +4,18 @@
  * This module re-exports all schema definitions used throughout the plugin.
  * Schemas are organized by domain:
  *
- * ## Bead Schemas (Issue Tracking)
- * - `BeadSchema` - Core bead/issue definition
- * - `BeadStatusSchema` - Status enum (open, in_progress, blocked, closed)
- * - `BeadTypeSchema` - Type enum (bug, feature, task, epic, chore)
+ * ## Cell Schemas (Issue Tracking) - PRIMARY
+ * - `CellSchema` - Core cell/issue definition (formerly BeadSchema)
+ * - `CellStatusSchema` - Status enum (open, in_progress, blocked, closed)
+ * - `CellTypeSchema` - Type enum (bug, feature, task, epic, chore)
  * - `SubtaskSpecSchema` - Subtask specification for epic creation
+ * - `CellTreeSchema` - Epic + subtasks structure (formerly BeadTreeSchema)
+ *
+ * **Backward compatibility:** All Bead* names are exported as deprecated aliases.
  *
  * ## Task Schemas (Swarm Decomposition)
  * - `TaskDecompositionSchema` - Full task breakdown
  * - `DecomposedSubtaskSchema` - Individual subtask definition
- * - `BeadTreeSchema` - Epic + subtasks structure
  *
  * ## Evaluation Schemas (Agent Self-Assessment)
  * - `EvaluationSchema` - Complete evaluation with criteria
@@ -27,7 +29,35 @@
  * @module schemas
  */
 
-// Bead schemas
+// Cell schemas (primary names)
+export {
+  CellStatusSchema,
+  CellTypeSchema,
+  CellDependencySchema,
+  CellSchema,
+  CellCreateArgsSchema,
+  CellUpdateArgsSchema,
+  CellCloseArgsSchema,
+  CellQueryArgsSchema,
+  SubtaskSpecSchema,
+  CellTreeSchema,
+  EpicCreateArgsSchema,
+  EpicCreateResultSchema,
+  type CellStatus,
+  type CellType,
+  type CellDependency,
+  type Cell,
+  type CellCreateArgs,
+  type CellUpdateArgs,
+  type CellCloseArgs,
+  type CellQueryArgs,
+  type SubtaskSpec,
+  type CellTree,
+  type EpicCreateArgs,
+  type EpicCreateResult,
+} from "./cell";
+
+// Bead schemas (backward compatibility aliases)
 export {
   BeadStatusSchema,
   BeadTypeSchema,
@@ -37,10 +67,7 @@ export {
   BeadUpdateArgsSchema,
   BeadCloseArgsSchema,
   BeadQueryArgsSchema,
-  SubtaskSpecSchema,
   BeadTreeSchema,
-  EpicCreateArgsSchema,
-  EpicCreateResultSchema,
   type BeadStatus,
   type BeadType,
   type BeadDependency,
@@ -49,11 +76,8 @@ export {
   type BeadUpdateArgs,
   type BeadCloseArgs,
   type BeadQueryArgs,
-  type SubtaskSpec,
   type BeadTree,
-  type EpicCreateArgs,
-  type EpicCreateResult,
-} from "./bead";
+} from "./cell";
 
 // Evaluation schemas
 export {
@@ -144,7 +168,58 @@ export {
   type QuerySwarmContextsArgs,
 } from "./swarm-context";
 
-// Bead event schemas
+// Cell event schemas (PRIMARY)
+export {
+  BaseCellEventSchema,
+  CellCreatedEventSchema,
+  CellUpdatedEventSchema,
+  CellStatusChangedEventSchema,
+  CellClosedEventSchema,
+  CellReopenedEventSchema,
+  CellDeletedEventSchema,
+  CellDependencyAddedEventSchema,
+  CellDependencyRemovedEventSchema,
+  CellLabelAddedEventSchema,
+  CellLabelRemovedEventSchema,
+  CellCommentAddedEventSchema,
+  CellCommentUpdatedEventSchema,
+  CellCommentDeletedEventSchema,
+  CellEpicChildAddedEventSchema,
+  CellEpicChildRemovedEventSchema,
+  CellEpicClosureEligibleEventSchema,
+  CellAssignedEventSchema,
+  CellWorkStartedEventSchema,
+  CellCompactedEventSchema,
+  CellEventSchema,
+  createCellEvent,
+  isCellEventType,
+  getCellIdFromEvent,
+  isStateTransitionEvent,
+  isEpicEvent,
+  isAgentEvent,
+  type CellEvent,
+  type CellCreatedEvent,
+  type CellUpdatedEvent,
+  type CellStatusChangedEvent,
+  type CellClosedEvent,
+  type CellReopenedEvent,
+  type CellDeletedEvent,
+  type CellDependencyAddedEvent,
+  type CellDependencyRemovedEvent,
+  type CellLabelAddedEvent,
+  type CellLabelRemovedEvent,
+  type CellCommentAddedEvent,
+  type CellCommentUpdatedEvent,
+  type CellCommentDeletedEvent,
+  type CellEpicChildAddedEvent,
+  type CellEpicChildRemovedEvent,
+  type CellEpicClosureEligibleEvent,
+  type CellAssignedEvent,
+  type CellWorkStartedEvent,
+  type CellCompactedEvent,
+} from "./cell-events";
+
+// Bead event schemas (DEPRECATED - backward compatibility)
 export {
   BaseBeadEventSchema,
   BeadCreatedEventSchema,
@@ -170,9 +245,6 @@ export {
   createBeadEvent,
   isBeadEventType,
   getBeadIdFromEvent,
-  isStateTransitionEvent,
-  isEpicEvent,
-  isAgentEvent,
   type BeadEvent,
   type BeadCreatedEvent,
   type BeadUpdatedEvent,
@@ -193,4 +265,4 @@ export {
   type BeadAssignedEvent,
   type BeadWorkStartedEvent,
   type BeadCompactedEvent,
-} from "./bead-events";
+} from "./cell-events";

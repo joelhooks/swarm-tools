@@ -708,7 +708,7 @@ export const swarm_status = tool({
     const agents: SpawnedAgent[] = [];
 
     for (const bead of subtasks) {
-      // Map bead status to agent status
+      // Map cell status to agent status
       let agentStatus: SpawnedAgent["status"] = "pending";
       switch (bead.status) {
         case "in_progress":
@@ -815,7 +815,7 @@ export const swarm_progress = tool({
     // Validate
     const validated = AgentProgressSchema.parse(progress);
 
-    // Update bead status if needed
+    // Update cell status if needed
     if (args.status === "blocked" || args.status === "in_progress") {
       const beadStatus = args.status === "blocked" ? "blocked" : "in_progress";
       await Bun.$`bd update ${args.bead_id} --status ${beadStatus} --json`
@@ -984,9 +984,9 @@ export const swarm_broadcast = tool({
  * 2. RUN: Execute verification (UBS, typecheck, tests)
  * 3. READ: Check exit codes and output
  * 4. VERIFY: All checks must pass
- * 5. ONLY THEN: Close the bead
+ * 5. ONLY THEN: Close the cell
  *
- * Closes bead, releases reservations, notifies coordinator.
+ * Closes cell, releases reservations, notifies coordinator.
  */
 export const swarm_complete = tool({
   description:
@@ -1189,8 +1189,8 @@ Continuing with completion, but this should be fixed for future subtasks.`;
         }
       }
 
-      // Close the bead - use project_key as working directory to find correct .beads/
-      // This fixes the issue where bead ID prefix (e.g., "pdf-library-g84.2") doesn't match CWD
+      // Close the cell - use project_key as working directory to find correct .beads/
+      // This fixes the issue where cell ID prefix (e.g., "pdf-library-g84.2") doesn't match CWD
       const closeResult =
         await Bun.$`bd close ${args.bead_id} --reason ${args.summary} --json`
           .cwd(args.project_key)
@@ -1208,7 +1208,7 @@ Continuing with completion, but this should be fixed for future subtasks.`;
         return JSON.stringify(
           {
             success: false,
-            error: "Failed to close bead",
+            error: "Failed to close cell",
             failed_step: "bd close",
             details: stderrOutput || stdoutOutput || "Unknown error from bd close command",
             bead_id: args.bead_id,
@@ -1218,20 +1218,20 @@ Continuing with completion, but this should be fixed for future subtasks.`;
                 ? [
                     `1. Verify project_key is correct: "${args.project_key}"`,
                     `2. Check .beads/ exists in that directory`,
-                    `3. Bead ID prefix "${args.bead_id.split("-")[0]}" should match project`,
+                    `3. Cell ID prefix "${args.bead_id.split("-")[0]}" should match project`,
                     `4. Try: beads_close(id="${args.bead_id}", reason="...")`,
                   ]
                 : [
-                    `1. Check bead exists: bd show ${args.bead_id}`,
-                    `2. Check bead status (might already be closed): beads_query()`,
-                    `3. If bead is blocked, unblock first: beads_update(id="${args.bead_id}", status="in_progress")`,
+                    `1. Check cell exists: bd show ${args.bead_id}`,
+                    `2. Check cell status (might already be closed): beads_query()`,
+                    `3. If cell is blocked, unblock first: beads_update(id="${args.bead_id}", status="in_progress")`,
                     `4. Try closing directly: beads_close(id="${args.bead_id}", reason="...")`,
                   ],
               hint: isNoDatabaseError
                 ? `The project_key "${args.project_key}" doesn't have a .beads/ directory. Make sure you're using the correct project path.`
                 : isNotFoundError
-                  ? `Bead "${args.bead_id}" not found. It may have been closed already or the ID is incorrect.`
-                  : "If bead is in 'blocked' status, you must change it to 'in_progress' or 'open' before closing.",
+                  ? `Cell "${args.bead_id}" not found. It may have been closed already or the ID is incorrect.`
+                  : "If cell is in 'blocked' status, you must change it to 'in_progress' or 'open' before closing.",
             },
           },
           null,
@@ -1497,7 +1497,7 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
         "",
         `### Recovery Actions`,
         "1. Check error message for specific issue",
-        "2. Review failed step (UBS scan, typecheck, bead close, etc.)",
+        "2. Review failed step (UBS scan, typecheck, cell close, etc.)",
         "3. Fix underlying issue or use skip flags if appropriate",
         "4. Retry swarm_complete after fixing",
       ]
@@ -1553,7 +1553,7 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
             common_fixes: {
               "Verification Gate": "Use skip_verification=true to bypass (not recommended)",
               "UBS scan": "Use skip_ubs_scan=true to bypass",
-              "Bead close": "Check bead status with beads_query(), may need beads_update() first",
+              "Cell close": "Check cell status with beads_query(), may need beads_update() first",
               "Self-evaluation": "Check evaluation JSON format matches EvaluationSchema",
             },
           },

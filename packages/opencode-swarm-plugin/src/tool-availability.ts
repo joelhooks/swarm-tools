@@ -8,7 +8,8 @@
  * - semantic-memory: Learning persistence with semantic search
  * - cass: Cross-agent session search for historical context
  * - ubs: Universal bug scanner for pre-commit checks
- * - beads (bd): Git-backed issue tracking
+ * - hive: Git-backed issue tracking (primary)
+ * - beads (bd): DEPRECATED - Use hive instead (kept for backward compatibility)
  * - swarm-mail: Embedded multi-agent coordination (PGLite-based)
  * - agent-mail: DEPRECATED - Legacy MCP server (use swarm-mail instead)
  */
@@ -25,7 +26,8 @@ export type ToolName =
   | "semantic-memory"
   | "cass"
   | "ubs"
-  | "beads"
+  | "hive"
+  | "beads" // DEPRECATED: Use "hive" instead
   | "swarm-mail"
   | "agent-mail";
 
@@ -185,6 +187,34 @@ const toolCheckers: Record<ToolName, () => Promise<ToolStatus>> = {
     }
   },
 
+  hive: async () => {
+    const exists = await commandExists("hive");
+    if (!exists) {
+      return {
+        available: false,
+        checkedAt: new Date().toISOString(),
+        error: "hive command not found",
+      };
+    }
+
+    try {
+      // Just check if hive can run - don't require a repo
+      const result = await Bun.$`hive --version`.quiet().nothrow();
+      return {
+        available: result.exitCode === 0,
+        checkedAt: new Date().toISOString(),
+      };
+    } catch (e) {
+      return {
+        available: false,
+        checkedAt: new Date().toISOString(),
+        error: String(e),
+      };
+    }
+  },
+
+  // DEPRECATED: Use hive instead
+  // Kept for backward compatibility only
   beads: async () => {
     const exists = await commandExists("bd");
     if (!exists) {
@@ -258,7 +288,9 @@ const fallbackBehaviors: Record<ToolName, string> = {
     "Learning data stored in-memory only (lost on session end)",
   cass: "Decomposition proceeds without historical context from past sessions",
   ubs: "Subtask completion skips bug scanning - manual review recommended",
-  beads: "Swarm cannot track issues - task coordination will be less reliable",
+  hive: "Swarm cannot track issues - task coordination will be less reliable",
+  beads:
+    "DEPRECATED: Use hive instead. Swarm cannot track issues - task coordination will be less reliable",
   "swarm-mail":
     "Multi-agent coordination disabled - file conflicts possible if multiple agents active",
   "agent-mail":
@@ -316,6 +348,7 @@ export async function checkAllTools(): Promise<
     "semantic-memory",
     "cass",
     "ubs",
+    "hive",
     "beads",
     "swarm-mail",
     "agent-mail",

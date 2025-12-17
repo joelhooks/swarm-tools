@@ -272,15 +272,13 @@ Rules:
 - 3-7 beads per swarm
 - No file overlap between subtasks
 
-### 6. Reserve Files (via Swarm Mail)
+### 6. Spawn Agents (Workers Reserve Their Own Files)
 
-```bash
-swarmmail_reserve(paths=[<files>], reason="<bead-id>: <description>", ttl_seconds=3600)
-```
-
-No two agents should edit the same file. Reservations prevent conflicts.
-
-### 7. Spawn Agents
+> **⚠️ CRITICAL: Coordinator NEVER reserves files.**
+>
+> Workers reserve their own files via `swarmmail_reserve()` as their first action.
+> This is how conflict detection works - reservation = ownership.
+> If coordinator reserves, workers get blocked and swarm stalls.
 
 **CRITICAL: Spawn ALL in a SINGLE message with multiple Task calls.**
 
@@ -410,7 +408,7 @@ Not: Do Everything Inline → Run Out of Context → Fail
 - [ ] **Planning delegated to swarm/planner subagent** (NOT inline)
 - [ ] BeadTree validated (no file conflicts)
 - [ ] Epic + subtasks created
-- [ ] Files reserved via **swarmmail_reserve**
+- [ ] **Coordinator did NOT reserve files** (workers do this themselves)
 - [ ] Workers spawned in parallel
 - [ ] Progress monitored via **swarmmail_inbox** (limit=5, no bodies)
 - [ ] PR created (or pushed to main)

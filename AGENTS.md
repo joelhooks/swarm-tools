@@ -1,5 +1,21 @@
 # Monorepo Guide: Bun + Turborepo
 
+## Prime Directive: TDD Everything
+
+**All code changes MUST follow Test-Driven Development:**
+
+1. **Red** - Write a failing test first
+2. **Green** - Write minimal code to make it pass
+3. **Refactor** - Clean up while tests stay green
+
+**No exceptions.** If you're touching code, you're touching tests first.
+
+- New feature? Write the test that describes the behavior.
+- Bug fix? Write the test that reproduces the bug.
+- Refactor? Ensure existing tests cover the behavior before changing.
+
+Run tests continuously: `bun turbo test --filter=<package>`
+
 ## Structure
 
 ```
@@ -196,6 +212,34 @@ Ensure `dependsOn: ["^build"]` in turbo.json so types are generated before depen
 
 PGLite may fail to initialize in parallel test runs. Tests fall back to in-memory mode automatically - this is expected behavior, not an error.
 
+## Naming Convention: The Hive Metaphor 🐝
+
+We use bee/hive metaphors consistently across the project. This isn't just branding - it's a mental model for multi-agent coordination.
+
+| Concept | Name | Metaphor |
+|---------|------|----------|
+| Work items (issues/tasks) | **Hive** | Honeycomb cells where work lives |
+| Individual work item | **Cell** | Single unit of work in the hive |
+| Agent coordination | **Swarm** | Bees working together |
+| Inter-agent messaging | **Swarm Mail** | Bees communicating via dance/pheromones |
+| Parallel workers | **Workers** | Worker bees |
+| Task orchestrator | **Coordinator** | Queen directing the swarm |
+| File locks | **Reservations** | Bees claiming cells |
+| Checkpoints | **Nectar** | Progress stored for later |
+
+**Naming rules:**
+- New features should fit the hive/swarm metaphor when possible
+- Avoid generic names (tasks, issues, tickets) - use the domain language
+- CLI commands: `swarm`, `hive` (not `beads`, `tasks`)
+- Tool prefixes: `hive_*`, `swarm_*`, `swarmmail_*`
+
+**Why bees?**
+- Swarms are decentralized but coordinated
+- Worker bees are autonomous but follow protocols
+- The hive is the shared state (event log)
+- Waggle dance = message passing
+- Honey = accumulated value from work
+
 ## Packages in This Repo
 
 ### swarm-mail
@@ -206,14 +250,15 @@ Event sourcing primitives for multi-agent coordination:
 - `Projections` - materialized views (agents, messages, reservations)
 - Effect-TS durable primitives (mailbox, cursor, lock, deferred)
 - `DatabaseAdapter` interface for dependency injection
+- **Hive** - git-synced work item tracking (formerly "beads")
 
 ### opencode-swarm-plugin
 
 OpenCode plugin providing:
 
-- Beads integration (issue tracking)
+- **Hive integration** (work item tracking, epics, dependencies)
 - Swarm coordination (task decomposition, parallel agents)
-- Agent Mail (inter-agent messaging)
+- Swarm Mail (inter-agent messaging)
 - Learning system (pattern maturity, anti-pattern detection)
 - Skills system (knowledge injection)
 

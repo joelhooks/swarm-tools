@@ -193,6 +193,90 @@ export const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_swarm_contexts_bead ON swarm_contexts(bead_id);
     `,
   },
+  {
+    version: 6,
+    description: "Add core event store tables (events, agents, messages, reservations)",
+    up: `
+      -- Events table: append-only event log
+      CREATE TABLE IF NOT EXISTS events (
+        id SERIAL PRIMARY KEY,
+        sequence SERIAL,
+        type TEXT NOT NULL,
+        project_key TEXT NOT NULL,
+        timestamp BIGINT NOT NULL,
+        data JSONB NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_key);
+      CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+      CREATE INDEX IF NOT EXISTS idx_events_sequence ON events(sequence);
+      CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+
+      -- Agents table: materialized view of registered agents
+      CREATE TABLE IF NOT EXISTS agents (
+        id SERIAL PRIMARY KEY,
+        project_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        program TEXT,
+        model TEXT,
+        task_description TEXT,
+        registered_at BIGINT NOT NULL,
+        last_active_at BIGINT NOT NULL,
+        UNIQUE(project_key, name)
+      );
+      CREATE INDEX IF NOT EXISTS idx_agents_project ON agents(project_key);
+
+      -- Messages table: materialized view of sent messages
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        project_key TEXT NOT NULL,
+        from_agent TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT,
+        thread_id TEXT,
+        importance TEXT NOT NULL DEFAULT 'normal',
+        ack_required BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at BIGINT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_key);
+      CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_from ON messages(from_agent);
+
+      -- Message recipients: join table for message routing
+      CREATE TABLE IF NOT EXISTS message_recipients (
+        id SERIAL PRIMARY KEY,
+        message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        agent_name TEXT NOT NULL,
+        read_at BIGINT,
+        acked_at BIGINT,
+        UNIQUE(message_id, agent_name)
+      );
+      CREATE INDEX IF NOT EXISTS idx_message_recipients_agent ON message_recipients(agent_name);
+      CREATE INDEX IF NOT EXISTS idx_message_recipients_message ON message_recipients(message_id);
+
+      -- Reservations table: materialized view of file locks
+      CREATE TABLE IF NOT EXISTS reservations (
+        id SERIAL PRIMARY KEY,
+        project_key TEXT NOT NULL,
+        agent_name TEXT NOT NULL,
+        path_pattern TEXT NOT NULL,
+        exclusive BOOLEAN NOT NULL DEFAULT TRUE,
+        reason TEXT,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        released_at BIGINT
+      );
+      CREATE INDEX IF NOT EXISTS idx_reservations_project ON reservations(project_key);
+      CREATE INDEX IF NOT EXISTS idx_reservations_agent ON reservations(agent_name);
+      CREATE INDEX IF NOT EXISTS idx_reservations_expires ON reservations(expires_at);
+    `,
+    down: `
+      DROP TABLE IF EXISTS message_recipients;
+      DROP TABLE IF EXISTS messages;
+      DROP TABLE IF EXISTS reservations;
+      DROP TABLE IF EXISTS agents;
+      DROP TABLE IF EXISTS events;
+    `,
+  },
 ];
 
 // ============================================================================

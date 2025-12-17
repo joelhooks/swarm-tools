@@ -14,21 +14,27 @@ OpenCode plugin for multi-agent swarm coordination with learning capabilities.
  ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝
 ```
 
+## Install
+
+```bash
+# Install
+npm install -g opencode-swarm-plugin@latest
+swarm setup
+
+# For semantic memory (optional but recommended)
+brew install ollama
+ollama serve &
+ollama pull mxbai-embed-large
+```
+
 ## Features
 
 - **Swarm Coordination** - Break tasks into parallel subtasks, spawn worker agents
-- **Beads Integration** - Git-backed issue tracking with atomic epic creation
+- **Hive Integration** - Git-backed work item tracking with atomic epic creation
 - **Agent Mail** - Inter-agent messaging with file reservations
 - **Learning System** - Pattern maturity, anti-pattern detection, confidence decay
 - **Skills System** - Knowledge injection with bundled and custom skills
 - **Checkpoint & Recovery** - Auto-checkpoint at 25/50/75%, survive context death (9 integration tests ✅)
-
-## Install
-
-```bash
-npm install -g opencode-swarm-plugin@latest
-swarm setup
-```
 
 ## Usage
 
@@ -38,18 +44,20 @@ swarm setup
 
 ## Tools Provided
 
-### Beads (Issue Tracking)
+### Hive (Work Item Tracking)
 
-| Tool                | Purpose                               |
-| ------------------- | ------------------------------------- |
-| `beads_create`      | Create bead with type-safe validation |
-| `beads_create_epic` | Atomic epic + subtasks creation       |
-| `beads_query`       | Query with filters                    |
-| `beads_update`      | Update status/description/priority    |
-| `beads_close`       | Close with reason                     |
-| `beads_start`       | Mark in-progress                      |
-| `beads_ready`       | Get next unblocked bead               |
-| `beads_sync`        | Sync to git                           |
+| Tool               | Purpose                               |
+| ------------------ | ------------------------------------- |
+| `hive_create`      | Create cell with type-safe validation |
+| `hive_create_epic` | Atomic epic + subtasks creation       |
+| `hive_query`       | Query with filters                    |
+| `hive_update`      | Update status/description/priority    |
+| `hive_close`       | Close with reason                     |
+| `hive_start`       | Mark in-progress                      |
+| `hive_ready`       | Get next unblocked cell               |
+| `hive_sync`        | Sync to git                           |
+
+> **Migration Note:** `beads_*` tools still work but show deprecation warnings. Update to `hive_*` tools.
 
 ### Swarm Mail (Agent Coordination)
 
@@ -108,8 +116,8 @@ When `swarm_progress` reports 25%, 50%, or 75% completion, a checkpoint is autom
 ```typescript
 // Stored in .swarm-mail/ directory (no external database needed)
 {
-  epic_id: "bd-123",
-  bead_id: "bd-123.1",
+  epic_id: "hv-123",
+  cell_id: "hv-123.1",
   strategy: "file-based",
   files: ["src/auth.ts", "src/middleware.ts"],
   progress_percent: 50,
@@ -133,8 +141,8 @@ When `swarm_progress` reports 25%, 50%, or 75% completion, a checkpoint is autom
 swarm_checkpoint({
   project_key: "/abs/path",
   agent_name: "WorkerA",
-  bead_id: "bd-123.1",
-  epic_id: "bd-123",
+  cell_id: "hv-123.1",
+  epic_id: "hv-123",
   files_modified: ["src/auth.ts"],
   progress_percent: 30,
   directives: { shared_context: "..." },
@@ -146,12 +154,12 @@ swarm_checkpoint({
 ```typescript
 swarm_recover({
   project_key: "/abs/path",
-  epic_id: "bd-123"
+  epic_id: "hv-123"
 })
 // Returns:
 // {
 //   found: true,
-//   context: { epic_id, bead_id, files, strategy, directives, recovery },
+//   context: { epic_id, cell_id, files, strategy, directives, recovery },
 //   age_seconds: 120
 // }
 ```
@@ -175,7 +183,7 @@ Located in `global-skills/`:
 
 ```
 src/
-├── beads.ts           # Beads integration
+├── hive.ts            # Hive integration (work item tracking)
 ├── agent-mail.ts      # Agent Mail tools (legacy MCP wrapper)
 ├── swarm-mail.ts      # Swarm Mail tools (new, uses swarm-mail package)
 ├── swarm.ts           # Swarm orchestration tools
@@ -197,7 +205,12 @@ src/
 | Dependency | Purpose |
 |------------|---------|
 | [OpenCode](https://opencode.ai) | AI coding agent (the plugin runs inside OpenCode) |
-| [Beads](https://github.com/steveyegge/beads) | Git-backed issue tracking |
+
+### Required for Semantic Memory
+
+| Dependency | Purpose | Install |
+|------------|---------|---------|
+| [Ollama](https://ollama.ai) | Embedding model for semantic memory | `brew install ollama && ollama serve & && ollama pull mxbai-embed-large` |
 
 ### Optional (Highly Recommended)
 
@@ -207,7 +220,7 @@ These tools significantly enhance the swarm experience:
 |------|---------|---------|
 | [CASS](https://github.com/Dicklesworthstone/coding_agent_session_search) | Historical context - queries past sessions for similar decompositions | See below |
 | [UBS](https://github.com/Dicklesworthstone/ultimate_bug_scanner) | Bug scanning - runs on subtask completion to catch issues | See below |
-| [semantic-memory](https://github.com/joelhooks/semantic-memory) | Learning persistence - stores patterns across sessions | See below |
+| [semantic-memory](https://github.com/joelhooks/semantic-memory) | Learning persistence - stores patterns across sessions | Requires Ollama (see above) |
 
 #### Installing CASS
 
@@ -232,23 +245,7 @@ pip install -e .
 
 #### Installing semantic-memory
 
-Requires [Ollama](https://ollama.ai) with an embedding model:
-
-```bash
-# 1. Install Ollama (macOS)
-brew install ollama
-
-# 2. Start Ollama service
-ollama serve
-
-# 3. Pull an embedding model
-ollama pull mxbai-embed-large
-
-# 4. Install the OpenCode plugin
-# Add to your OpenCode config
-```
-
-The `semantic-memory_check` tool verifies Ollama is ready.
+The `semantic-memory_check` tool verifies Ollama is ready (see installation steps above).
 
 **Why install these?**
 
@@ -284,7 +281,7 @@ bun run typecheck
 ```bash
 swarm setup     # Install and configure
 swarm doctor    # Check dependencies
-swarm init      # Initialize beads in project
+swarm init      # Initialize hive in project
 swarm config    # Show config file paths
 ```
 

@@ -18,10 +18,13 @@ import { z } from "zod";
 import {
   createBeadsAdapter,
   FlushManager,
+  importFromJSONL,
   type BeadsAdapter,
   type Bead as AdapterBead,
   getSwarmMail,
 } from "swarm-mail";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ============================================================================
 // Working Directory Configuration
@@ -130,6 +133,9 @@ const adapterCache = new Map<string, BeadsAdapter>();
 /**
  * Get or create a BeadsAdapter instance for a project
  * Exported for testing - allows tests to verify state directly
+ * 
+ * On first initialization, checks for .beads/issues.jsonl and imports
+ * historical beads if the database is empty.
  */
 export async function getBeadsAdapter(projectKey: string): Promise<BeadsAdapter> {
   if (adapterCache.has(projectKey)) {
@@ -143,8 +149,60 @@ export async function getBeadsAdapter(projectKey: string): Promise<BeadsAdapter>
   // Run migrations to ensure schema exists
   await adapter.runMigrations();
 
+  // Auto-migrate from JSONL if database is empty and file exists
+  await autoMigrateFromJSONL(adapter, projectKey);
+
   adapterCache.set(projectKey, adapter);
   return adapter;
+}
+
+/**
+ * Auto-migrate beads from .beads/issues.jsonl if:
+ * 1. The JSONL file exists
+ * 2. The database has no beads for this project
+ * 
+ * This enables seamless migration from the old bd CLI to the new PGLite-based system.
+ */
+async function autoMigrateFromJSONL(adapter: BeadsAdapter, projectKey: string): Promise<void> {
+  const jsonlPath = join(projectKey, ".beads", "issues.jsonl");
+  
+  // Check if JSONL file exists
+  if (!existsSync(jsonlPath)) {
+    return;
+  }
+
+  // Check if database already has beads
+  const existingBeads = await adapter.queryBeads(projectKey, { limit: 1 });
+  if (existingBeads.length > 0) {
+    return; // Already have beads, skip migration
+  }
+
+  // Read and import JSONL
+  try {
+    const jsonlContent = readFileSync(jsonlPath, "utf-8");
+    const result = await importFromJSONL(adapter, projectKey, jsonlContent, {
+      skipExisting: true, // Safety: don't overwrite if somehow beads exist
+    });
+
+    if (result.created > 0 || result.updated > 0) {
+      console.log(
+        `[beads] Auto-migrated ${result.created} beads from ${jsonlPath} (${result.skipped} skipped, ${result.errors.length} errors)`
+      );
+    }
+
+    if (result.errors.length > 0) {
+      console.warn(
+        `[beads] Migration errors:`,
+        result.errors.slice(0, 5).map((e) => `${e.beadId}: ${e.error}`)
+      );
+    }
+  } catch (error) {
+    // Non-fatal - log and continue
+    console.warn(
+      `[beads] Failed to auto-migrate from ${jsonlPath}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
 }
 
 /**

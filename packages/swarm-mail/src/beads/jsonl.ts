@@ -333,16 +333,28 @@ async function importSingleBead(
   if (!existing) {
     // Create new - directly insert with specified ID
     const db = await adapter.getDatabase();
+    
+    // Determine status and closed_at together to satisfy check constraint
+    const status = beadExport.status === "tombstone" ? "closed" : beadExport.status;
+    const isClosed = status === "closed";
+    
+    // For closed beads, use closed_at from export or fall back to updated_at
+    const closedAt = isClosed
+      ? (beadExport.closed_at 
+          ? new Date(beadExport.closed_at).getTime() 
+          : new Date(beadExport.updated_at).getTime())
+      : null;
+    
     await db.query(
       `INSERT INTO beads (
         id, project_key, type, status, title, description, priority,
-        parent_id, assignee, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        parent_id, assignee, created_at, updated_at, closed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         beadExport.id,
         projectKey,
         beadExport.issue_type,
-        beadExport.status === "tombstone" ? "closed" : beadExport.status,
+        status,
         beadExport.title,
         beadExport.description || null,
         beadExport.priority,
@@ -350,16 +362,9 @@ async function importSingleBead(
         beadExport.assignee || null,
         new Date(beadExport.created_at).getTime(),
         new Date(beadExport.updated_at).getTime(),
+        closedAt,
       ]
     );
-
-    // If status is closed, set closed_at
-    if (beadExport.status === "closed" && beadExport.closed_at) {
-      await db.query(
-        "UPDATE beads SET closed_at = $1 WHERE id = $2",
-        [new Date(beadExport.closed_at).getTime(), beadExport.id]
-      );
-    }
 
     // If it's a tombstone, mark as deleted
     if (beadExport.status === "tombstone") {
@@ -477,6 +482,11 @@ async function importDependencies(
   projectKey: string,
   beadExport: BeadExport
 ): Promise<void> {
+  // Skip if no dependencies
+  if (!beadExport.dependencies || beadExport.dependencies.length === 0) {
+    return;
+  }
+
   const db = await adapter.getDatabase();
 
   // Clear existing dependencies
@@ -503,6 +513,11 @@ async function importLabels(
   projectKey: string,
   beadExport: BeadExport
 ): Promise<void> {
+  // Skip if no labels
+  if (!beadExport.labels || beadExport.labels.length === 0) {
+    return;
+  }
+
   const db = await adapter.getDatabase();
 
   // Clear existing labels
@@ -524,6 +539,11 @@ async function importComments(
   projectKey: string,
   beadExport: BeadExport
 ): Promise<void> {
+  // Skip if no comments
+  if (!beadExport.comments || beadExport.comments.length === 0) {
+    return;
+  }
+
   const db = await adapter.getDatabase();
 
   // Clear existing comments (simple approach - could be smarter)

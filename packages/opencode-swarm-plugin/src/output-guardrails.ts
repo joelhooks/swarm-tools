@@ -109,14 +109,14 @@ export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
 
   skipTools: [
     // Beads tools - always return full output
-    "beads_create",
-    "beads_create_epic",
-    "beads_query",
-    "beads_update",
-    "beads_close",
-    "beads_start",
-    "beads_ready",
-    "beads_sync",
+    "hive_create",
+    "hive_create_epic",
+    "hive_query",
+    "hive_update",
+    "hive_close",
+    "hive_start",
+    "hive_ready",
+    "hive_sync",
 
     // Agent Mail tools - always return full output
     "agentmail_init",
@@ -142,7 +142,7 @@ export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
     "structured_validate",
     "structured_parse_evaluation",
     "structured_parse_decomposition",
-    "structured_parse_bead_tree",
+    "structured_parse_cell_tree",
 
     // Swarm orchestration tools - always return full output
     "swarm_select_strategy",

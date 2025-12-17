@@ -125,7 +125,7 @@ async function execTool(
 // Beads Tools
 // =============================================================================
 
-const beads_create = tool({
+const hive_create = tool({
   description: "Create a new bead with type-safe validation",
   args: {
     title: tool.schema.string().describe("Bead title"),
@@ -145,10 +145,10 @@ const beads_create = tool({
       .optional()
       .describe("Parent bead ID for epic children"),
   },
-  execute: (args, ctx) => execTool("beads_create", args, ctx),
+  execute: (args, ctx) => execTool("hive_create", args, ctx),
 });
 
-const beads_create_epic = tool({
+const hive_create_epic = tool({
   description: "Create epic with subtasks in one atomic operation",
   args: {
     epic_title: tool.schema.string().describe("Epic title"),
@@ -166,10 +166,10 @@ const beads_create_epic = tool({
       )
       .describe("Subtasks to create under the epic"),
   },
-  execute: (args, ctx) => execTool("beads_create_epic", args, ctx),
+  execute: (args, ctx) => execTool("hive_create_epic", args, ctx),
 });
 
-const beads_query = tool({
+const hive_query = tool({
   description: "Query beads with filters (replaces bd list, bd ready, bd wip)",
   args: {
     status: tool.schema
@@ -189,13 +189,13 @@ const beads_query = tool({
       .optional()
       .describe("Max results (default: 20)"),
   },
-  execute: (args, ctx) => execTool("beads_query", args, ctx),
+  execute: (args, ctx) => execTool("hive_query", args, ctx),
 });
 
-const beads_update = tool({
+const hive_update = tool({
   description: "Update bead status/description",
   args: {
-    id: tool.schema.string().describe("Bead ID"),
+    id: tool.schema.string().describe("Cell ID"),
     status: tool.schema
       .enum(["open", "in_progress", "blocked", "closed"])
       .optional()
@@ -208,44 +208,44 @@ const beads_update = tool({
       .optional()
       .describe("New priority"),
   },
-  execute: (args, ctx) => execTool("beads_update", args, ctx),
+  execute: (args, ctx) => execTool("hive_update", args, ctx),
 });
 
-const beads_close = tool({
+const hive_close = tool({
   description: "Close a bead with reason",
   args: {
-    id: tool.schema.string().describe("Bead ID"),
+    id: tool.schema.string().describe("Cell ID"),
     reason: tool.schema.string().describe("Completion reason"),
   },
-  execute: (args, ctx) => execTool("beads_close", args, ctx),
+  execute: (args, ctx) => execTool("hive_close", args, ctx),
 });
 
-const beads_start = tool({
+const hive_start = tool({
   description: "Mark a bead as in-progress",
   args: {
-    id: tool.schema.string().describe("Bead ID"),
+    id: tool.schema.string().describe("Cell ID"),
   },
-  execute: (args, ctx) => execTool("beads_start", args, ctx),
+  execute: (args, ctx) => execTool("hive_start", args, ctx),
 });
 
-const beads_ready = tool({
+const hive_ready = tool({
   description: "Get the next ready bead (unblocked, highest priority)",
   args: {},
-  execute: (args, ctx) => execTool("beads_ready", args, ctx),
+  execute: (args, ctx) => execTool("hive_ready", args, ctx),
 });
 
-const beads_sync = tool({
+const hive_sync = tool({
   description: "Sync beads to git and push (MANDATORY at session end)",
   args: {
     auto_pull: tool.schema.boolean().optional().describe("Pull before sync"),
   },
-  execute: (args, ctx) => execTool("beads_sync", args, ctx),
+  execute: (args, ctx) => execTool("hive_sync", args, ctx),
 });
 
 const beads_link_thread = tool({
   description: "Add metadata linking bead to Agent Mail thread",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     thread_id: tool.schema.string().describe("Agent Mail thread ID"),
   },
   execute: (args, ctx) => execTool("beads_link_thread", args, ctx),
@@ -375,7 +375,7 @@ const structured_validate = tool({
   args: {
     response: tool.schema.string().describe("Agent response to validate"),
     schema_name: tool.schema
-      .enum(["evaluation", "task_decomposition", "bead_tree"])
+      .enum(["evaluation", "task_decomposition", "cell_tree"])
       .describe("Schema to validate against"),
     max_retries: tool.schema
       .number()
@@ -403,12 +403,12 @@ const structured_parse_decomposition = tool({
   execute: (args, ctx) => execTool("structured_parse_decomposition", args, ctx),
 });
 
-const structured_parse_bead_tree = tool({
+const structured_parse_cell_tree = tool({
   description: "Parse and validate bead tree response",
   args: {
     response: tool.schema.string().describe("Agent response"),
   },
-  execute: (args, ctx) => execTool("structured_parse_bead_tree", args, ctx),
+  execute: (args, ctx) => execTool("structured_parse_cell_tree", args, ctx),
 });
 
 // =============================================================================
@@ -497,7 +497,7 @@ const swarm_decompose = tool({
 });
 
 const swarm_validate_decomposition = tool({
-  description: "Validate a decomposition response against BeadTreeSchema",
+  description: "Validate a decomposition response against CellTreeSchema",
   args: {
     response: tool.schema.string().describe("Decomposition response"),
   },
@@ -518,7 +518,7 @@ const swarm_progress = tool({
   args: {
     project_key: tool.schema.string().describe("Project key"),
     agent_name: tool.schema.string().describe("Agent name"),
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     status: tool.schema
       .enum(["in_progress", "blocked", "completed", "failed"])
       .describe("Status"),
@@ -543,7 +543,7 @@ const swarm_complete = tool({
   args: {
     project_key: tool.schema.string().describe("Project key"),
     agent_name: tool.schema.string().describe("Agent name"),
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     summary: tool.schema.string().describe("Completion summary"),
     evaluation: tool.schema.string().optional().describe("Self-evaluation JSON"),
     files_touched: tool.schema
@@ -566,7 +566,7 @@ const swarm_complete = tool({
 const swarm_record_outcome = tool({
   description: "Record subtask outcome for implicit feedback scoring",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     duration_ms: tool.schema.number().int().min(0).describe("Duration in ms"),
     error_count: tool.schema
       .number()
@@ -601,7 +601,7 @@ const swarm_subtask_prompt = tool({
   description: "Generate the prompt for a spawned subtask agent",
   args: {
     agent_name: tool.schema.string().describe("Agent name"),
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     epic_id: tool.schema.string().describe("Epic ID"),
     subtask_title: tool.schema.string().describe("Subtask title"),
     subtask_description: tool.schema
@@ -617,7 +617,7 @@ const swarm_subtask_prompt = tool({
 const swarm_spawn_subtask = tool({
   description: "Prepare a subtask for spawning with Task tool",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     epic_id: tool.schema.string().describe("Epic ID"),
     subtask_title: tool.schema.string().describe("Subtask title"),
     subtask_description: tool.schema
@@ -633,7 +633,7 @@ const swarm_spawn_subtask = tool({
 const swarm_complete_subtask = tool({
   description: "Handle subtask completion after Task agent returns",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     task_result: tool.schema.string().describe("Task result JSON"),
     files_touched: tool.schema
       .array(tool.schema.string())
@@ -646,7 +646,7 @@ const swarm_complete_subtask = tool({
 const swarm_evaluation_prompt = tool({
   description: "Generate self-evaluation prompt for a completed subtask",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID"),
+    bead_id: tool.schema.string().describe("Cell ID"),
     subtask_title: tool.schema.string().describe("Subtask title"),
     files_touched: tool.schema
       .array(tool.schema.string())
@@ -896,7 +896,7 @@ async function hasSwarmSign(): Promise<boolean> {
     const result = await new Promise<{ exitCode: number; stdout: string }>(
       (resolve) => {
         // Use swarm tool to query beads
-        const proc = spawn(SWARM_CLI, ["tool", "beads_query"], {
+        const proc = spawn(SWARM_CLI, ["tool", "hive_query"], {
           stdio: ["ignore", "pipe", "pipe"],
         });
         let stdout = "";
@@ -1006,14 +1006,14 @@ export const SwarmPlugin: Plugin = async (
   return {
     tool: {
       // Beads
-      beads_create,
-      beads_create_epic,
-      beads_query,
-      beads_update,
-      beads_close,
-      beads_start,
-      beads_ready,
-      beads_sync,
+      hive_create,
+      hive_create_epic,
+      hive_query,
+      hive_update,
+      hive_close,
+      hive_start,
+      hive_ready,
+      hive_sync,
       beads_link_thread,
       // Swarm Mail (Embedded)
       swarmmail_init,
@@ -1029,7 +1029,7 @@ export const SwarmPlugin: Plugin = async (
       structured_validate,
       structured_parse_evaluation,
       structured_parse_decomposition,
-      structured_parse_bead_tree,
+      structured_parse_cell_tree,
       // Swarm
       swarm_init,
       swarm_select_strategy,

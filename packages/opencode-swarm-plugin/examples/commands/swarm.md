@@ -42,7 +42,7 @@ Swarm Mail is embedded (no external server needed) and provides:
 
 - File reservations to prevent conflicts
 - Message passing between agents
-- Thread-based coordination tied to beads
+- Thread-based coordination tied to cells
 
 ## Workflow
 
@@ -201,7 +201,7 @@ swarm_plan_interactive(
 >
 > **DO NOT decompose inline in the coordinator thread.** This consumes massive context with file reading, CASS queries, and reasoning.
 >
-> **ALWAYS delegate to a `swarm/planner` subagent** that returns only the validated BeadTree JSON.
+> **ALWAYS delegate to a `swarm/planner` subagent** that returns only the validated CellTree JSON.
 
 **❌ Don't do this (inline planning):**
 
@@ -215,7 +215,7 @@ swarm_plan_interactive(
 
 ```bash
 # 1. Create planning bead
-beads_create(title="Plan: <task>", type="task", description="Decompose into subtasks")
+hive_create(title="Plan: <task>", type="task", description="Decompose into subtasks")
 
 # 2. Get final prompt from swarm_plan_interactive (when ready_to_decompose=true)
 # final_prompt = <from last swarm_plan_interactive call>
@@ -225,22 +225,22 @@ Task(
   subagent_type="swarm/planner",
   description="Decompose task: <task>",
   prompt="
-You are a swarm planner. Generate a BeadTree for this task.
+You are a swarm planner. Generate a CellTree for this task.
 
 <final_prompt from swarm_plan_interactive>
 
 ## Instructions
 1. Reason about decomposition strategy
-2. Generate BeadTree JSON
+2. Generate CellTree JSON
 3. Validate with swarm_validate_decomposition
-4. Return ONLY the validated BeadTree JSON (no analysis)
+4. Return ONLY the validated CellTree JSON (no analysis)
 
-Output: Valid BeadTree JSON only.
+Output: Valid CellTree JSON only.
   "
 )
 
 # 4. Subagent returns validated JSON, parse it
-# beadTree = <result from subagent>
+# cellTree = <result from subagent>
 ```
 
 **Planning Mode Behavior:**
@@ -262,14 +262,14 @@ Output: Valid BeadTree JSON only.
 ### 5. Create Beads
 
 ```bash
-beads_create_epic(epic_title="<task>", subtasks=[{title, files, priority}...])
+hive_create_epic(epic_title="<task>", subtasks=[{title, files, priority}...])
 ```
 
 Rules:
 
-- Each bead completable by one agent
+- Each cell completable by one agent
 - Independent where possible (parallelizable)
-- 3-7 beads per swarm
+- 3-7 cells per swarm
 - No file overlap between subtasks
 
 ### 6. Spawn Agents (Workers Reserve Their Own Files)
@@ -328,7 +328,7 @@ swarmmail_read_message(message_id=N)  # Read specific message
 - Worker blocked >5 min → Check inbox, offer guidance
 - File conflict → Mediate, reassign files
 - Worker asking questions → Answer directly
-- Scope creep → Redirect, create new bead for extras
+- Scope creep → Redirect, create new cell for extras
 
 If incompatibilities spotted, broadcast:
 
@@ -341,7 +341,7 @@ swarmmail_send(to=["*"], subject="Coordinator Update", body="<guidance>", import
 ```bash
 swarm_complete(project_key="$PWD", agent_name="<your-name>", bead_id="<epic-id>", summary="<done>", files_touched=[...])
 swarmmail_release()  # Release any remaining reservations
-beads_sync()
+hive_sync()
 ```
 
 ### 10. Create PR (unless --to-main)
@@ -406,7 +406,7 @@ Not: Do Everything Inline → Run Out of Context → Fail
 - [ ] **swarmmail_init** called FIRST
 - [ ] Knowledge gathered (semantic-memory, CASS, pdf-brain, skills)
 - [ ] **Planning delegated to swarm/planner subagent** (NOT inline)
-- [ ] BeadTree validated (no file conflicts)
+- [ ] CellTree validated (no file conflicts)
 - [ ] Epic + subtasks created
 - [ ] **Coordinator did NOT reserve files** (workers do this themselves)
 - [ ] Workers spawned in parallel

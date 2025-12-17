@@ -35,7 +35,7 @@ After knowledge gathering:
 1. Select strategy (auto or explicit)
 2. Generate decomposition with `swarm_plan_prompt` or `swarm_decompose`
 3. Validate with `swarm_validate_decomposition`
-4. Create beads with `beads_create_epic`
+4. Create cells with `hive_create_epic`
 
 ### 3. Worker Spawning
 
@@ -48,7 +48,7 @@ For each subtask:
 
 ### 4. Progress Monitoring
 
-- Check `beads_query(status="in_progress")` for active work
+- Check `hive_query(status="in_progress")` for active work
 - Check `swarmmail_inbox()` for worker messages
 - Intervene on blockers (see Intervention Patterns below)
 
@@ -97,7 +97,7 @@ For each subtask:
 - Scope changed fundamentally mid-swarm
 - Resource exhaustion (context, time, cost)
 
-On abort: Close all beads with reason, summarize partial progress.
+On abort: Close all cells with reason, summarize partial progress.
 
 ---
 

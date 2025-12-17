@@ -1333,13 +1333,13 @@ Continuing with completion, but this should be fixed for future subtasks.`;
                     `1. Verify project_key is correct: "${args.project_key}"`,
                     `2. Check .beads/ exists in that directory`,
                     `3. Cell ID prefix "${args.bead_id.split("-")[0]}" should match project`,
-                    `4. Try: beads_close(id="${args.bead_id}", reason="...")`,
+                    `4. Try: hive_close(id="${args.bead_id}", reason="...")`,
                   ]
                 : [
                     `1. Check cell exists: bd show ${args.bead_id}`,
-                    `2. Check cell status (might already be closed): beads_query()`,
-                    `3. If cell is blocked, unblock first: beads_update(id="${args.bead_id}", status="in_progress")`,
-                    `4. Try closing directly: beads_close(id="${args.bead_id}", reason="...")`,
+                    `2. Check cell status (might already be closed): hive_query()`,
+                    `3. If cell is blocked, unblock first: hive_update(id="${args.bead_id}", status="in_progress")`,
+                    `4. Try closing directly: hive_close(id="${args.bead_id}", reason="...")`,
                   ],
               hint: isNoDatabaseError
                 ? `The project_key "${args.project_key}" doesn't have a .beads/ directory. Make sure you're using the correct project path.`
@@ -1667,7 +1667,7 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
             common_fixes: {
               "Verification Gate": "Use skip_verification=true to bypass (not recommended)",
               "UBS scan": "Use skip_ubs_scan=true to bypass",
-              "Cell close": "Check cell status with beads_query(), may need beads_update() first",
+              "Cell close": "Check cell status with hive_query(), may need hive_update() first",
               "Self-evaluation": "Check evaluation JSON format matches EvaluationSchema",
             },
           },
@@ -1852,7 +1852,7 @@ export const swarm_accumulate_error = tool({
   description:
     "Record an error during subtask execution. Errors feed into retry prompts.",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID where error occurred"),
+    bead_id: tool.schema.string().describe("Cell ID where error occurred"),
     error_type: tool.schema
       .enum(["validation", "timeout", "conflict", "tool_failure", "unknown"])
       .describe("Category of error"),
@@ -1905,7 +1905,7 @@ export const swarm_get_error_context = tool({
   description:
     "Get accumulated errors for a bead. Returns formatted context for retry prompts.",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID to get errors for"),
+    bead_id: tool.schema.string().describe("Cell ID to get errors for"),
     include_resolved: tool.schema
       .boolean()
       .optional()
@@ -1987,7 +1987,7 @@ export const swarm_check_strikes = tool({
   description:
     "Check 3-strike status for a bead. Records failures, detects architectural problems, generates architecture review prompts.",
   args: {
-    bead_id: tool.schema.string().describe("Bead ID to check"),
+    bead_id: tool.schema.string().describe("Cell ID to check"),
     action: tool.schema
       .enum(["check", "add_strike", "clear", "get_prompt"])
       .describe(

@@ -599,7 +599,7 @@ export class InMemoryStrikeStorage implements StrikeStorage {
  *
  * Records a failure attempt and increments the strike count.
  *
- * @param beadId - Bead ID
+ * @param beadId - Cell ID
  * @param attempt - Description of what was attempted
  * @param reason - Why it failed
  * @param storage - Strike storage (defaults to in-memory)
@@ -635,7 +635,7 @@ export async function addStrike(
 /**
  * Get strike count for a bead
  *
- * @param beadId - Bead ID
+ * @param beadId - Cell ID
  * @param storage - Strike storage
  * @returns Strike count (0-3)
  */
@@ -650,7 +650,7 @@ export async function getStrikes(
 /**
  * Check if a bead has struck out (3 strikes)
  *
- * @param beadId - Bead ID
+ * @param beadId - Cell ID
  * @param storage - Strike storage
  * @returns True if bead has 3 strikes
  */
@@ -668,7 +668,7 @@ export async function isStrikedOut(
  * When a bead hits 3 strikes, this generates a prompt that forces
  * the human to question the architecture instead of attempting Fix #4.
  *
- * @param beadId - Bead ID
+ * @param beadId - Cell ID
  * @param storage - Strike storage
  * @returns Architecture review prompt
  */
@@ -711,7 +711,7 @@ This pattern suggests an **architectural problem**, not a bug.
 /**
  * Clear strikes for a bead (e.g., after successful fix)
  *
- * @param beadId - Bead ID
+ * @param beadId - Cell ID
  * @param storage - Strike storage
  */
 export async function clearStrikes(
@@ -793,7 +793,7 @@ export class ErrorAccumulator {
   /**
    * Record an error during subtask execution
    *
-   * @param beadId - Bead ID where error occurred
+   * @param beadId - Cell ID where error occurred
    * @param errorType - Category of error
    * @param message - Human-readable error message
    * @param options - Additional context (stack trace, tool name, etc.)
@@ -963,7 +963,7 @@ export class ErrorAccumulator {
 /**
  * Format memory store instruction for successful task completion
  *
- * @param beadId - Bead ID that completed
+ * @param beadId - Cell ID that completed
  * @param summary - Completion summary
  * @param filesTouched - Files modified
  * @param strategy - Decomposition strategy used (if applicable)
@@ -994,7 +994,7 @@ Files touched: ${filesTouched.join(", ") || "none"}`,
 /**
  * Format memory store instruction for architectural problems (3-strike)
  *
- * @param beadId - Bead ID that struck out
+ * @param beadId - Cell ID that struck out
  * @param failures - Array of failure attempts
  * @returns Memory store instruction object
  */
@@ -1048,7 +1048,7 @@ export function formatMemoryQueryForDecomposition(
 /**
  * Format memory validation hint when CASS history helped
  *
- * @param beadId - Bead ID that benefited from CASS
+ * @param beadId - Cell ID that benefited from CASS
  * @returns Memory validation hint
  */
 export function formatMemoryValidationHint(beadId: string): {

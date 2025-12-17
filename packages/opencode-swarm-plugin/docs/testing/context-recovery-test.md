@@ -38,7 +38,7 @@ This test scenario verifies that the swarm coordination system can survive conte
    - Epic bead with at least one subtask
    - Example:
      ```bash
-     beads_create_epic(
+     hive_create_epic(
        epic_title: "Test Context Recovery",
        subtasks: [
          { title: "Modify test files", files: ["test/file1.ts", "test/file2.ts"] }
@@ -151,7 +151,7 @@ This test scenario verifies that the swarm coordination system can survive conte
    ```typescript
    // Query the event store directly (if you have access)
    // Or check via beads metadata
-   beads_query(status: "in_progress")
+   hive_query(status: "in_progress")
    ```
    
    **Expected result:**

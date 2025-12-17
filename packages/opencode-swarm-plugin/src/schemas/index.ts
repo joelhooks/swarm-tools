@@ -9,7 +9,7 @@
  * - `CellStatusSchema` - Status enum (open, in_progress, blocked, closed)
  * - `CellTypeSchema` - Type enum (bug, feature, task, epic, chore)
  * - `SubtaskSpecSchema` - Subtask specification for epic creation
- * - `CellTreeSchema` - Epic + subtasks structure (formerly BeadTreeSchema)
+ * - `CellTreeSchema` - Epic + subtasks structure (formerly CellTreeSchema)
  *
  * **Backward compatibility:** All Bead* names are exported as deprecated aliases.
  *

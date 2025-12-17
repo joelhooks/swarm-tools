@@ -9,7 +9,7 @@
  * 2. `structured_validate` - Extract + validate against named schema
  * 3. `structured_parse_evaluation` - Typed parsing for agent self-evaluations
  * 4. `structured_parse_decomposition` - Typed parsing for task breakdowns
- * 5. `structured_parse_bead_tree` - Typed parsing for epic + subtasks
+ * 5. `structured_parse_cell_tree` - Typed parsing for epic + subtasks
  *
  * @module structured
  */
@@ -18,12 +18,12 @@ import { z, type ZodSchema } from "zod";
 import {
   EvaluationSchema,
   TaskDecompositionSchema,
-  BeadTreeSchema,
+  CellTreeSchema,
   ValidationResultSchema,
   CriterionEvaluationSchema,
   type Evaluation,
   type TaskDecomposition,
-  type BeadTree,
+  type CellTree,
   type ValidationResult,
 } from "./schemas";
 
@@ -96,7 +96,7 @@ function formatZodErrors(error: z.ZodError): string[] {
 const SCHEMA_REGISTRY: Record<string, ZodSchema> = {
   evaluation: EvaluationSchema,
   task_decomposition: TaskDecompositionSchema,
-  bead_tree: BeadTreeSchema,
+  cell_tree: CellTreeSchema,
 };
 
 /**
@@ -377,12 +377,12 @@ export const structured_validate = tool({
   args: {
     response: tool.schema.string().describe("Agent response to validate"),
     schema_name: tool.schema
-      .enum(["evaluation", "task_decomposition", "bead_tree"])
+      .enum(["evaluation", "task_decomposition", "cell_tree"])
       .describe(
         "Schema to validate against: " +
           "evaluation = agent self-eval with criteria, " +
           "task_decomposition = swarm task breakdown, " +
-          "bead_tree = epic with subtasks",
+          "cell_tree = epic with subtasks",
       ),
     max_retries: tool.schema
       .number()
@@ -650,11 +650,11 @@ export const structured_parse_decomposition = tool({
 /**
  * Parse and validate a bead tree (epic with subtasks)
  *
- * Validates the structure before creating beads.
+ * Validates the structure before creating cells.
  */
-export const structured_parse_bead_tree = tool({
+export const structured_parse_cell_tree = tool({
   description:
-    "Parse and validate bead tree response. Uses BeadTreeSchema. Validates before creating epic with subtasks.",
+    "Parse and validate bead tree response. Uses CellTreeSchema. Validates before creating epic with subtasks.",
   args: {
     response: tool.schema
       .string()
@@ -663,7 +663,7 @@ export const structured_parse_bead_tree = tool({
   async execute(args, ctx) {
     try {
       const [extracted, method] = extractJsonFromText(args.response);
-      const validated = BeadTreeSchema.parse(extracted) as BeadTree;
+      const validated = CellTreeSchema.parse(extracted) as CellTree;
 
       // Collect all files for reservation planning
       const allFiles = validated.subtasks.flatMap((s) => s.files);
@@ -751,5 +751,12 @@ export const structuredTools = {
   structured_validate: structured_validate,
   structured_parse_evaluation: structured_parse_evaluation,
   structured_parse_decomposition: structured_parse_decomposition,
-  structured_parse_bead_tree: structured_parse_bead_tree,
+  structured_parse_cell_tree: structured_parse_cell_tree,
 };
+
+// ============================================================================
+// Backward Compatibility Aliases
+// ============================================================================
+
+/** @deprecated Use structured_parse_cell_tree instead */
+export const structured_parse_bead_tree = structured_parse_cell_tree;

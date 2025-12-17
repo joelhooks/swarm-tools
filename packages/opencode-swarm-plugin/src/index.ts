@@ -198,8 +198,8 @@ export const SwarmPlugin: Plugin = async (
      * Hook after tool execution for automatic cleanup and guardrails
      *
      * - Applies output guardrails to prevent context blowout from MCP tools
-     * - Auto-releases file reservations after swarm:complete or beads:close
-     * - Auto-syncs beads after closing
+     * - Auto-releases file reservations after swarm:complete or hive:close
+     * - Auto-syncs cells after closing
      */
     "tool.execute.after": async (input, output) => {
       const toolName = input.tool;
@@ -249,8 +249,8 @@ export const SwarmPlugin: Plugin = async (
         await releaseReservations();
       }
 
-      // Auto-sync hive after closing (supports both hive_close and legacy beads_close)
-      if (toolName === "hive_close" || toolName === "beads_close") {
+      // Auto-sync hive after closing (supports both hive_close and legacy hive_close)
+      if (toolName === "hive_close" || toolName === "hive_close") {
         // Trigger async sync without blocking - fire and forget
         void $`bd sync`.quiet().nothrow();
       }
@@ -284,7 +284,7 @@ export * from "./schemas";
  * - hiveTools - All hive tool definitions (primary)
  * - beadsTools - Legacy aliases for backward compatibility (deprecated)
  * - Individual tool exports (hive_create, hive_query, etc.)
- * - Legacy aliases (beads_create, beads_query, etc.)
+ * - Legacy aliases (hive_create, hive_query, etc.)
  * - HiveError, HiveValidationError (and BeadError, BeadValidationError aliases)
  *
  * DEPRECATED: Use hive_* tools instead of beads_* tools

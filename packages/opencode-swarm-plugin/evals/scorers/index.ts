@@ -1,5 +1,5 @@
 import { createScorer } from "evalite";
-import type { BeadTree } from "../../src/schemas/index.js";
+import type { CellTree } from "../../src/schemas/index.js";
 
 /**
  * Custom scorers for evaluating swarm task decomposition quality
@@ -18,7 +18,7 @@ export const subtaskIndependence = createScorer({
   description: "Checks that no files appear in multiple subtasks",
   scorer: ({ output }) => {
     try {
-      const beadTree = JSON.parse(String(output)) as BeadTree;
+      const beadTree = JSON.parse(String(output)) as CellTree;
       const fileMap = new Map<string, number>();
 
       // Track which files appear in which subtasks
@@ -48,7 +48,7 @@ export const subtaskIndependence = createScorer({
     } catch (error) {
       return {
         score: 0,
-        message: `Failed to parse BeadTree: ${error}`,
+        message: `Failed to parse CellTree: ${error}`,
       };
     }
   },
@@ -82,7 +82,7 @@ export const coverageCompleteness = createScorer({
   description: "Checks that subtasks cover the full task scope",
   scorer: ({ output, expected }) => {
     try {
-      const beadTree = JSON.parse(String(output)) as BeadTree;
+      const beadTree = JSON.parse(String(output)) as CellTree;
 
       // If expected files specified, check coverage
       const expectedData = expected as Record<string, unknown> | undefined;
@@ -127,7 +127,7 @@ export const coverageCompleteness = createScorer({
     } catch (error) {
       return {
         score: 0,
-        message: `Failed to parse BeadTree: ${error}`,
+        message: `Failed to parse CellTree: ${error}`,
       };
     }
   },
@@ -148,7 +148,7 @@ export const instructionClarity = createScorer({
   description: "Checks that subtasks have clear, actionable instructions",
   scorer: ({ output }) => {
     try {
-      const beadTree = JSON.parse(String(output)) as BeadTree;
+      const beadTree = JSON.parse(String(output)) as CellTree;
 
       if (beadTree.subtasks.length === 0) {
         return {
@@ -193,7 +193,7 @@ export const instructionClarity = createScorer({
     } catch (error) {
       return {
         score: 0,
-        message: `Failed to parse BeadTree: ${error}`,
+        message: `Failed to parse CellTree: ${error}`,
       };
     }
   },

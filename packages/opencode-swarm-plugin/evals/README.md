@@ -71,13 +71,13 @@ evalite("My decomposition test", {
   },
   task: async (input) => {
     // Call your decomposition logic here
-    // Should return BeadTree JSON as string
+    // Should return CellTree JSON as string
   },
   scorers: [subtaskIndependence, coverageCompleteness],
 });
 ```
 
-## BeadTree Format
+## CellTree Format
 
 Scorers expect output as JSON string matching:
 

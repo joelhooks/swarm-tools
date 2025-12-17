@@ -36,7 +36,7 @@ Swarm Mail is embedded (no external server needed) and provides:
 
 - File reservations to prevent conflicts
 - Message passing between agents
-- Thread-based coordination tied to beads
+- Thread-based coordination tied to cells
 
 ## When to Use Swarm Coordination
 

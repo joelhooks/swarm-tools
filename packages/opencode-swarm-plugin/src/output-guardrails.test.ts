@@ -203,7 +203,7 @@ describe("guardrailOutput", () => {
     const longOutput = "a".repeat(50000);
 
     // Beads tools should never be truncated
-    const result = guardrailOutput("beads_create", longOutput);
+    const result = guardrailOutput("hive_create", longOutput);
 
     expect(result.truncated).toBe(false);
     expect(result.output).toBe(longOutput);
@@ -281,7 +281,7 @@ describe("guardrailOutput", () => {
 
     // Test a sample of skip tools
     const samplesToTest = [
-      "beads_create",
+      "hive_create",
       "agentmail_send",
       "swarmmail_inbox",
       "structured_validate",
@@ -361,8 +361,8 @@ describe("DEFAULT_GUARDRAIL_CONFIG", () => {
 
     // Sample of tools that should be in skipTools
     const expectedSkips = [
-      "beads_create",
-      "beads_sync",
+      "hive_create",
+      "hive_sync",
       "agentmail_init",
       "swarmmail_send",
       "structured_parse_evaluation",

@@ -22,7 +22,7 @@ import { tool } from "@opencode-ai/plugin";
  * Prompt for decomposing a task into parallelizable subtasks.
  *
  * Used by swarm_decompose to instruct the agent on how to break down work.
- * The agent responds with a BeadTree that gets validated.
+ * The agent responds with a CellTree that gets validated.
  */
 export const DECOMPOSITION_PROMPT = `You are decomposing a task into parallelizable subtasks for a swarm of agents.
 
@@ -164,7 +164,7 @@ export const SUBTASK_PROMPT = `You are a swarm agent working on a subtask of a l
 
 ## Your Identity
 - **Agent Name**: {agent_name}
-- **Bead ID**: {bead_id}
+- **Cell ID**: {bead_id}
 - **Epic ID**: {epic_id}
 
 ## Your Subtask
@@ -187,9 +187,9 @@ send a message to the coordinator requesting the change.
 You MUST keep your cell updated as you work:
 
 1. **Your cell is already in_progress** - don't change this unless blocked
-2. **If blocked**: \`beads_update {bead_id} --status blocked\` and message coordinator
+2. **If blocked**: \`hive_update {bead_id} --status blocked\` and message coordinator
 3. **When done**: Use \`swarm_complete\` - it closes your cell automatically
-4. **Discovered issues**: Create new cells with \`beads_create "issue" -t bug\`
+4. **Discovered issues**: Create new cells with \`hive_create "issue" -t bug\`
 
 **Never work silently.** Your cell status is how the swarm tracks progress.
 
@@ -254,7 +254,7 @@ export const SUBTASK_PROMPT_V2 = `You are a swarm agent working on: **{subtask_t
 
 ## [IDENTITY]
 Agent: (assigned at spawn)
-Bead: {bead_id}
+Cell: {bead_id}
 Epic: {epic_id}
 
 ## [TASK]
@@ -398,7 +398,7 @@ swarm_complete(
 - Records learning signals
 - Notifies coordinator
 
-**DO NOT manually close the cell with beads_close.** Use swarm_complete.
+**DO NOT manually close the cell with hive_close.** Use swarm_complete.
 
 ## [SWARM MAIL COMMUNICATION]
 
@@ -417,7 +417,7 @@ swarmmail_send(
   importance="high",
   thread_id="{epic_id}"
 )
-beads_update(id="{bead_id}", status="blocked")
+hive_update(id="{bead_id}", status="blocked")
 \`\`\`
 
 ### Report Issues to Other Agents
@@ -446,7 +446,7 @@ You can create new cells against this epic when you discover:
 - **Dependencies**: Need something from another agent? File and link it.
 
 \`\`\`
-beads_create(
+hive_create(
   title="<descriptive title>",
   type="bug",  # or "task", "chore"
   priority=2,
@@ -458,8 +458,8 @@ beads_create(
 **Don't silently ignore issues.** File them so they get tracked and addressed.
 
 Other cell operations:
-- beads_update(id, status) - Mark blocked if stuck
-- beads_query(status="open") - See what else needs work
+- hive_update(id, status) - Mark blocked if stuck
+- hive_query(status="open") - See what else needs work
 
 ### Skills
 - skills_list() - Discover available skills
@@ -473,7 +473,7 @@ Other cell operations:
 2. Step 2 (semantic-memory_find) MUST happen before starting work
 3. Step 4 (swarmmail_reserve) - YOU reserve files, not coordinator
 4. Step 6 (swarm_progress) - Report at milestones, don't work silently
-5. Step 9 (swarm_complete) - Use this to close, NOT beads_close
+5. Step 9 (swarm_complete) - Use this to close, NOT hive_close
 
 **If you skip these steps:**
 - Your work won't be tracked (swarm_complete will fail)
@@ -492,7 +492,7 @@ Begin now.`;
 export const EVALUATION_PROMPT = `Evaluate the work completed for this subtask.
 
 ## Subtask
-**Bead ID**: {bead_id}
+**Cell ID**: {bead_id}
 **Title**: {subtask_title}
 
 ## Files Modified
@@ -916,7 +916,7 @@ export const swarm_plan_prompt = tool({
             STRATEGIES[selectedStrategy as keyof typeof STRATEGIES]
               .antiPatterns,
         },
-        expected_schema: "BeadTree",
+        expected_schema: "CellTree",
         schema_hint: {
           epic: { title: "string", description: "string?" },
           subtasks: [

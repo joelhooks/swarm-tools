@@ -6,7 +6,7 @@
  *
  * Key responsibilities:
  * - Decomposition prompt generation
- * - BeadTree validation
+ * - CellTree validation
  * - File conflict detection
  * - Instruction conflict detection
  * - Delegation to planner subagents
@@ -14,7 +14,7 @@
 
 import { tool } from "@opencode-ai/plugin";
 import { z } from "zod";
-import { BeadTreeSchema } from "./schemas";
+import { CellTreeSchema } from "./schemas";
 import {
   POSITIVE_MARKERS,
   NEGATIVE_MARKERS,
@@ -29,7 +29,7 @@ import {
  * Prompt for decomposing a task into parallelizable subtasks.
  *
  * Used by swarm_decompose to instruct the agent on how to break down work.
- * The agent responds with a BeadTree that gets validated.
+ * The agent responds with a CellTree that gets validated.
  */
 const DECOMPOSITION_PROMPT = `You are decomposing a task into parallelizable subtasks for a swarm of agents.
 
@@ -44,9 +44,9 @@ const DECOMPOSITION_PROMPT = `You are decomposing a task into parallelizable sub
 
 After decomposition, the coordinator will:
 1. Create an epic bead for the overall task
-2. Create child beads for each subtask
+2. Create child cells for each subtask
 3. Track progress through bead status updates
-4. Close beads with summaries when complete
+4. Close cells with summaries when complete
 
 Agents MUST update their bead status as they work. No silent progress.
 
@@ -66,7 +66,7 @@ Respond with a JSON object matching this schema:
 \`\`\`typescript
 {
   epic: {
-    title: string,        // Epic title for the beads tracker
+    title: string,        // Epic title for the hive tracker
     description?: string  // Brief description of the overall goal
   },
   subtasks: [
@@ -121,9 +121,9 @@ const STRATEGY_DECOMPOSITION_PROMPT = `You are decomposing a task into paralleli
 
 After decomposition, the coordinator will:
 1. Create an epic bead for the overall task
-2. Create child beads for each subtask
+2. Create child cells for each subtask
 3. Track progress through bead status updates
-4. Close beads with summaries when complete
+4. Close cells with summaries when complete
 
 Agents MUST update their bead status as they work. No silent progress.
 
@@ -143,7 +143,7 @@ Respond with a JSON object matching this schema:
 \`\`\`typescript
 {
   epic: {
-    title: string,        // Epic title for the beads tracker
+    title: string,        // Epic title for the hive tracker
     description?: string  // Brief description of the overall goal
   },
   subtasks: [
@@ -425,7 +425,7 @@ function formatCassHistoryForPrompt(history: CassSearchResult): string {
  * Decompose a task into a bead tree
  *
  * This is a PROMPT tool - it returns a prompt for the agent to respond to.
- * The agent's response (JSON) should be validated with BeadTreeSchema.
+ * The agent's response (JSON) should be validated with CellTreeSchema.
  *
  * Optionally queries CASS for similar past tasks to inform decomposition.
  */
@@ -512,7 +512,7 @@ export const swarm_decompose = tool({
     return JSON.stringify(
       {
         prompt,
-        expected_schema: "BeadTree",
+        expected_schema: "CellTree",
         schema_hint: {
           epic: { title: "string", description: "string?" },
           subtasks: [
@@ -526,7 +526,7 @@ export const swarm_decompose = tool({
           ],
         },
         validation_note:
-          "Parse agent response as JSON and validate with BeadTreeSchema from schemas/bead.ts",
+          "Parse agent response as JSON and validate with CellTreeSchema from schemas/bead.ts",
         cass_history: cassResultInfo,
         // Add semantic-memory query instruction
         memory_query: formatMemoryQueryForDecomposition(args.task, 3),
@@ -543,16 +543,16 @@ export const swarm_decompose = tool({
  * Use this after the agent responds to swarm:decompose to validate the structure.
  */
 export const swarm_validate_decomposition = tool({
-  description: "Validate a decomposition response against BeadTreeSchema",
+  description: "Validate a decomposition response against CellTreeSchema",
   args: {
     response: tool.schema
       .string()
-      .describe("JSON response from agent (BeadTree format)"),
+      .describe("JSON response from agent (CellTree format)"),
   },
   async execute(args) {
     try {
       const parsed = JSON.parse(args.response);
-      const validated = BeadTreeSchema.parse(parsed);
+      const validated = CellTreeSchema.parse(parsed);
 
       // Additional validation: check for file conflicts
       const conflicts = detectFileConflicts(validated.subtasks);
@@ -608,7 +608,7 @@ export const swarm_validate_decomposition = tool({
       return JSON.stringify(
         {
           valid: true,
-          bead_tree: validated,
+          cell_tree: validated,
           stats: {
             subtask_count: validated.subtasks.length,
             total_files: new Set(validated.subtasks.flatMap((s) => s.files))
@@ -667,10 +667,10 @@ export const swarm_validate_decomposition = tool({
  * - CASS queries
  * - Skills discovery
  * - File analysis
- * - BeadTree generation
+ * - CellTree generation
  *
- * The planner returns ONLY structured BeadTree JSON, which the coordinator
- * validates and uses to create beads.
+ * The planner returns ONLY structured CellTree JSON, which the coordinator
+ * validates and uses to create cells.
  *
  * @example
  * ```typescript
@@ -815,7 +815,7 @@ export const swarm_delegate_planning = tool({
     const subagentInstructions = `
 ## CRITICAL: Output Format
 
-You are a planner subagent. Your ONLY output must be valid JSON matching the BeadTree schema.
+You are a planner subagent. Your ONLY output must be valid JSON matching the CellTree schema.
 
 DO NOT include:
 - Explanatory text before or after the JSON
@@ -849,7 +849,7 @@ OUTPUT ONLY the raw JSON object.
   ]
 }
 
-Now generate the BeadTree for the given task.`;
+Now generate the CellTree for the given task.`;
 
     const fullPrompt = `${planningPrompt}\n\n${subagentInstructions}`;
 
@@ -863,12 +863,12 @@ Now generate the BeadTree for the given task.`;
           selected: selectedStrategy,
           reasoning: strategyReasoning,
         },
-        expected_output: "BeadTree JSON (raw JSON, no markdown)",
+        expected_output: "CellTree JSON (raw JSON, no markdown)",
         next_steps: [
           "1. Spawn subagent with Task tool using returned prompt",
           "2. Parse subagent response as JSON",
           "3. Validate with swarm_validate_decomposition",
-          "4. Create beads with beads_create_epic",
+          "4. Create cells with hive_create_epic",
         ],
         cass_history: cassResultInfo,
         skills: skillsInfo,

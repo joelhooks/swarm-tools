@@ -2,7 +2,7 @@
 
 **Analysis Date:** 2025-12-13  
 **Source:** obra/superpowers repo  
-**Bead:** opencode-swarm-plugin-v737h.1
+**Cell:** opencode-swarm-plugin-v737h.1
 
 ## Executive Summary
 

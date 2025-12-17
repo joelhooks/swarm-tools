@@ -951,11 +951,11 @@ Synthesize findings into shared_context for workers.
 \`\`\`
 swarm_select_strategy(task="<task>")
 swarm_plan_prompt(task="<task>", context="<synthesized knowledge>")
-swarm_validate_decomposition(response="<BeadTree JSON>")
+swarm_validate_decomposition(response="<CellTree JSON>")
 \`\`\`
 
 ### Phase 4: Create Beads
-\`beads_create_epic(epic_title="<task>", subtasks=[...])\`
+\`hive_create_epic(epic_title="<task>", subtasks=[...])\`
 
 ### Phase 5: Reserve Files
 \`swarmmail_reserve(paths=[...], reason="<bead-id>: <desc>")\`
@@ -979,7 +979,7 @@ Intervene if: blocked >5min, file conflicts, scope creep.
 ### Phase 8: Complete
 \`\`\`
 swarm_complete(...)
-beads_sync()
+hive_sync()
 \`\`\`
 
 ## Strategy Reference
@@ -1033,7 +1033,7 @@ Synthesize findings - note relevant patterns, past approaches, and skills to rec
 
 \`swarm_plan_prompt(task="<task>", context="<synthesized knowledge>")\`
 
-### 4. Output BeadTree
+### 4. Output CellTree
 
 Return ONLY valid JSON - no markdown, no explanation:
 
@@ -1093,7 +1093,7 @@ Your Task prompt contains detailed instructions including:
 6. **swarm_progress()** - Report at 25/50/75%
 7. **swarm_checkpoint()** - Before risky operations
 8. **semantic-memory_store()** - Store learnings
-9. **swarm_complete()** - NOT beads_close
+9. **swarm_complete()** - NOT hive_close
 
 ## Non-Negotiables
 
@@ -1112,7 +1112,7 @@ swarmmail_send(
   body="<what you need>",
   importance="high"
 )
-beads_update(id="<bead-id>", status="blocked")
+hive_update(id="<bead-id>", status="blocked")
 \`\`\`
 
 ## Focus
@@ -2224,9 +2224,9 @@ async function listTools() {
   }
 
   console.log(dim("Usage: swarm tool <name> [--json '<args>']"));
-  console.log(dim("Example: swarm tool beads_ready"));
+  console.log(dim("Example: swarm tool hive_ready"));
   console.log(
-    dim('Example: swarm tool beads_create --json \'{"title": "Fix bug"}\''),
+    dim('Example: swarm tool hive_create --json \'{"title": "Fix bug"}\''),
   );
 }
 

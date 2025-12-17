@@ -884,7 +884,7 @@ const warnedTools = new Set<string>();
  * Log a deprecation warning for a renamed tool.
  * Only warns once per tool name per session.
  * 
- * @param oldName - The deprecated tool name (e.g., "beads_create")
+ * @param oldName - The deprecated tool name (e.g., "hive_create")
  * @param newName - The new tool name to use instead (e.g., "hive_create")
  */
 function warnDeprecated(oldName: string, newName: string): void {

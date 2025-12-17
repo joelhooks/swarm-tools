@@ -7,7 +7,7 @@ import type { ToolContext } from "@opencode-ai/plugin";
 import { describe, expect, it } from "bun:test";
 import { z } from "zod";
 import {
-  BeadTreeSchema,
+  CellTreeSchema,
   EvaluationSchema,
   TaskDecompositionSchema,
 } from "./schemas";
@@ -18,7 +18,7 @@ import {
   formatZodErrors,
   getSchemaByName,
   structured_extract_json,
-  structured_parse_bead_tree,
+  structured_parse_cell_tree,
   structured_parse_decomposition,
   structured_parse_evaluation,
   structured_validate,
@@ -337,9 +337,9 @@ describe("getSchemaByName", () => {
     expect(schema).toBe(TaskDecompositionSchema);
   });
 
-  it("returns BeadTreeSchema for 'bead_tree'", () => {
-    const schema = getSchemaByName("bead_tree");
-    expect(schema).toBe(BeadTreeSchema);
+  it("returns CellTreeSchema for 'cell_tree'", () => {
+    const schema = getSchemaByName("cell_tree");
+    expect(schema).toBe(CellTreeSchema);
   });
 
   it("throws error for unknown schema name", () => {
@@ -353,7 +353,7 @@ describe("getSchemaByName", () => {
       if (error instanceof Error) {
         expect(error.message).toContain("evaluation");
         expect(error.message).toContain("task_decomposition");
-        expect(error.message).toContain("bead_tree");
+        expect(error.message).toContain("cell_tree");
       }
     }
   });
@@ -552,7 +552,7 @@ describe("structured_validate", () => {
     });
   });
 
-  describe("bead_tree schema", () => {
+  describe("cell_tree schema", () => {
     it("validates correct bead tree", async () => {
       const validTree = {
         epic: { title: "Epic", description: "Desc" },
@@ -568,7 +568,7 @@ describe("structured_validate", () => {
       const result = await structured_validate.execute(
         {
           response: JSON.stringify(validTree),
-          schema_name: "bead_tree",
+          schema_name: "cell_tree",
         },
         mockCtx,
       );
@@ -852,10 +852,10 @@ describe("structured_parse_decomposition", () => {
 });
 
 // ============================================================================
-// 9. structured_parse_bead_tree tool
+// 9. structured_parse_cell_tree tool
 // ============================================================================
 
-describe("structured_parse_bead_tree", () => {
+describe("structured_parse_cell_tree", () => {
   const mockCtx = {} as ToolContext;
 
   it("parses valid bead tree", async () => {
@@ -881,7 +881,7 @@ describe("structured_parse_bead_tree", () => {
         },
       ],
     };
-    const result = await structured_parse_bead_tree.execute(
+    const result = await structured_parse_cell_tree.execute(
       { response: JSON.stringify(validTree) },
       mockCtx,
     );
@@ -917,7 +917,7 @@ describe("structured_parse_bead_tree", () => {
         },
       ],
     };
-    const result = await structured_parse_bead_tree.execute(
+    const result = await structured_parse_cell_tree.execute(
       { response: JSON.stringify(tree) },
       mockCtx,
     );
@@ -944,7 +944,7 @@ describe("structured_parse_bead_tree", () => {
         },
       ],
     };
-    const result = await structured_parse_bead_tree.execute(
+    const result = await structured_parse_cell_tree.execute(
       { response: JSON.stringify(tree) },
       mockCtx,
     );
@@ -955,7 +955,7 @@ describe("structured_parse_bead_tree", () => {
   });
 
   it("returns error for invalid bead tree", async () => {
-    const result = await structured_parse_bead_tree.execute(
+    const result = await structured_parse_cell_tree.execute(
       { response: '{"epic": {}}' }, // Missing required fields
       mockCtx,
     );
@@ -966,7 +966,7 @@ describe("structured_parse_bead_tree", () => {
   });
 
   it("includes expected shape in error", async () => {
-    const result = await structured_parse_bead_tree.execute(
+    const result = await structured_parse_cell_tree.execute(
       { response: '{"wrong": true}' },
       mockCtx,
     );

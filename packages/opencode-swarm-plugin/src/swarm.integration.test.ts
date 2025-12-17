@@ -85,7 +85,7 @@ describe("swarm_decompose", () => {
     const parsed = JSON.parse(result);
 
     expect(parsed).toHaveProperty("prompt");
-    expect(parsed).toHaveProperty("expected_schema", "BeadTree");
+    expect(parsed).toHaveProperty("expected_schema", "CellTree");
     expect(parsed).toHaveProperty("schema_hint");
     expect(parsed.prompt).toContain("Add user authentication with OAuth");
     expect(parsed.prompt).toContain("2-3 independent subtasks");
@@ -335,7 +335,7 @@ describe("swarm_plan_prompt", () => {
     );
     const parsed = JSON.parse(result);
 
-    expect(parsed).toHaveProperty("expected_schema", "BeadTree");
+    expect(parsed).toHaveProperty("expected_schema", "CellTree");
     expect(parsed).toHaveProperty("validation_note");
     expect(parsed.validation_note).toContain("swarm_validate_decomposition");
     expect(parsed).toHaveProperty("schema_hint");
@@ -401,8 +401,8 @@ describe("swarm_plan_prompt", () => {
 });
 
 describe("swarm_validate_decomposition", () => {
-  it("validates correct BeadTree", async () => {
-    const validBeadTree = JSON.stringify({
+  it("validates correct CellTree", async () => {
+    const validCellTree = JSON.stringify({
       epic: {
         title: "Add OAuth",
         description: "Implement OAuth authentication",
@@ -426,14 +426,14 @@ describe("swarm_validate_decomposition", () => {
     });
 
     const result = await swarm_validate_decomposition.execute(
-      { response: validBeadTree },
+      { response: validCellTree },
       mockContext,
     );
 
     const parsed = JSON.parse(result);
 
     expect(parsed.valid).toBe(true);
-    expect(parsed.bead_tree).toBeDefined();
+    expect(parsed.cell_tree).toBeDefined();
     expect(parsed.stats).toEqual({
       subtask_count: 2,
       total_files: 3,
@@ -442,7 +442,7 @@ describe("swarm_validate_decomposition", () => {
   });
 
   it("rejects file conflicts", async () => {
-    const conflictingBeadTree = JSON.stringify({
+    const conflictingCellTree = JSON.stringify({
       epic: {
         title: "Conflicting files",
       },
@@ -463,7 +463,7 @@ describe("swarm_validate_decomposition", () => {
     });
 
     const result = await swarm_validate_decomposition.execute(
-      { response: conflictingBeadTree },
+      { response: conflictingCellTree },
       mockContext,
     );
 
@@ -1342,8 +1342,8 @@ describe("Swarm Prompt V2 (with Swarm Mail/Beads)", () => {
       // V2 prompt tells agents to USE beads
       expect(SUBTASK_PROMPT_V2).toContain("{bead_id}");
       expect(SUBTASK_PROMPT_V2).toContain("{epic_id}");
-      expect(SUBTASK_PROMPT_V2).toContain("beads_update");
-      expect(SUBTASK_PROMPT_V2).toContain("beads_create");
+      expect(SUBTASK_PROMPT_V2).toContain("hive_update");
+      expect(SUBTASK_PROMPT_V2).toContain("hive_create");
       expect(SUBTASK_PROMPT_V2).toContain("swarm_complete");
     });
 
@@ -1417,8 +1417,8 @@ describe("Swarm Prompt V2 (with Swarm Mail/Beads)", () => {
       expect(lowerPrompt).not.toContain("coordinator will reserve");
     });
 
-    it("enforces swarm_complete over manual beads_close", () => {
-      // Step 9: Use swarm_complete, not beads_close
+    it("enforces swarm_complete over manual hive_close", () => {
+      // Step 9: Use swarm_complete, not hive_close
       expect(SUBTASK_PROMPT_V2).toContain("swarm_complete");
       expect(SUBTASK_PROMPT_V2).toContain("DO NOT manually close the bead");
       expect(SUBTASK_PROMPT_V2).toContain("Use swarm_complete");

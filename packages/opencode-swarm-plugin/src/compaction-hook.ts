@@ -101,8 +101,8 @@ Extract from session context:
  * Check for swarm sign - evidence a swarm passed through
  * 
  * Like deer scat on a trail, we look for traces:
- * - In-progress beads (active work)
- * - Open beads with parent_id (subtasks of an epic)
+ * - In-progress cells (active work)
+ * - Open cells with parent_id (subtasks of an epic)
  * - Unclosed epics
  * 
  * Uses the adapter directly to query beads.

@@ -20,13 +20,13 @@ import {
   getHiveAdapter,
   setHiveWorkingDirectory,
   // Legacy aliases for backward compatibility tests
-  beads_create,
-  beads_create_epic,
-  beads_query,
-  beads_update,
-  beads_close,
-  beads_start,
-  beads_ready,
+  hive_create,
+  hive_create_epic,
+  hive_query,
+  hive_update,
+  hive_close,
+  hive_start,
+  hive_ready,
   beads_link_thread,
   BeadError,
   getBeadsAdapter,
@@ -74,7 +74,7 @@ let adapter: HiveAdapter;
 async function cleanupBeads() {
   for (const id of createdBeadIds) {
     try {
-      await beads_close.execute({ id, reason: "Test cleanup" }, mockContext);
+      await hive_close.execute({ id, reason: "Test cleanup" }, mockContext);
     } catch {
       // Ignore cleanup errors - bead may already be closed
     }
@@ -96,9 +96,9 @@ describe("beads integration", () => {
     await cleanupBeads();
   });
 
-  describe("beads_create", () => {
+  describe("hive_create", () => {
     it("creates a bead with minimal args (title only)", async () => {
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         { title: "Test bead minimal" },
         mockContext,
       );
@@ -114,7 +114,7 @@ describe("beads integration", () => {
     });
 
     it("creates a bead with all options", async () => {
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         {
           title: "Test bug with priority",
           type: "bug",
@@ -134,7 +134,7 @@ describe("beads integration", () => {
     });
 
     it("creates a feature type bead", async () => {
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         { title: "New feature request", type: "feature", priority: 1 },
         mockContext,
       );
@@ -147,7 +147,7 @@ describe("beads integration", () => {
     });
 
     it("creates a chore type bead", async () => {
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         { title: "Cleanup task", type: "chore", priority: 3 },
         mockContext,
       );
@@ -160,12 +160,12 @@ describe("beads integration", () => {
     });
   });
 
-  describe("beads_query", () => {
+  describe("hive_query", () => {
     let testBeadId: string;
 
     beforeEach(async () => {
       // Create a test bead for query tests
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         { title: "Query test bead", type: "task" },
         mockContext,
       );
@@ -175,7 +175,7 @@ describe("beads integration", () => {
     });
 
     it("queries all open beads", async () => {
-      const result = await beads_query.execute({ status: "open" }, mockContext);
+      const result = await hive_query.execute({ status: "open" }, mockContext);
 
       const beads = parseResponse<Bead[]>(result);
 
@@ -185,7 +185,7 @@ describe("beads integration", () => {
     });
 
     it("queries beads by type", async () => {
-      const result = await beads_query.execute({ type: "task" }, mockContext);
+      const result = await hive_query.execute({ type: "task" }, mockContext);
 
       const beads = parseResponse<Bead[]>(result);
 
@@ -194,7 +194,7 @@ describe("beads integration", () => {
     });
 
     it("queries ready beads (unblocked)", async () => {
-      const result = await beads_query.execute({ ready: true }, mockContext);
+      const result = await hive_query.execute({ ready: true }, mockContext);
 
       const beads = parseResponse<Bead[]>(result);
 
@@ -208,7 +208,7 @@ describe("beads integration", () => {
     it("limits results", async () => {
       // Create multiple beads first
       for (let i = 0; i < 5; i++) {
-        const result = await beads_create.execute(
+        const result = await hive_create.execute(
           { title: `Limit test bead ${i}` },
           mockContext,
         );
@@ -216,14 +216,14 @@ describe("beads integration", () => {
         createdBeadIds.push(bead.id);
       }
 
-      const result = await beads_query.execute({ limit: 3 }, mockContext);
+      const result = await hive_query.execute({ limit: 3 }, mockContext);
 
       const beads = parseResponse<Bead[]>(result);
       expect(beads.length).toBeLessThanOrEqual(3);
     });
 
     it("combines filters", async () => {
-      const result = await beads_query.execute(
+      const result = await hive_query.execute(
         { status: "open", type: "task", limit: 5 },
         mockContext,
       );
@@ -239,11 +239,11 @@ describe("beads integration", () => {
     });
   });
 
-  describe("beads_update", () => {
+  describe("hive_update", () => {
     let testBeadId: string;
 
     beforeEach(async () => {
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         { title: "Update test bead", description: "Original description" },
         mockContext,
       );
@@ -253,7 +253,7 @@ describe("beads integration", () => {
     });
 
     it("updates bead status", async () => {
-      const result = await beads_update.execute(
+      const result = await hive_update.execute(
         { id: testBeadId, status: "in_progress" },
         mockContext,
       );
@@ -263,7 +263,7 @@ describe("beads integration", () => {
     });
 
     it("updates bead description", async () => {
-      const result = await beads_update.execute(
+      const result = await hive_update.execute(
         { id: testBeadId, description: "Updated description" },
         mockContext,
       );
@@ -273,7 +273,7 @@ describe("beads integration", () => {
     });
 
     it("updates bead priority", async () => {
-      const result = await beads_update.execute(
+      const result = await hive_update.execute(
         { id: testBeadId, priority: 0 },
         mockContext,
       );
@@ -283,7 +283,7 @@ describe("beads integration", () => {
     });
 
     it("updates multiple fields at once", async () => {
-      const result = await beads_update.execute(
+      const result = await hive_update.execute(
         {
           id: testBeadId,
           status: "blocked",
@@ -301,7 +301,7 @@ describe("beads integration", () => {
 
     it("throws BeadError for invalid bead ID", async () => {
       await expect(
-        beads_update.execute(
+        hive_update.execute(
           { id: "nonexistent-bead-xyz", status: "closed" },
           mockContext,
         ),
@@ -309,17 +309,17 @@ describe("beads integration", () => {
     });
   });
 
-  describe("beads_close", () => {
+  describe("hive_close", () => {
     it("closes a bead with reason", async () => {
       // Create a fresh bead to close
-      const createResult = await beads_create.execute(
+      const createResult = await hive_create.execute(
         { title: "Bead to close" },
         mockContext,
       );
       const created = parseResponse<Bead>(createResult);
       // Don't add to cleanup since we're closing it
 
-      const result = await beads_close.execute(
+      const result = await hive_close.execute(
         { id: created.id, reason: "Task completed successfully" },
         mockContext,
       );
@@ -335,7 +335,7 @@ describe("beads integration", () => {
 
     it("throws BeadError for invalid bead ID", async () => {
       await expect(
-        beads_close.execute(
+        hive_close.execute(
           { id: "nonexistent-bead-xyz", reason: "Test" },
           mockContext,
         ),
@@ -343,10 +343,10 @@ describe("beads integration", () => {
     });
   });
 
-  describe("beads_start", () => {
+  describe("hive_start", () => {
     it("marks a bead as in_progress", async () => {
       // Create a fresh bead
-      const createResult = await beads_create.execute(
+      const createResult = await hive_create.execute(
         { title: "Bead to start" },
         mockContext,
       );
@@ -355,7 +355,7 @@ describe("beads integration", () => {
 
       expect(created.status).toBe("open");
 
-      const result = await beads_start.execute({ id: created.id }, mockContext);
+      const result = await hive_start.execute({ id: created.id }, mockContext);
 
       expect(result).toContain("Started");
       expect(result).toContain(created.id);
@@ -368,22 +368,22 @@ describe("beads integration", () => {
 
     it("throws BeadError for invalid bead ID", async () => {
       await expect(
-        beads_start.execute({ id: "nonexistent-bead-xyz" }, mockContext),
+        hive_start.execute({ id: "nonexistent-bead-xyz" }, mockContext),
       ).rejects.toThrow(BeadError);
     });
   });
 
-  describe("beads_ready", () => {
+  describe("hive_ready", () => {
     it("returns the highest priority unblocked bead", async () => {
       // Create a high priority bead
-      const createResult = await beads_create.execute(
+      const createResult = await hive_create.execute(
         { title: "High priority ready bead", priority: 0 },
         mockContext,
       );
       const created = parseResponse<Bead>(createResult);
       createdBeadIds.push(created.id);
 
-      const result = await beads_ready.execute({}, mockContext);
+      const result = await hive_ready.execute({}, mockContext);
 
       // Should return a bead (or "No ready beads" message)
       if (result !== "No ready beads") {
@@ -397,7 +397,7 @@ describe("beads integration", () => {
     it("returns no ready beads message when all are closed", async () => {
       // This test depends on the state of the beads database
       // It may return a bead if there are open ones
-      const result = await beads_ready.execute({}, mockContext);
+      const result = await hive_ready.execute({}, mockContext);
 
       expect(typeof result).toBe("string");
       // Either a JSON bead or "No ready beads"
@@ -410,9 +410,9 @@ describe("beads integration", () => {
     });
   });
 
-  describe("beads_create_epic", () => {
+  describe("hive_create_epic", () => {
     it("creates an epic with subtasks", async () => {
-      const result = await beads_create_epic.execute(
+      const result = await hive_create_epic.execute(
         {
           epic_title: "Integration test epic",
           epic_description: "Testing epic creation",
@@ -446,7 +446,7 @@ describe("beads integration", () => {
     });
 
     it("creates an epic with files metadata in subtasks", async () => {
-      const result = await beads_create_epic.execute(
+      const result = await hive_create_epic.execute(
         {
           epic_title: "Epic with file references",
           subtasks: [
@@ -472,7 +472,7 @@ describe("beads integration", () => {
     });
 
     it("creates epic with single subtask", async () => {
-      const result = await beads_create_epic.execute(
+      const result = await hive_create_epic.execute(
         {
           epic_title: "Single subtask epic",
           subtasks: [{ title: "Only task", priority: 1 }],
@@ -490,7 +490,7 @@ describe("beads integration", () => {
 
     it("preserves subtask order", async () => {
       const titles = ["First", "Second", "Third", "Fourth"];
-      const result = await beads_create_epic.execute(
+      const result = await hive_create_epic.execute(
         {
           epic_title: "Ordered subtasks epic",
           subtasks: titles.map((title, i) => ({ title, priority: 2 })),
@@ -516,7 +516,7 @@ describe("beads integration", () => {
     let testBeadId: string;
 
     beforeEach(async () => {
-      const result = await beads_create.execute(
+      const result = await hive_create.execute(
         { title: "Thread link test bead" },
         mockContext,
       );
@@ -562,7 +562,7 @@ describe("beads integration", () => {
 
     it("preserves existing description when linking", async () => {
       // Update bead with a description first
-      await beads_update.execute(
+      await hive_update.execute(
         { id: testBeadId, description: "Important context here" },
         mockContext,
       );
@@ -593,7 +593,7 @@ describe("beads integration", () => {
   describe("error handling", () => {
     it("throws BeadError with command info on adapter failure", async () => {
       try {
-        await beads_update.execute(
+        await hive_update.execute(
           { id: "definitely-not-a-real-bead-id", status: "closed" },
           mockContext,
         );
@@ -609,7 +609,7 @@ describe("beads integration", () => {
   describe("workflow integration", () => {
     it("complete bead lifecycle: create -> start -> update -> close", async () => {
       // 1. Create
-      const createResult = await beads_create.execute(
+      const createResult = await hive_create.execute(
         { title: "Lifecycle test bead", type: "task", priority: 2 },
         mockContext,
       );
@@ -617,14 +617,14 @@ describe("beads integration", () => {
       expect(bead.status).toBe("open");
 
       // 2. Start (in_progress)
-      const startResult = await beads_start.execute(
+      const startResult = await hive_start.execute(
         { id: bead.id },
         mockContext,
       );
       expect(startResult).toContain("Started");
 
       // 3. Update (add progress note)
-      const updateResult = await beads_update.execute(
+      const updateResult = await hive_update.execute(
         { id: bead.id, description: "50% complete" },
         mockContext,
       );
@@ -632,7 +632,7 @@ describe("beads integration", () => {
       expect(updated.description).toContain("50%");
 
       // 4. Close
-      const closeResult = await beads_close.execute(
+      const closeResult = await hive_close.execute(
         { id: bead.id, reason: "Completed successfully" },
         mockContext,
       );
@@ -646,7 +646,7 @@ describe("beads integration", () => {
 
     it("epic workflow: create epic -> start subtasks -> close subtasks -> close epic", async () => {
       // 1. Create epic with subtasks
-      const epicResult = await beads_create_epic.execute(
+      const epicResult = await hive_create_epic.execute(
         {
           epic_title: "Workflow test epic",
           subtasks: [
@@ -660,21 +660,21 @@ describe("beads integration", () => {
       expect(epic.success).toBe(true);
 
       // 2. Start and complete first subtask
-      await beads_start.execute({ id: epic.subtasks[0].id }, mockContext);
-      await beads_close.execute(
+      await hive_start.execute({ id: epic.subtasks[0].id }, mockContext);
+      await hive_close.execute(
         { id: epic.subtasks[0].id, reason: "Step 1 done" },
         mockContext,
       );
 
       // 3. Start and complete second subtask
-      await beads_start.execute({ id: epic.subtasks[1].id }, mockContext);
-      await beads_close.execute(
+      await hive_start.execute({ id: epic.subtasks[1].id }, mockContext);
+      await hive_close.execute(
         { id: epic.subtasks[1].id, reason: "Step 2 done" },
         mockContext,
       );
 
       // 4. Close the epic
-      await beads_close.execute(
+      await hive_close.execute(
         { id: epic.epic.id, reason: "All subtasks completed" },
         mockContext,
       );

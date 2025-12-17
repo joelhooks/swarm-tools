@@ -122,7 +122,7 @@ export function analyzeTodoWrite(args: { todos?: unknown[] }): TodoWriteAnalysis
       warning: `⚠️  This looks like a multi-file implementation plan (${fileModificationCount}/${todos.length} items are file modifications).
 
 Consider using swarm instead:
-  swarm_decompose → beads_create_epic → parallel task spawns
+  swarm_decompose → hive_create_epic → parallel task spawns
 
 TodoWrite is for tracking progress, not parallelizable implementation work.
 Swarm workers can complete these ${fileModificationCount} tasks in parallel.

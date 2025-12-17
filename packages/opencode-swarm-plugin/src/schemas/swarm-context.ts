@@ -56,13 +56,13 @@ export const SwarmBeadContextSchema = z.object({
   id: z.string(),
   /** Epic this bead belongs to */
   epic_id: z.string(),
-  /** Bead ID being executed */
+  /** Cell ID being executed */
   bead_id: z.string(),
   /** Decomposition strategy used */
   strategy: SwarmStrategySchema,
   /** Files this bead is responsible for */
   files: z.array(z.string()),
-  /** Bead IDs this task depends on */
+  /** Cell IDs this task depends on */
   dependencies: z.array(z.string()).default([]),
   /** Shared directives and context */
   directives: SwarmDirectivesSchema,

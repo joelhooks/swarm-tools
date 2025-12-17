@@ -9,7 +9,7 @@ describe("planning-guardrails", () => {
     });
 
     it("returns false for other tools", () => {
-      expect(shouldAnalyzeTool("beads_create")).toBe(false);
+      expect(shouldAnalyzeTool("hive_create")).toBe(false);
       expect(shouldAnalyzeTool("swarm_decompose")).toBe(false);
       expect(shouldAnalyzeTool("read")).toBe(false);
     });

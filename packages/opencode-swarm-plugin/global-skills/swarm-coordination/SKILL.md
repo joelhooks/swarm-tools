@@ -13,8 +13,8 @@ tools:
   - swarm_complete
   - swarm_status
   - swarm_progress
-  - beads_create_epic
-  - beads_query
+  - hive_create_epic
+  - hive_query
   - swarmmail_init
   - swarmmail_send
   - swarmmail_inbox
@@ -43,7 +43,7 @@ Swarm Mail is embedded (no external server needed) and provides:
 
 - File reservations to prevent conflicts
 - Message passing between agents
-- Thread-based coordination tied to beads
+- Thread-based coordination tied to cells
 
 ## When to Swarm
 
@@ -262,7 +262,7 @@ I'd recommend (${recommendation.letter}) because ${recommendation.reason}. Which
 **Confirm Only (`--confirm-only`):**
 
 - Generate plan silently
-- Show final BeadTree
+- Show final CellTree
 - Get yes/no only
 
 **Rules for Socratic Mode:**
@@ -308,7 +308,7 @@ Synthesize findings into `shared_context` for workers.
 >
 > **NEVER do planning inline in the coordinator thread.** Decomposition work (file reading, CASS searching, reasoning about task breakdown) consumes massive amounts of context and will exhaust your token budget on long swarms.
 >
-> **ALWAYS delegate planning to a `swarm/planner` subagent** and receive only the structured BeadTree JSON result back.
+> **ALWAYS delegate planning to a `swarm/planner` subagent** and receive only the structured CellTree JSON result back.
 
 **❌ Anti-Pattern (Context-Heavy):**
 
@@ -324,7 +324,7 @@ const validation = await swarm_validate_decomposition({ ... });
 
 ```typescript
 // 1. Create planning bead with full context
-await beads_create({
+await hive_create({
   title: `Plan: ${taskTitle}`,
   type: "task",
   description: `Decompose into subtasks. Context: ${synthesizedContext}`,
@@ -335,7 +335,7 @@ const planningResult = await Task({
   subagent_type: "swarm/planner",
   description: `Decompose task: ${taskTitle}`,
   prompt: `
-You are a swarm planner. Generate a BeadTree for this task.
+You are a swarm planner. Generate a CellTree for this task.
 
 ## Task
 ${taskDescription}
@@ -346,11 +346,11 @@ ${synthesizedContext}
 ## Instructions
 1. Use swarm_plan_prompt(task="...", max_subtasks=5, query_cass=true)
 2. Reason about decomposition strategy
-3. Generate BeadTree JSON
+3. Generate CellTree JSON
 4. Validate with swarm_validate_decomposition
-5. Return ONLY the validated BeadTree JSON (no analysis, no file contents)
+5. Return ONLY the validated CellTree JSON (no analysis, no file contents)
 
-Output format: Valid BeadTree JSON only.
+Output format: Valid CellTree JSON only.
   `,
 });
 
@@ -358,7 +358,7 @@ Output format: Valid BeadTree JSON only.
 const beadTree = JSON.parse(planningResult);
 
 // 4. Create epic + subtasks atomically
-await beads_create_epic({
+await hive_create_epic({
   epic_title: beadTree.epic.title,
   epic_description: beadTree.epic.description,
   subtasks: beadTree.subtasks,
@@ -474,7 +474,7 @@ await swarm_complete({
   files_touched: [...],
 });
 await swarmmail_release(); // Release any remaining reservations
-await beads_sync();
+await hive_sync();
 ```
 
 ## Context Survival Patterns (CRITICAL)
@@ -793,7 +793,7 @@ skills_list();
 // 3. Decompose
 swarm_plan_prompt({ task });
 swarm_validate_decomposition();
-beads_create_epic();
+hive_create_epic();
 
 // 4. Reserve files
 swarmmail_reserve({ paths, reason, ttl_seconds });
@@ -809,7 +809,7 @@ swarmmail_read_message({ message_id });
 // 7. Complete
 swarm_complete();
 swarmmail_release();
-beads_sync();
+hive_sync();
 ```
 
 See `references/coordinator-patterns.md` for detailed patterns.

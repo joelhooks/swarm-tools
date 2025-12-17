@@ -128,7 +128,7 @@ export const SwarmEvaluationResultSchema = z.object({
     }),
   ),
   overall_passed: z.boolean(),
-  retry_needed: z.array(z.string()), // Bead IDs that need retry
+  retry_needed: z.array(z.string()), // Cell IDs that need retry
 });
 export type SwarmEvaluationResult = z.infer<typeof SwarmEvaluationResultSchema>;
 

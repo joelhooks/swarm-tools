@@ -23,9 +23,10 @@
   "license": "MIT",
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node --external @electric-sql/pglite && tsc",
-    "test": "vitest run --exclude '**/*.integration.test.ts'",
-    "test:integration": "vitest run --include '**/*.integration.test.ts' --testTimeout 60000",
-    "test:all": "vitest run --testTimeout 60000",
+    "test": "bun test src/streams/ --timeout 60000",
+    "test:beads": "bun test src/beads/ --timeout 60000",
+    "test:integration": "bun test src/ --include '**/*.integration.test.ts' --timeout 60000",
+    "test:all": "bun test src/ --timeout 60000",
     "typecheck": "tsc --noEmit",
     "publish:pkg": "npm publish --access public --provenance"
   },

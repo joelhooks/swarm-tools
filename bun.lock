@@ -54,6 +54,7 @@
         "@opencode-ai/plugin": "^1.0.134",
         "gray-matter": "^4.0.3",
         "ioredis": "^5.4.1",
+        "minimatch": "^10.1.1",
         "swarm-mail": "workspace:*",
         "zod": "4.1.8",
       },

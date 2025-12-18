@@ -1053,38 +1053,49 @@ export const hive_sync = tool({
       }
     }
 
-    // 6. Pull if requested
+    // 6. Pull if requested (check if remote exists first)
     if (autoPull) {
-      const pullResult = await withTimeout(
-        runGitCommand(["pull", "--rebase"]),
-        TIMEOUT_MS,
-        "git pull --rebase",
-      );
+      const remoteCheckResult = await runGitCommand(["remote"]);
+      const hasRemote = remoteCheckResult.stdout.trim() !== "";
 
-      if (pullResult.exitCode !== 0) {
-        throw new HiveError(
-          `Failed to pull: ${pullResult.stderr}`,
+      if (hasRemote) {
+        const pullResult = await withTimeout(
+          runGitCommand(["pull", "--rebase"]),
+          TIMEOUT_MS,
           "git pull --rebase",
-          pullResult.exitCode,
         );
+
+        if (pullResult.exitCode !== 0) {
+          throw new HiveError(
+            `Failed to pull: ${pullResult.stderr}`,
+            "git pull --rebase",
+            pullResult.exitCode,
+          );
+        }
       }
     }
 
-    // 7. Push
-    const pushResult = await withTimeout(
-      runGitCommand(["push"]),
-      TIMEOUT_MS,
-      "git push",
-    );
-    if (pushResult.exitCode !== 0) {
-      throw new HiveError(
-        `Failed to push: ${pushResult.stderr}`,
-        "git push",
-        pushResult.exitCode,
-      );
-    }
+    // 7. Push (check if remote exists first)
+    const remoteCheckResult = await runGitCommand(["remote"]);
+    const hasRemote = remoteCheckResult.stdout.trim() !== "";
 
-    return "Hive synced and pushed successfully";
+    if (hasRemote) {
+      const pushResult = await withTimeout(
+        runGitCommand(["push"]),
+        TIMEOUT_MS,
+        "git push",
+      );
+      if (pushResult.exitCode !== 0) {
+        throw new HiveError(
+          `Failed to push: ${pushResult.stderr}`,
+          "git push",
+          pushResult.exitCode,
+        );
+      }
+      return "Hive synced and pushed successfully";
+    } else {
+      return "Hive synced successfully (no remote configured)";
+    }
   },
 });
 

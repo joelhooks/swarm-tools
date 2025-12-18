@@ -327,10 +327,32 @@ swarmmail_reserve(
 
 **Workers reserve their own files.** This prevents edit conflicts with other agents.
 
-### Step 5: Do the Work
-- Read your assigned files
-- Implement changes
-- Verify (typecheck if applicable)
+### Step 5: Do the Work (TDD MANDATORY)
+
+**Follow RED → GREEN → REFACTOR. No exceptions.**
+
+1. **RED**: Write a failing test that describes the expected behavior
+   - Test MUST fail before you write implementation
+   - If test passes immediately, your test is wrong
+   
+2. **GREEN**: Write minimal code to make the test pass
+   - Don't over-engineer - just make it green
+   - Hardcode if needed, refactor later
+   
+3. **REFACTOR**: Clean up while tests stay green
+   - Run tests after every change
+   - If tests break, undo and try again
+
+\`\`\`bash
+# Run tests continuously
+bun test <your-test-file> --watch
+\`\`\`
+
+**Why TDD?**
+- Catches bugs before they exist
+- Documents expected behavior
+- Enables fearless refactoring
+- Proves your code works
 
 ### Step 6: Report Progress at Milestones
 \`\`\`

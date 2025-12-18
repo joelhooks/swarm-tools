@@ -16,9 +16,11 @@ import {
   hive_start,
   hive_ready,
   hive_link_thread,
+  hive_sync,
   HiveError,
   getHiveAdapter,
   setHiveWorkingDirectory,
+  getHiveWorkingDirectory,
   // Legacy aliases for backward compatibility tests
   beads_link_thread,
   BeadError,
@@ -1117,6 +1119,118 @@ describe("beads integration", () => {
 
       // Cleanup
       rmSync(tempProject, { recursive: true, force: true });
+    });
+  });
+
+  describe("hive_sync", () => {
+    it("commits .hive changes before pulling (regression test for unstaged changes error)", async () => {
+      const { mkdirSync, rmSync, writeFileSync, existsSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const { tmpdir } = await import("node:os");
+      const { execSync } = await import("node:child_process");
+
+      // Create a temp git repository
+      const tempProject = join(tmpdir(), `hive-sync-test-${Date.now()}`);
+      mkdirSync(tempProject, { recursive: true });
+
+      // Initialize git repo
+      execSync("git init", { cwd: tempProject });
+      execSync('git config user.email "test@example.com"', { cwd: tempProject });
+      execSync('git config user.name "Test User"', { cwd: tempProject });
+
+      // Create .hive directory and issues.jsonl
+      const hiveDir = join(tempProject, ".hive");
+      mkdirSync(hiveDir, { recursive: true });
+      const issuesPath = join(hiveDir, "issues.jsonl");
+      writeFileSync(issuesPath, "");
+
+      // Initial commit
+      execSync("git add .", { cwd: tempProject });
+      execSync('git commit -m "initial commit"', { cwd: tempProject });
+
+      // Set working directory for hive commands
+      const originalDir = getHiveWorkingDirectory();
+      setHiveWorkingDirectory(tempProject);
+
+      try {
+        // Create a cell (this will mark it dirty and flush will write to JSONL)
+        await hive_create.execute(
+          { title: "Sync test cell", type: "task" },
+          mockContext,
+        );
+
+        // Sync with auto_pull=false (skip pull since no remote configured)
+        const result = await hive_sync.execute(
+          { auto_pull: false },
+          mockContext,
+        );
+
+        // Should succeed
+        expect(result).toContain("successfully");
+
+        // Verify .hive changes were committed (working tree should be clean)
+        const status = execSync("git status --porcelain", {
+          cwd: tempProject,
+          encoding: "utf-8",
+        });
+        expect(status.trim()).toBe("");
+
+        // Verify commit exists
+        const log = execSync("git log --oneline", {
+          cwd: tempProject,
+          encoding: "utf-8",
+        });
+        expect(log).toContain("chore: sync hive");
+      } finally {
+        // Restore original working directory
+        setHiveWorkingDirectory(originalDir);
+
+        // Cleanup
+        rmSync(tempProject, { recursive: true, force: true });
+      }
+    });
+
+    it("handles case with no changes to commit", async () => {
+      const { mkdirSync, rmSync, writeFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const { tmpdir } = await import("node:os");
+      const { execSync } = await import("node:child_process");
+
+      // Create temp git repo
+      const tempProject = join(tmpdir(), `hive-sync-test-${Date.now()}`);
+      mkdirSync(tempProject, { recursive: true });
+
+      // Initialize git
+      execSync("git init", { cwd: tempProject });
+      execSync('git config user.email "test@example.com"', { cwd: tempProject });
+      execSync('git config user.name "Test User"', { cwd: tempProject });
+
+      // Create .hive directory with committed issues.jsonl
+      const hiveDir = join(tempProject, ".hive");
+      mkdirSync(hiveDir, { recursive: true });
+      writeFileSync(join(hiveDir, "issues.jsonl"), "");
+
+      // Commit everything
+      execSync("git add .", { cwd: tempProject });
+      execSync('git commit -m "initial"', { cwd: tempProject });
+
+      // Set working directory
+      const originalDir = getHiveWorkingDirectory();
+      setHiveWorkingDirectory(tempProject);
+
+      try {
+        // Sync with no changes (should handle gracefully)
+        const result = await hive_sync.execute(
+          { auto_pull: false },
+          mockContext,
+        );
+
+        // Should return "No cells to sync" since no dirty cells
+        expect(result).toContain("No cells to sync");
+      } finally {
+        setHiveWorkingDirectory(originalDir);
+        rmSync(tempProject, { recursive: true, force: true });
+      }
     });
   });
 

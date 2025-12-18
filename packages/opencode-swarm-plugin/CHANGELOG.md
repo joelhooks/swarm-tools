@@ -1,5 +1,17 @@
 # opencode-swarm-plugin
 
+## 0.28.0
+
+### Minor Changes
+
+- [`de2fa62`](https://github.com/joelhooks/swarm-tools/commit/de2fa628524b88511e06164104ff7b5fb93d39e5) Thanks [@joelhooks](https://github.com/joelhooks)! - Add full beads→hive migration pipeline with JSONL import to PGLite
+
+  - Add `mergeHistoricBeads()` to merge beads.base.jsonl into issues.jsonl
+  - Add `importJsonlToPGLite()` to import JSONL records into PGLite database
+  - Wire both functions into `swarm setup` migration flow
+  - Fix closed_at constraint issue when importing closed cells
+  - TDD: 12 new integration tests for migration functions
+
 ## 0.27.4
 
 ### Patch Changes

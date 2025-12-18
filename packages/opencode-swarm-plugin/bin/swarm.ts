@@ -427,22 +427,13 @@ const DEPENDENCIES: Dependency[] = [
     description: "AI-powered static analysis for pre-completion bug scanning",
   },
   {
-    name: "semantic-memory",
-    command: "semantic-memory",
-    checkArgs: ["stats"],
+    name: "Ollama",
+    command: "ollama",
+    checkArgs: ["--version"],
     required: false,
-    install: "npm install -g semantic-memory",
-    installType: "npm",
-    description: "Learning persistence with vector search",
-  },
-  {
-    name: "Redis",
-    command: "redis-cli",
-    checkArgs: ["ping"],
-    required: false,
-    install: "brew install redis && brew services start redis",
+    install: "brew install ollama && ollama pull mxbai-embed-large",
     installType: "brew",
-    description: "Rate limiting (SQLite fallback available)",
+    description: "Local embeddings for semantic memory (embedded in plugin)",
   },
 ];
 
@@ -1229,8 +1220,8 @@ function getFixCommand(dep: Dependency): string | null {
   switch (dep.name) {
     case "OpenCode":
       return "brew install sst/tap/opencode";
-    case "semantic-memory":
-      return "npm install -g semantic-memory";
+    case "Ollama":
+      return "brew install ollama && ollama pull mxbai-embed-large";
     case "Redis":
       return "brew install redis && brew services start redis";
     case "CASS (Coding Agent Session Search)":

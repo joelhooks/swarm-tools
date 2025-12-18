@@ -1,5 +1,11 @@
 # opencode-swarm-plugin
 
+## 0.30.2
+
+### Patch Changes
+
+- [`5858148`](https://github.com/joelhooks/swarm-tools/commit/5858148d5785393c0a6993a2595fba275f305707) Thanks [@joelhooks](https://github.com/joelhooks)! - chore: trigger publish workflow
+
 ## 0.30.1
 
 ### Patch Changes

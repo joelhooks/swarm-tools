@@ -67,8 +67,7 @@ async function main() {
       await cleanTarballs(pkgPath);
       await $`bun pm pack`.cwd(pkgPath).quiet();
       const tarball = await findTarball(pkgPath);
-      // --provenance enables OIDC trusted publishers (bypasses 2FA requirement)
-      await $`npm publish ${tarball} --access public --provenance`.quiet();
+      await $`npm publish ${tarball} --access public`.quiet();
       await unlink(tarball);
       
       console.log(`✅ Published ${name}@${version}`);

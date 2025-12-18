@@ -1,5 +1,15 @@
 # opencode-swarm-plugin
 
+## 0.28.1
+
+### Patch Changes
+
+- [`0ee4f65`](https://github.com/joelhooks/swarm-tools/commit/0ee4f656c2fb2cf62d3ef06d329d9e093d124c33) Thanks [@joelhooks](https://github.com/joelhooks)! - Add postinstall hint and update repo URL
+
+  - Show "Run swarm setup" hint after npm install
+  - Update repo URL to github.com/joelhooks/swarm-tools
+  - Add "Get started" commands to version output
+
 ## 0.28.0
 
 ### Minor Changes

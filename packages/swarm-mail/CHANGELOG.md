@@ -1,5 +1,18 @@
 # swarm-mail
 
+## 0.3.3
+
+### Patch Changes
+
+- [`ec23d25`](https://github.com/joelhooks/swarm-tools/commit/ec23d25aeca667c0294a6255fecf11dd7d7fd6b3) Thanks [@joelhooks](https://github.com/joelhooks)! - Add .beads → .hive directory migration support
+
+  - Fix migration version collision: beadsMigration now v7, cellsViewMigration now v8 (was conflicting with streams v6)
+  - Add `checkBeadsMigrationNeeded()` to detect legacy .beads directories
+  - Add `migrateBeadsToHive()` to rename .beads to .hive
+  - Add `ensureHiveDirectory()` to create .hive if missing (called by hive_sync)
+  - Update hive_sync to ensure .hive directory exists before writing
+  - Add migration prompt to `swarm setup` CLI flow
+
 ## 0.3.2
 
 ### Patch Changes

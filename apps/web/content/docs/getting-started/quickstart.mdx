@@ -34,9 +34,9 @@ swarm setup
 ```
 
 This will:
-1. Check for required dependencies (beads CLI)
+1. Check for required dependencies
 2. Configure OpenCode to load the plugin
-3. Initialize beads in your project (if not already)
+3. Initialize the hive in your project (if not already)
 4. Verify everything works
 
 ## Verify Installation
@@ -47,9 +47,8 @@ swarm doctor
 
 Expected output:
 ```
-✓ Beads CLI installed
 ✓ OpenCode plugin configured
-✓ Beads initialized in project
+✓ Hive initialized in project
 ✓ All systems ready
 ```
 
@@ -64,7 +63,7 @@ In OpenCode, run:
 The plugin will:
 1. Analyze the task
 2. Decompose into subtasks (if needed)
-3. Create beads for tracking
+3. Create cells for tracking
 4. Spawn worker agents
 5. Coordinate file reservations
 6. Report completion
@@ -75,10 +74,10 @@ If you prefer step-by-step control:
 
 ```typescript
 // 1. Check what's ready to work on
-beads_ready()
+hive_ready()
 
 // 2. Start a task
-beads_start({ id: "bd-123" })
+hive_start({ id: "bd-123" })
 
 // 3. Initialize coordination (for multi-agent work)
 swarmmail_init({ project_path: "/your/project" })
@@ -101,7 +100,7 @@ swarm_complete({
 })
 
 // 7. Sync to git (MANDATORY)
-beads_sync()
+hive_sync()
 ```
 
 ## Using Skills
@@ -128,15 +127,15 @@ Bundled skills include:
 |---------|---------|
 | `swarm setup` | Initial configuration |
 | `swarm doctor` | Check dependencies |
-| `swarm init` | Initialize beads in project |
+| `swarm init` | Initialize hive in project |
 | `swarm config` | Show config paths |
 
 ## Key Tools
 
 | Tool | Purpose |
 |------|---------|
-| `beads_ready()` | Get next unblocked task |
-| `beads_sync()` | Sync to git (MANDATORY at session end) |
+| `hive_ready()` | Get next unblocked task |
+| `hive_sync()` | Sync to git (MANDATORY at session end) |
 | `swarmmail_init()` | Initialize coordination |
 | `swarmmail_reserve()` | Reserve files for editing |
 | `swarm_complete()` | Complete task with cleanup |
@@ -150,11 +149,6 @@ Bundled skills include:
 - [Swarm Mail Architecture](/docs/swarm-mail) - Event sourcing deep dive
 
 ## Troubleshooting
-
-**"beads not found"**
-```bash
-curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
-```
 
 **"swarmmail_init failed"**
 - Ensure you're in a git repository
@@ -170,8 +164,8 @@ swarm doctor # Check what's missing
 
 Every session should:
 
-1. **Start**: `beads_ready()` - What's next?
+1. **Start**: `hive_ready()` - What's next?
 2. **Work**: Use tools, reserve files, communicate
-3. **End**: `beads_sync()` + `git push` - Land the plane
+3. **End**: `hive_sync()` + `git push` - Land the plane
 
 The plane is not landed until `git push` succeeds.

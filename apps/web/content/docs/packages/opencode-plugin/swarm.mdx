@@ -48,7 +48,7 @@ Send a message to other agents.
 | `to` | string[] | ✅ | Recipient agent names |
 | `subject` | string | ✅ | Message subject |
 | `body` | string | ✅ | Message body |
-| `thread_id` | string | ❌ | Thread ID (use bead ID for swarm work) |
+| `thread_id` | string | ❌ | Thread ID (use cell ID for swarm work) |
 | `importance` | `"low" \| "normal" \| "high" \| "urgent"` | ❌ | Message priority (default: `"normal"`) |
 | `ack_required` | boolean | ❌ | Require acknowledgment (default: `false`) |
 
@@ -127,7 +127,7 @@ Reserve file paths for exclusive editing. Prevents conflicts with other agents.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `paths` | string[] | ✅ | File paths or patterns |
-| `reason` | string | ❌ | Reservation reason (include bead ID) |
+| `reason` | string | ❌ | Reservation reason (include cell ID) |
 | `exclusive` | boolean | ❌ | Exclusive lock (default: `true`) |
 | `ttl_seconds` | number | ❌ | Lock TTL (default: 3600) |
 
@@ -142,7 +142,7 @@ swarmmail_reserve({
 // Returns: { granted: [{ id: 1, path_pattern: "src/auth/**", ... }] }
 ```
 
-**Critical:** Reserve BEFORE editing files. Use bead ID in reason for traceability.
+**Critical:** Reserve BEFORE editing files. Use cell ID in reason for traceability.
 
 ---
 
@@ -187,7 +187,7 @@ Initialize swarm session and check tool availability.
 
 ```typescript
 swarm_init({ project_path: "/Users/joel/projects/my-app" })
-// Returns: { beads_available: true, swarmmail_available: true, ... }
+// Returns: { hive_available: true, swarmmail_available: true, ... }
 ```
 
 ---
@@ -243,7 +243,7 @@ swarm_decompose({
 
 ### swarm_validate_decomposition
 
-Validate decomposition response against BeadTreeSchema. Detects file conflicts and instruction conflicts.
+Validate decomposition response against CellTreeSchema. Detects file conflicts and instruction conflicts.
 
 **Parameters:**
 
@@ -291,15 +291,15 @@ swarm_plan_prompt({
 
 ### swarm_subtask_prompt
 
-Generate worker agent prompt with bead context and Agent Mail instructions.
+Generate worker agent prompt with cell context and Agent Mail instructions.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_name` | string | ✅ | Worker agent name |
-| `bead_id` | string | ✅ | Subtask bead ID |
-| `epic_id` | string | ✅ | Epic bead ID |
+| `bead_id` | string | ✅ | Subtask cell ID |
+| `epic_id` | string | ✅ | Epic cell ID |
 | `subtask_title` | string | ✅ | Subtask title |
 | `subtask_description` | string | ❌ | Subtask description |
 | `files` | string[] | ✅ | Files to modify |
@@ -329,8 +329,8 @@ Prepare subtask for spawning with Task tool.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Subtask bead ID |
-| `epic_id` | string | ✅ | Epic bead ID |
+| `bead_id` | string | ✅ | Subtask cell ID |
+| `epic_id` | string | ✅ | Epic cell ID |
 | `subtask_title` | string | ✅ | Subtask title |
 | `subtask_description` | string | ❌ | Subtask description |
 | `files` | string[] | ✅ | Files to modify |
@@ -358,7 +358,7 @@ Get swarm progress by epic ID.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `epic_id` | string | ✅ | Epic bead ID |
+| `epic_id` | string | ✅ | Epic cell ID |
 | `project_key` | string | ✅ | Project path |
 
 **Example:**
@@ -383,7 +383,7 @@ Report progress on a subtask to coordinator.
 |-----------|------|----------|-------------|
 | `project_key` | string | ✅ | Project path |
 | `agent_name` | string | ✅ | Worker agent name |
-| `bead_id` | string | ✅ | Subtask bead ID |
+| `bead_id` | string | ✅ | Subtask cell ID |
 | `status` | `"in_progress" \| "blocked" \| "completed" \| "failed"` | ✅ | Status |
 | `message` | string | ❌ | Status message |
 | `progress_percent` | number | ❌ | Progress 0-100 |
@@ -413,9 +413,9 @@ Complete subtask with automatic release, UBS scan, and learning signals.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `project_key` | string | ✅ | Project path |
+| `project_key` | string | ✅ | Project path (finds cells via minimatch) |
 | `agent_name` | string | ✅ | Worker agent name |
-| `bead_id` | string | ✅ | Subtask bead ID |
+| `bead_id` | string | ✅ | Subtask cell ID |
 | `summary` | string | ✅ | Completion summary |
 | `files_touched` | string[] | ❌ | Files modified |
 | `evaluation` | string | ❌ | Self-evaluation |
@@ -435,7 +435,41 @@ swarm_complete({
 // Auto-releases reservations, runs UBS scan, records learning signals
 ```
 
-**Critical:** Use this instead of manual `beads_close`. Handles cleanup and learning.
+**Critical:** Workers MUST use this (not `hive_close` directly). Handles cleanup and learning.
+
+#### Worker Handoff Protocol (v0.31+)
+
+Workers complete tasks using `swarm_complete`, which orchestrates the full completion sequence:
+
+**What It Does:**
+
+1. **Finds cells** - Uses path-based `project_key` with minimatch pattern matching
+2. **Runs UBS scan** - Scans `files_touched` for bugs (null safety, XSS, async/await issues)
+3. **Releases reservations** - Auto-releases all file locks held by the worker
+4. **Records learning signals** - Tracks duration, errors, retries for pattern learning
+5. **Closes the cell** - Updates cell status to closed with completion reason
+
+**Why Not `hive_close` Directly?**
+
+Direct `hive_close` skips critical cleanup:
+- Reservations stay locked (blocks other agents)
+- No bug scanning (security/quality issues slip through)
+- No learning signals (decomposition patterns don't improve)
+
+**TDD Mandate (v0.31+)**
+
+All worker prompts now include TDD instructions:
+
+1. **RED** - Write a failing test first (if it passes, the test is wrong)
+2. **GREEN** - Minimum code to make it pass (hardcode if needed)
+3. **REFACTOR** - Clean up while tests stay green
+
+This applies to:
+- Feature implementation
+- Bug fixes (write test that reproduces bug FIRST)
+- Refactoring (characterization tests before changes)
+
+Workers are expected to follow this discipline. No exceptions for swarm work.
 
 ---
 
@@ -447,7 +481,7 @@ Record subtask outcome for learning (duration, errors, retries).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Subtask bead ID |
+| `bead_id` | string | ✅ | Subtask cell ID |
 | `duration_ms` | number | ✅ | Duration in milliseconds |
 | `success` | boolean | ✅ | Whether subtask succeeded |
 | `error_count` | number | ❌ | Number of errors |
@@ -480,7 +514,7 @@ Generate self-evaluation prompt for a completed subtask.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Subtask bead ID |
+| `bead_id` | string | ✅ | Subtask cell ID |
 | `subtask_title` | string | ✅ | Subtask title |
 | `files_touched` | string[] | ✅ | Files modified |
 
@@ -510,7 +544,7 @@ const prompt = swarm_decompose({
   query_cass: true
 })
 
-// Agent responds with BeadTree JSON
+// Agent responds with CellTree JSON
 
 // 3. Validate decomposition
 const validation = swarm_validate_decomposition({
@@ -518,7 +552,7 @@ const validation = swarm_validate_decomposition({
 })
 
 // 4. Create epic + subtasks
-beads_create_epic({
+hive_create_epic({
   epic_title: "User Authentication",
   subtasks: validation.data.subtasks
 })
@@ -529,7 +563,7 @@ swarmmail_reserve({
   paths: ["src/auth/**"],
   reason: "bd-123.2: Auth service"
 })
-// ... do work ...
+// ... do work following TDD (Red → Green → Refactor) ...
 swarm_complete({
   project_key: "/my/project",
   agent_name: "BlueLake",
@@ -541,6 +575,6 @@ swarm_complete({
 
 ## Next Steps
 
-- [Beads Tools](/docs/packages/opencode-plugin/beads) - Git-backed issue tracking
+- [Hive Tools](/docs/packages/opencode-plugin/hive) - Git-backed issue tracking
 - [Skills Tools](/docs/packages/opencode-plugin/skills) - Knowledge injection
 - [Swarm Mail Architecture](/docs/packages/swarm-mail) - Event sourcing internals

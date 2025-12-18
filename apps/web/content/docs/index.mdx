@@ -62,7 +62,7 @@ The **opencode-swarm-plugin** is what you install and use. It provides:
 - **File reservations** - Prevents edit conflicts between workers
 - **Learning system** - Tracks what strategies work (fast + success = good, slow + errors = bad)
 - **Skills** - Knowledge packages agents can load when needed
-- **Beads** - Git-backed issue tracking integrated with swarm coordination
+- **Hive** - Git-backed work item tracking integrated with swarm coordination
 
 Under the hood, it uses **swarm-mail** for event sourcing and actor-model messaging. That's the infrastructure layer—interesting if you're building your own coordination system, but you don't need to think about it to use the plugin.
 
@@ -130,7 +130,7 @@ Each checkpoint stores:
 swarm_checkpoint({
   project_key: "/path/to/project",
   agent_name: "WorkerA",
-  bead_id: "bd-123.1",
+  cell_id: "bd-123.1",
   epic_id: "bd-123",
   files_modified: ["src/auth.ts"],
   progress_percent: 30,
@@ -169,7 +169,7 @@ Then in OpenCode:
 /swarm "Add user authentication with OAuth"
 ```
 
-The plugin queries past decompositions (via CASS), picks a strategy, creates beads, spawns workers, and tracks learning signals.
+The plugin queries past decompositions (via CASS), picks a strategy, creates cells, spawns workers, and tracks learning signals.
 
 ## Dependencies
 
@@ -178,7 +178,7 @@ The plugin queries past decompositions (via CASS), picks a strategy, creates bea
 | Dependency | Purpose |
 |------------|---------|
 | [OpenCode](https://opencode.ai) | AI coding agent (the plugin runs inside OpenCode) |
-| [Beads](https://github.com/steveyegge/beads) | Git-backed issue tracking |
+| [Hive](https://github.com/steveyegge/beads) | Git-backed work item tracking |
 
 ### Optional (Highly Recommended)
 
@@ -240,10 +240,10 @@ Run `swarm doctor` to check which dependencies are installed.
 
 | Category | Tools | Purpose |
 |----------|-------|---------|
-| **Beads** | 8 tools | Git-backed issue tracking with atomic epic creation |
-| **Swarm Mail** | 6 tools | Inter-agent messaging with file reservations |
-| **Swarm** | 20+ tools | Task decomposition, parallel orchestration, learning |
-| **Skills** | 4 tools | Knowledge injection with bundled domain expertise |
+| **[Hive](/docs/packages/opencode-plugin/hive)** | 8 tools | Git-backed work item tracking with atomic epic creation |
+| **[Swarm Mail](/docs/packages/opencode-plugin/swarm-mail)** | 6 tools | Inter-agent messaging with file reservations |
+| **[Swarm](/docs/packages/opencode-plugin/swarm)** | 20+ tools | Task decomposition, parallel orchestration, learning |
+| **[Skills](/docs/packages/opencode-plugin/skills)** | 4 tools | Knowledge injection with bundled domain expertise |
 
 [View all plugin tools →](/docs/packages/opencode-plugin)
 
@@ -349,7 +349,7 @@ const response = await Effect.runPromise(
 │                     SWARM TOOLS STACK                       │
 ├─────────────────────────────────────────────────────────────┤
 │  TIER 3: ORCHESTRATION                                      │
-│  └── OpenCode Plugin (beads, swarm, skills, learning)      │
+│  └── OpenCode Plugin (hive, swarm, skills, learning)       │
 │                                                             │
 │  TIER 2: COORDINATION                                       │
 │  ├── DurableMailbox - Actor inbox with typed envelopes     │
@@ -382,7 +382,7 @@ const response = await Effect.runPromise(
 - [Philosophy](/docs/getting-started/philosophy) - Why Swarm Tools exists
 
 **Using the Plugin:**
-- [OpenCode Plugin Tools](/docs/packages/opencode-plugin) - All 40+ tools (beads, swarm, skills)
+- [OpenCode Plugin Tools](/docs/packages/opencode-plugin) - All 40+ tools (hive, swarm, skills)
 - [Concepts](/docs/concepts) - Event sourcing, actor model, learning systems
 
 **Building Your Own:**

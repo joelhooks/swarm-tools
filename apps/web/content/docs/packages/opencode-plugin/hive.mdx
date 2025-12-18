@@ -1,30 +1,32 @@
 ---
-title: Beads Tools
+title: Hive Tools
 description: Git-backed issue tracking with atomic epic creation
 ---
 
-# Beads Tools
+# Hive Tools
 
-Git-backed issue tracking with atomic epic creation. Beads are stored as JSONL files in `.beads/issues.jsonl` and synced via git.
+Git-backed issue tracking with atomic epic creation. Cells are stored as JSONL files in `.hive/issues.jsonl` and synced via git.
 
-## beads_create
+> **Migration Note:** The old `beads_*` tool names still work but show deprecation warnings. Update to `hive_*` tools for the latest features.
 
-Create a new bead with type-safe validation.
+## hive_create
+
+Create a new cell with type-safe validation.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `title` | string | ✅ | Bead title |
-| `type` | `"bug" \| "feature" \| "task" \| "epic" \| "chore"` | ❌ | Bead type (default: `"task"`) |
+| `title` | string | ✅ | Cell title |
+| `type` | `"bug" \| "feature" \| "task" \| "epic" \| "chore"` | ❌ | Cell type (default: `"task"`) |
 | `description` | string | ❌ | Detailed description |
 | `priority` | 0-3 | ❌ | Priority (0=urgent, 3=low, default: 2) |
-| `parent_id` | string | ❌ | Parent bead ID for subtasks |
+| `parent_id` | string | ❌ | Parent cell ID for subtasks |
 
 **Example:**
 
 ```typescript
-beads_create({
+hive_create({
   title: "Add OAuth authentication",
   type: "feature",
   description: "Implement OAuth 2.0 with refresh tokens",
@@ -36,9 +38,9 @@ beads_create({
 
 ---
 
-## beads_create_epic
+## hive_create_epic
 
-Create an epic with subtasks atomically. Either all beads are created or none (with rollback hints).
+Create an epic with subtasks atomically. Either all cells are created or none (with rollback hints).
 
 **Parameters:**
 
@@ -61,7 +63,7 @@ Create an epic with subtasks atomically. Either all beads are created or none (w
 **Example:**
 
 ```typescript
-beads_create_epic({
+hive_create_epic({
   epic_title: "User Authentication",
   epic_description: "OAuth 2.0 implementation with refresh tokens",
   subtasks: [
@@ -88,9 +90,9 @@ beads_create_epic({
 
 ---
 
-## beads_query
+## hive_query
 
-Query beads with filters. Replaces legacy `bd list`, `bd ready`, `bd wip` commands.
+Query cells with filters. Replaces legacy `bd list`, `bd ready`, `bd wip` commands.
 
 **Parameters:**
 
@@ -98,35 +100,35 @@ Query beads with filters. Replaces legacy `bd list`, `bd ready`, `bd wip` comman
 |-----------|------|----------|-------------|
 | `status` | `"open" \| "in_progress" \| "blocked" \| "closed"` | ❌ | Filter by status |
 | `type` | `"bug" \| "feature" \| "task" \| "epic" \| "chore"` | ❌ | Filter by type |
-| `ready` | boolean | ❌ | Only unblocked beads |
+| `ready` | boolean | ❌ | Only unblocked cells |
 | `limit` | number | ❌ | Max results |
 
 **Example:**
 
 ```typescript
-// Get all in-progress beads
-beads_query({ status: "in_progress" })
+// Get all in-progress cells
+hive_query({ status: "in_progress" })
 
-// Get next ready bead
-beads_query({ ready: true, limit: 1 })
+// Get next ready cell
+hive_query({ ready: true, limit: 1 })
 
 // Get all open bugs
-beads_query({ type: "bug", status: "open" })
+hive_query({ type: "bug", status: "open" })
 ```
 
-**Returns:** Array of beads matching filters.
+**Returns:** Array of cells matching filters.
 
 ---
 
-## beads_update
+## hive_update
 
-Update bead status, description, or priority.
+Update cell status, description, or priority.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | ✅ | Bead ID (e.g., `"bd-123"`) |
+| `id` | string | ✅ | Cell ID (e.g., `"bd-123"`) |
 | `status` | `"open" \| "in_progress" \| "blocked" \| "closed"` | ❌ | New status |
 | `description` | string | ❌ | New description |
 | `priority` | 0-3 | ❌ | New priority |
@@ -134,7 +136,7 @@ Update bead status, description, or priority.
 **Example:**
 
 ```typescript
-beads_update({
+hive_update({
   id: "bd-123",
   status: "blocked",
   description: "Blocked: waiting for API schema from bd-122"
@@ -143,21 +145,21 @@ beads_update({
 
 ---
 
-## beads_close
+## hive_close
 
-Close a bead with a reason. Prefer this over `beads_update` for closure tracking.
+Close a cell with a reason. Prefer this over `hive_update` for closure tracking.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | ✅ | Bead ID |
+| `id` | string | ✅ | Cell ID |
 | `reason` | string | ✅ | Closure reason |
 
 **Example:**
 
 ```typescript
-beads_close({
+hive_close({
   id: "bd-123",
   reason: "Done: OAuth flow implemented and tested"
 })
@@ -165,42 +167,42 @@ beads_close({
 
 ---
 
-## beads_start
+## hive_start
 
-Mark a bead as in-progress. Sets `status: "in_progress"`.
+Mark a cell as in-progress. Sets `status: "in_progress"`.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | ✅ | Bead ID |
+| `id` | string | ✅ | Cell ID |
 
 **Example:**
 
 ```typescript
-beads_start({ id: "bd-123" })
+hive_start({ id: "bd-123" })
 ```
 
 ---
 
-## beads_ready
+## hive_ready
 
-Get the next ready bead (unblocked, highest priority).
+Get the next ready cell (unblocked, highest priority).
 
 **Parameters:** None
 
 **Example:**
 
 ```typescript
-beads_ready()
+hive_ready()
 // Returns: { id: "bd-125", title: "...", priority: 0, ... }
 ```
 
 ---
 
-## beads_sync
+## hive_sync
 
-Sync beads to git. **MANDATORY** before ending a session.
+Sync cells to git. **MANDATORY** before ending a session.
 
 **Parameters:**
 
@@ -211,29 +213,29 @@ Sync beads to git. **MANDATORY** before ending a session.
 **Example:**
 
 ```typescript
-beads_sync()
-// Runs: git add .beads && git commit && git pull && git push
+hive_sync()
+// Runs: git add .hive && git commit && git pull && git push
 ```
 
 **Critical:** Always call this at session end. Changes not synced are lost.
 
 ---
 
-## beads_link_thread
+## hive_link_thread
 
-Add metadata linking bead to Agent Mail thread.
+Add metadata linking cell to Agent Mail thread.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Bead ID |
+| `bead_id` | string | ✅ | Cell ID |
 | `thread_id` | string | ✅ | Thread ID from Agent Mail |
 
 **Example:**
 
 ```typescript
-beads_link_thread({
+hive_link_thread({
   bead_id: "bd-123",
   thread_id: "msg-thread-42"
 })
@@ -245,26 +247,26 @@ beads_link_thread({
 
 ```typescript
 // Session start
-beads_ready()                              // What's next?
-beads_query({ status: "in_progress" })     // What's mid-flight?
+hive_ready()                              // What's next?
+hive_query({ status: "in_progress" })     // What's mid-flight?
 
 // Start work
-beads_start({ id: "bd-123" })
+hive_start({ id: "bd-123" })
 
 // Update if needed
-beads_update({
+hive_update({
   id: "bd-123",
   description: "Updated scope to include refresh tokens"
 })
 
 // Complete
-beads_close({
+hive_close({
   id: "bd-123",
   reason: "Done: OAuth implemented with refresh"
 })
 
 // Session end (MANDATORY)
-beads_sync()
+hive_sync()
 ```
 
 ## Next Steps

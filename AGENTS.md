@@ -341,18 +341,37 @@ OpenCode plugin providing:
 - Learning system (pattern maturity, anti-pattern detection)
 - Skills system (knowledge injection)
 
-## Publishing (Changesets + Trusted Publishers)
+## Publishing (Changesets + Bun)
 
-This repo uses **Changesets** for versioning and **npm Trusted Publishers** (OIDC) for publishing - no npm tokens needed.
+This repo uses **Changesets** for versioning and **bun publish** for npm publishing.
 
-**📚 Full guide:** `skills_use(name="publish-package-cicd")` - covers workflow, gotchas, and troubleshooting.
+### How It Works
+
+Changesets doesn't support Bun workspaces out of the box - it doesn't resolve `workspace:*` references. We use [Ian Macalinao's approach](https://macalinao.github.io/posts/2025-08-18-changesets-bun-workspaces/):
+
+```json
+{
+  "scripts": {
+    "ci:version": "changeset version && bun update",
+    "ci:publish": "for dir in packages/*; do (cd \"$dir\" && bun publish --access public || true); done && changeset tag"
+  }
+}
+```
+
+**Why `bun update` after `changeset version`?**
+- `changeset version` bumps package.json versions
+- `bun update` syncs the lockfile so `workspace:*` resolves to the new versions
+- Without this, `bun publish` would publish with unresolved `workspace:*` references
+
+**Why iterate and `bun publish` each package?**
+- `bun publish` resolves `workspace:*` during pack (unlike `changeset publish`)
+- `|| true` continues if a package is already published
+- `changeset tag` creates git tags after all packages are published
 
 ### Release Flow
 
-**IMPORTANT: Publishing happens via GitHub Actions, NOT locally. Do NOT run `bunx changeset version` or `bunx changeset publish` locally - it will fail without GITHUB_TOKEN and break the automated flow.**
-
 1. Make changes to packages
-2. Create a changeset file manually (don't use interactive `bunx changeset`):
+2. Create a changeset file:
    ```bash
    cat > .changeset/your-change-name.md << 'EOF'
    ---
@@ -362,10 +381,10 @@ This repo uses **Changesets** for versioning and **npm Trusted Publishers** (OID
    Description of the change
    EOF
    ```
-3. Commit the changeset file (`.changeset/*.md`) with your changes
+3. Commit the changeset file with your changes
 4. Push to main
 5. Changesets action creates a "chore: release packages" PR with version bumps
-6. Merge that PR → automatically publishes to npm via OIDC
+6. Merge that PR → action runs `ci:publish` → packages published to npm
 
 ### Changeset Lore (REQUIRED)
 
@@ -420,61 +439,48 @@ The following packages are excluded from changesets (won't be published):
 ### Commands
 
 ```bash
-# Create a new changeset
+# Create a new changeset (interactive)
 bunx changeset
 
 # Preview what versions would be bumped
 bunx changeset status
 
 # Manually bump versions (CI does this automatically)
-bunx changeset version
+bun run ci:version
 
-# Manually publish (CI does this automatically)
-bunx changeset publish
+# Manually publish (CI does this automatically)  
+bun run ci:publish
 ```
 
-### How Trusted Publishers Work
+### Key Gotcha
 
-- No `NPM_TOKEN` secret needed
-- GitHub Actions workflow has `id-token: write` permission
-- npm packages configured with Trusted Publisher pointing to `joelhooks/opencode-swarm-plugin` + `publish.yml`
-- npm CLI 11.5.1+ auto-detects OIDC environment and authenticates
-- Provenance attestations generated automatically
-
-### workspace:* Protocol Resolution
-
-**Problem:** `workspace:*` in package.json dependencies doesn't get resolved by `npm publish` or `bunx changeset publish`, causing install failures.
-
-**Solution:** Custom `scripts/publish.ts` uses a two-step process:
-1. `bun pm pack` - Creates tarball with `workspace:*` resolved to actual versions (e.g., `0.1.0`)
-2. `npm publish <tarball>` - Publishes the tarball with OIDC trusted publisher support
-
-**Why not just `bun publish`?** Bun publish resolves workspace protocols but doesn't support npm OIDC - it requires `npm login`.
-
-**Key gotcha:** CLI bin scripts need their imports in `dependencies`, not `devDependencies`. If `bin/swarm.ts` imports `@clack/prompts`, it must be in dependencies or users get "Cannot find module" errors.
+CLI bin scripts need their imports in `dependencies`, not `devDependencies`. If `bin/swarm.ts` imports `@clack/prompts`, it must be in dependencies or users get "Cannot find module" errors.
 
 ### Configured Packages
 
-| Package | npm | Trusted Publisher |
-|---------|-----|-------------------|
-| `opencode-swarm-plugin` | [npm](https://www.npmjs.com/package/opencode-swarm-plugin) | ✅ `publish.yml` |
-| `swarm-mail` | [npm](https://www.npmjs.com/package/swarm-mail) | ✅ `publish.yml` |
+| Package | npm |
+|---------|-----|
+| `opencode-swarm-plugin` | [npm](https://www.npmjs.com/package/opencode-swarm-plugin) |
+| `swarm-mail` | [npm](https://www.npmjs.com/package/swarm-mail) |
 
 ### Adding a New Package to Publishing
 
-1. Publish initial version manually: `cd packages/new-pkg && npm publish --access public`
-2. Go to https://www.npmjs.com/package/new-pkg/access
-3. Add Trusted Publisher:
-   - Organization: `joelhooks`
-   - Repository: `opencode-swarm-plugin`
-   - Workflow: `publish.yml`
-4. Future releases handled automatically via changesets
+1. Add `publishConfig` to package.json:
+   ```json
+   {
+     "publishConfig": {
+       "access": "public",
+       "registry": "https://registry.npmjs.org/"
+     }
+   }
+   ```
+2. First publish happens automatically when changeset PR is merged
 
 ### Lockfile Sync (CRITICAL)
 
 **Problem:** `bun pm pack` resolves `workspace:*` from the lockfile, not package.json. If lockfile is stale, you get old versions.
 
-**Solution:** `scripts/publish.ts` runs `bun install` before packing to sync the lockfile.
+**Solution:** `ci:version` runs `bun update` after `changeset version` to sync the lockfile.
 
 **Tracking:** 
 - Bun native npm token support: https://github.com/oven-sh/bun/issues/15601

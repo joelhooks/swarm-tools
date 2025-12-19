@@ -18,6 +18,10 @@
       "types": "./dist/plugin.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node --external @electric-sql/pglite --external swarm-mail && bun build ./src/plugin.ts --outfile ./dist/plugin.js --target node --external @electric-sql/pglite --external swarm-mail && tsc",
     "dev": "bun --watch src/index.ts",
@@ -26,7 +30,6 @@
     "test:all": "bun test --timeout 60000 src/",
     "test:watch": "bun test --watch src/",
     "typecheck": "tsc --noEmit",
-    "publish:pkg": "npm publish --access public --provenance",
     "postinstall": "node -e \"console.log('\\n\\x1b[33m  Run \\x1b[36mswarm setup\\x1b[33m to configure OpenCode integration\\x1b[0m\\n')\""
   },
   "dependencies": {

@@ -10,7 +10,6 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
 
 jobs:
   release:
@@ -23,41 +22,33 @@ jobs:
         with:
           bun-version: latest
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
+      - name: Setup npmrc
+        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build packages
         run: bun turbo build --filter='!@swarmtools/web'
 
-      - name: Check for changesets
-        id: check
-        run: |
-          if ls .changeset/*.md 2>/dev/null | grep -v README.md | head -1 > /dev/null; then
-            echo "has_changesets=true" >> $GITHUB_OUTPUT
-            echo "📝 Found pending changesets - will create release PR"
-          else
-            echo "has_changesets=false" >> $GITHUB_OUTPUT
-            echo "📦 No changesets - will publish if versions differ from npm"
-          fi
-
-      - name: Create Release Pull Request
-        if: steps.check.outputs.has_changesets == 'true'
+      # Changesets handles the logic:
+      # - If changesets exist: run ci:version, create/update release PR
+      # - If no changesets (release PR merged): run ci:publish
+      #
+      # ci:version = changeset version && bun update
+      #   - changeset version bumps package.json versions
+      #   - bun update syncs lockfile so workspace:* resolves correctly
+      #
+      # ci:publish = for each package: bun publish (resolves workspace:*)
+      #   - bun publish handles workspace:* resolution during pack
+      #   - || true continues if package already published
+      #   - changeset tag creates git tags after all packages published
+      - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
           version: bun run ci:version
-          publish: echo "Skipping publish - PR created"
+          publish: bun run ci:publish
           title: "chore: release packages"
           commit: "chore: release packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to npm
-        if: steps.check.outputs.has_changesets == 'false'
-        run: bun run ci:publish
-        env:
-          NPM_CONFIG_PROVENANCE: true

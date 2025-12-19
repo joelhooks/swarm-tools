@@ -19,6 +19,10 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/joelhooks/opencode-swarm-plugin"
@@ -31,8 +35,7 @@
     "test:beads": "bun test src/beads/ --timeout 60000",
     "test:integration": "vitest run src/streams/**/*.integration-test.ts --testTimeout 60000",
     "test:all": "bun test src/ --timeout 60000",
-    "typecheck": "tsc --noEmit",
-    "publish:pkg": "npm publish --access public --provenance"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.3.14",

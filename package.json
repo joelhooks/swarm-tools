@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "ci:version": "changeset version && bun update",
-    "ci:publish": "bun scripts/publish.ts",
+    "ci:publish": "for dir in packages/*; do (cd \"$dir\" && bun publish --access public || true); done && changeset tag",
     "test:integration": "bun --filter=opencode-swarm-plugin test:integration"
   },
   "devDependencies": {

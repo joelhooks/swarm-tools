@@ -30,7 +30,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { createSwarmMailAdapter } from "./adapter";
-import { healthCheck, isDaemonRunning, startDaemon } from "./daemon";
+import { healthCheck, isDaemonRunning, startDaemon, cleanupPidFile, readPidFile } from "./daemon";
 import { createSocketAdapter } from "./socket-adapter";
 import type { DatabaseAdapter, SwarmMailAdapter } from "./types";
 
@@ -412,7 +412,7 @@ export async function getSwarmMail(
  *
  * **Port/Path Resolution:**
  * - Checks SWARM_MAIL_SOCKET_PATH env var for Unix socket
- * - Falls back to TCP on SWARM_MAIL_SOCKET_PORT (default: 5433)
+ * - Falls back to TCP on SWARM_MAIL_SOCKET_PORT (default: 15433)
  * - Host defaults to 127.0.0.1
  *
  * @param projectPath - Optional project root path
@@ -426,7 +426,7 @@ export async function getSwarmMail(
  * const swarmMail = await getSwarmMailSocket('/path/to/project');
  *
  * // TCP socket
- * process.env.SWARM_MAIL_SOCKET_PORT = '5433';
+ * process.env.SWARM_MAIL_SOCKET_PORT = '15433';
  * const swarmMail = await getSwarmMailSocket('/path/to/project');
  * ```
  */
@@ -444,13 +444,20 @@ export async function getSwarmMailSocket(
 }
 
 /**
- * Internal helper for socket mode setup
+ * Internal helper for socket mode setup with self-healing
  *
- * Handles daemon lifecycle, health check, and adapter creation.
+ * Implements robust connection logic:
+ * 1. Try health check FIRST (daemon might already be running)
+ * 2. If unhealthy, check for stale PID and clean up
+ * 3. Try to start daemon with retry on EADDRINUSE
+ * 4. Final health check before connecting
+ *
+ * This prevents the "Failed to listen" error when daemon is already running
+ * but PID check failed.
  *
  * @param projectPath - Optional project root path
  * @returns SwarmMailAdapter instance
- * @throws Error if daemon management or connection fails
+ * @throws Error if daemon management or connection fails after retries
  */
 async function getSwarmMailSocketInternal(
   projectPath?: string,
@@ -462,28 +469,66 @@ async function getSwarmMailSocketInternal(
   const socketPath = process.env.SWARM_MAIL_SOCKET_PATH;
   const port = process.env.SWARM_MAIL_SOCKET_PORT
     ? Number.parseInt(process.env.SWARM_MAIL_SOCKET_PORT, 10)
-    : 5433;
+    : 15433;
   const host = process.env.SWARM_MAIL_SOCKET_HOST || '127.0.0.1';
+  const healthOptions = socketPath ? { path: socketPath } : { port, host };
 
-  // Check if daemon is running
-  const running = await isDaemonRunning(projectPath);
-
-  if (!running) {
-    // Start daemon with appropriate connection mode
-    const daemonOptions = socketPath
-      ? { path: socketPath, dbPath, projectPath }
-      : { port, host, dbPath, projectPath };
-
-    await startDaemon(daemonOptions);
+  // 1. Try health check FIRST - daemon might already be running
+  if (await healthCheck(healthOptions)) {
+    console.log('[swarm-mail] Daemon already healthy, connecting...');
+    const adapterOptions = socketPath ? { path: socketPath } : { host, port };
+    const db = await createSocketAdapter(adapterOptions);
+    const adapter = createSwarmMailAdapter(db, projectKey);
+    await adapter.runMigrations();
+    return adapter;
   }
 
-  // Health check before connecting
-  const healthOptions = socketPath ? { path: socketPath } : { port, host };
-  const healthy = await healthCheck(healthOptions);
+  // 2. Check for stale PID and clean up
+  const pid = await readPidFile(projectPath);
+  if (pid) {
+    try {
+      process.kill(pid, 0); // Check if process alive
+    } catch (e: unknown) {
+      const err = e as { code?: string };
+      if (err.code === 'ESRCH') {
+        // Process doesn't exist - clean up stale PID
+        console.log(`[swarm-mail] Cleaning up stale PID file (dead process ${pid})`);
+        await cleanupPidFile(projectPath);
+      }
+    }
+  }
 
-  if (!healthy) {
+  // 3. Try to start daemon with retry
+  const daemonOptions = socketPath
+    ? { path: socketPath, dbPath, projectPath }
+    : { port, host, dbPath, projectPath };
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await startDaemon(daemonOptions);
+      break;
+    } catch (error: unknown) {
+      const err = error as { message?: string; code?: string };
+      if (err.message?.includes('EADDRINUSE') || err.message?.includes('Failed to listen') || err.code === 'EADDRINUSE') {
+        // Port busy - maybe another process started daemon, wait and check health
+        console.log(`[swarm-mail] Port busy on attempt ${attempt + 1}, checking if daemon is healthy...`);
+        await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+        
+        if (await healthCheck(healthOptions)) {
+          console.log('[swarm-mail] Daemon started by another process, connecting...');
+          break;
+        }
+      } else {
+        // Not a port conflict error - rethrow
+        throw error;
+      }
+    }
+  }
+
+  // 4. Final health check
+  if (!await healthCheck(healthOptions)) {
     throw new Error(
-      `Daemon health check failed after startup (${socketPath ? `socket: ${socketPath}` : `TCP: ${host}:${port}`})`
+      `Failed to start or connect to daemon after retries (${socketPath ? `socket: ${socketPath}` : `TCP: ${host}:${port}`})`
     );
   }
 

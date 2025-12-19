@@ -9,10 +9,10 @@
  * import { startDaemon, stopDaemon, isDaemonRunning, healthCheck } from 'swarm-mail/daemon';
  *
  * // Start daemon
- * const { pid, port } = await startDaemon({ port: 5433 });
+ * const { pid, port } = await startDaemon({ port: 15433 });
  *
  * // Check health
- * const healthy = await healthCheck({ port: 5433 });
+ * const healthy = await healthCheck({ port: 15433 });
  *
  * // Stop daemon
  * await stopDaemon('/path/to/project');
@@ -57,7 +57,7 @@ let activeProjectPath: string | undefined = undefined;
  * Daemon start options
  */
 export interface DaemonOptions {
-  /** TCP port to bind (default: 5433) */
+  /** TCP port to bind (default: 15433) */
   port?: number;
   /** Host to bind (default: 127.0.0.1) */
   host?: string;
@@ -143,7 +143,7 @@ function isProcessAlive(pid: number): boolean {
  * @param projectPath - Optional project root path
  * @returns Process ID, or null if file doesn't exist or is invalid
  */
-async function readPidFile(projectPath?: string): Promise<number | null> {
+export async function readPidFile(projectPath?: string): Promise<number | null> {
   const pidFilePath = getPidFilePath(projectPath);
   if (!existsSync(pidFilePath)) {
     return null;
@@ -182,6 +182,28 @@ async function deletePidFile(projectPath?: string): Promise<void> {
     await unlink(pidFilePath);
   } catch {
     // Ignore errors - file may not exist
+  }
+}
+
+/**
+ * Clean up stale PID file
+ *
+ * Removes PID file if it points to a dead process or doesn't exist.
+ * Used for self-healing when daemon startup fails due to stale state.
+ *
+ * @param projectPath - Optional project root path
+ *
+ * @example
+ * ```typescript
+ * // Clean up before starting daemon
+ * await cleanupPidFile('/path/to/project');
+ * await startDaemon({ port: 15433, projectPath: '/path/to/project' });
+ * ```
+ */
+export async function cleanupPidFile(projectPath?: string): Promise<void> {
+  const pid = await readPidFile(projectPath);
+  if (!pid || !isProcessAlive(pid)) {
+    await deletePidFile(projectPath);
   }
 }
 
@@ -257,13 +279,13 @@ export async function healthCheck(
     // Dynamic import to avoid bundling postgres.js in library consumers
     const postgres = await import("postgres").then((m) => m.default);
 
-    const sql = options.path
-      ? postgres({ path: options.path })
-      : postgres({
-          host: options.host || "127.0.0.1",
-          port: options.port || 5433,
-          max: 1, // Single connection for health check
-        });
+   const sql = options.path
+     ? postgres({ path: options.path })
+     : postgres({
+         host: options.host || "127.0.0.1",
+         port: options.port || 15433,
+         max: 1, // Single connection for health check
+       });
 
     try {
       await Promise.race([
@@ -296,7 +318,7 @@ export async function healthCheck(
  * @example
  * ```typescript
  * // Start with TCP port
- * const { pid, port } = await startDaemon({ port: 5433 });
+ * const { pid, port } = await startDaemon({ port: 15433 });
  *
  * // Start with Unix socket
  * const { pid, socketPath } = await startDaemon({
@@ -305,7 +327,7 @@ export async function healthCheck(
  *
  * // Start with custom database path
  * const { pid, port } = await startDaemon({
- *   port: 5433,
+ *   port: 15433,
  *   dbPath: '/custom/path/to/db'
  * });
  * ```
@@ -313,7 +335,7 @@ export async function healthCheck(
 export async function startDaemon(
   options: DaemonOptions = {},
 ): Promise<DaemonInfo> {
-  const { port = 5433, host = "127.0.0.1", path, dbPath, projectPath } = options;
+  const { port = 15433, host = "127.0.0.1", path, dbPath, projectPath } = options;
 
   // Check if daemon is already running (active server or PID file)
   if (activeServer && activeProjectPath === projectPath) {
@@ -331,6 +353,20 @@ export async function startDaemon(
     }
     return {
       pid,
+      port: path ? undefined : port,
+      socketPath: path,
+    };
+  }
+  
+  // Health check BEFORE starting - detect if port/socket already in use by another daemon
+  const healthOptions = path ? { path } : { port, host };
+  if (await healthCheck(healthOptions)) {
+    // Port/socket is in use and healthy - probably started by another process/project
+    // This is not an error - just means we can connect to it
+    console.log(`[daemon] Port/socket already in use and healthy, assuming external daemon`);
+    // Return info indicating external daemon (PID unknown)
+    return {
+      pid: process.pid, // Return current process PID since we can't know the real one
       port: path ? undefined : port,
       socketPath: path,
     };
@@ -360,8 +396,7 @@ export async function startDaemon(
   // Write PID file (use current process PID since it's in-process)
   await writePidFile(process.pid, projectPath);
 
-  // Wait for server to be ready (health check)
-  const healthOptions = path ? { path } : { port, host };
+  // Wait for server to be ready (health check - reuse healthOptions from above)
   const ready = await waitFor(
     () => healthCheck(healthOptions),
     10000, // 10 second timeout

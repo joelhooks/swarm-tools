@@ -1,5 +1,29 @@
 # opencode-swarm-plugin
 
+## 0.30.4
+
+### Patch Changes
+
+- [`1c9a2e8`](https://github.com/joelhooks/swarm-tools/commit/1c9a2e8a148b79a33cb8c5b565e485f33d1f617c) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 Fix Migration Adapter Type (for real this time)
+
+  The previous release (0.30.3) was published before this fix landed. Now it's actually in.
+
+  **The Bug:**
+
+  ```
+  targetDb.query is not a function
+  ```
+
+  **Root Cause:**
+  `getSwarmMail()` returns `SwarmMailAdapter`, not `DatabaseAdapter`. Need to call `getDatabase()` first.
+
+  **The Fix:**
+
+  ```typescript
+  const swarmMail = await getSwarmMail(cwd);
+  const targetDb = await swarmMail.getDatabase(cwd);
+  ```
+
 ## 0.30.3
 
 ### Patch Changes

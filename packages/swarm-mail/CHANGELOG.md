@@ -1,5 +1,13 @@
 # swarm-mail
 
+## 1.2.1
+
+### Patch Changes
+
+- [`64368aa`](https://github.com/joelhooks/swarm-tools/commit/64368aa6106089346cd2b1324f6235d5c673964b) Thanks [@joelhooks](https://github.com/joelhooks)! - Fix UNSAFE_TRANSACTION error by setting `max: 1` in socket adapter
+
+  postgres.js requires single-connection mode (`max: 1`) when not using explicit `sql.begin()` transactions. The default of 10 connections caused transaction safety errors and hanging connections during migrations.
+
 ## 1.2.0
 
 ### Minor Changes

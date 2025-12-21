@@ -711,6 +711,68 @@ function buildAgentsSemanticMemorySection(newline: string): string {
   ].join(newline);
 }
 
+function buildAgentsSwarmCoordinatorSection(newline: string): string {
+  return [
+    "## Swarm Coordinator Checklist (MANDATORY)",
+    "",
+    "When coordinating a swarm, you MUST monitor workers and review their output.",
+    "",
+    "### Monitor Loop",
+    "",
+    "```",
+    "┌─────────────────────────────────────────────────────────────┐",
+    "│                 COORDINATOR MONITOR LOOP                    │",
+    "├─────────────────────────────────────────────────────────────┤",
+    "│                                                             │",
+    "│  1. CHECK INBOX                                             │",
+    "│     swarmmail_inbox()                                       │",
+    "│     swarmmail_read_message(message_id=N)                    │",
+    "│                                                             │",
+    "│  2. CHECK STATUS                                            │",
+    "│     swarm_status(epic_id, project_key)                      │",
+    "│                                                             │",
+    "│  3. REVIEW COMPLETED WORK                                   │",
+    "│     swarm_review(project_key, epic_id, task_id, files)      │",
+    "│     → Generates review prompt with epic context + diff      │",
+    "│                                                             │",
+    "│  4. SEND FEEDBACK                                           │",
+    "│     swarm_review_feedback(                                  │",
+    "│       project_key, task_id, worker_id,                      │",
+    "│       status=\"approved|needs_changes\",                      │",
+    "│       issues=\"[{file, line, issue, suggestion}]\"            │",
+    "│     )                                                       │",
+    "│                                                             │",
+    "│  5. INTERVENE IF NEEDED                                     │",
+    "│     - Blocked >5min → unblock or reassign                   │",
+    "│     - File conflicts → mediate                              │",
+    "│     - Scope creep → approve or reject                       │",
+    "│     - 3 review failures → escalate to human                 │",
+    "│                                                             │",
+    "└─────────────────────────────────────────────────────────────┘",
+    "```",
+    "",
+    "### Review Tools",
+    "",
+    "| Tool | Purpose |",
+    "|------|---------|",
+    "| `swarm_review` | Generate review prompt with epic context, dependencies, and git diff |",
+    "| `swarm_review_feedback` | Send approval/rejection to worker (tracks 3-strike rule) |",
+    "",
+    "### Review Criteria",
+    "",
+    "- Does work fulfill subtask requirements?",
+    "- Does it serve the overall epic goal?",
+    "- Does it enable downstream tasks?",
+    "- Type safety, no obvious bugs?",
+    "",
+    "### 3-Strike Rule",
+    "",
+    "After 3 review rejections, task is marked **blocked**. This signals an architectural problem, not \"try harder.\"",
+    "",
+    "**NEVER skip the review step.** Workers complete faster when they get feedback.",
+  ].join(newline);
+}
+
 function updateAgentsToolPreferencesBlock(
   content: string,
   newline: string,
@@ -742,6 +804,9 @@ function updateAgentsToolPreferencesBlock(
   const hasSemanticTools =
     /semantic-memory_find/i.test(block) &&
     /semantic-memory_store/i.test(block);
+  const hasSwarmReviewTools =
+    /swarm_review\b/i.test(block) &&
+    /swarm_review_feedback/i.test(block);
 
   const linesToAdd: string[] = [];
   if (!hasSkillsTools) {
@@ -757,6 +822,11 @@ function updateAgentsToolPreferencesBlock(
   if (!hasSemanticTools) {
     linesToAdd.push(
       "- **semantic-memory_find, semantic-memory_store, semantic-memory_validate** - Persistent learning across sessions",
+    );
+  }
+  if (!hasSwarmReviewTools) {
+    linesToAdd.push(
+      "- **swarm_review, swarm_review_feedback** - Coordinator reviews worker output (3-strike rule)",
     );
   }
 
@@ -822,6 +892,10 @@ function updateAgentsMdContent({
   const hasSemanticMemorySection =
     /^#{1,6}\s+Semantic Memory\b/im.test(updated) ||
     /semantic-memory_store\(/.test(updated);
+  const hasSwarmCoordinatorSection =
+    /^#{1,6}\s+Swarm Coordinator\b/im.test(updated) ||
+    /swarm_review\(/.test(updated) ||
+    /COORDINATOR MONITOR LOOP/i.test(updated);
 
   const sectionsToAppend: string[] = [];
   if (!hasSkillsSection) {
@@ -837,6 +911,10 @@ function updateAgentsMdContent({
   if (!hasSemanticMemorySection) {
     sectionsToAppend.push(buildAgentsSemanticMemorySection(newline));
     changes.push("Added Semantic Memory section");
+  }
+  if (!hasSwarmCoordinatorSection) {
+    sectionsToAppend.push(buildAgentsSwarmCoordinatorSection(newline));
+    changes.push("Added Swarm Coordinator Checklist section");
   }
 
   if (sectionsToAppend.length > 0) {
@@ -1055,18 +1133,39 @@ const result2 = await Task(subagent_type="swarm/worker", prompt="<from above>")
 
 **IMPORTANT:** Pass \`project_path\` to \`swarm_spawn_subtask\` so workers can call \`swarmmail_init\`.
 
-### Phase 7: Monitor
+### Phase 7: Monitor & Review
+
+**Check swarm mail regularly:**
 \`\`\`
-swarm_status(epic_id, project_key)
-swarmmail_inbox()
+swarmmail_inbox()                              # Check for worker messages
+swarmmail_read_message(message_id=N)           # Read specific message
+swarm_status(epic_id, project_key)             # Check overall progress
 \`\`\`
 
-Intervene if: blocked >5min, file conflicts, scope creep.
+**When a worker reports completion, REVIEW their work:**
+\`\`\`
+swarm_review(project_key, epic_id, task_id, files_touched)  # Generate review prompt with diff
+# Review the code changes against epic goals
+swarm_review_feedback(project_key, task_id, worker_id, status="approved|needs_changes", issues="[...]")
+\`\`\`
+
+**Review criteria:**
+- Does the work fulfill the subtask requirements?
+- Does it serve the overall epic goal?
+- Does it enable downstream tasks?
+- Type safety, no obvious bugs?
+
+**Intervene if:**
+- Worker blocked >5min → unblock or reassign
+- File conflicts → mediate between workers
+- Scope creep → approve or reject expansion
+- Review fails 3x → mark task blocked, escalate to human
 
 ### Phase 8: Complete
 \`\`\`
-swarm_complete(...)
-hive_sync()
+# After all workers complete and reviews pass:
+hive_sync()                                    # Sync all cells to git
+# Coordinator does NOT call swarm_complete - workers do that
 \`\`\`
 
 ## Strategy Reference

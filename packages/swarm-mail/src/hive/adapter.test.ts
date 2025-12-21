@@ -383,6 +383,45 @@ describe("Beads Adapter", () => {
       expect(bead.id).toMatch(/^swarm-mail-[-a-z0-9]+-[a-z0-9]+$/);
     });
 
+    test("RED: changeCellStatus to 'closed' sets closed_at (CHECK constraint)", async () => {
+      // BUG: changeCellStatus doesn't set closed_at when changing to 'closed'
+      // This violates CHECK constraint: ((status = 'closed') = (closed_at IS NOT NULL))
+      
+      const cell = await adapter.createCell(projectKey, {
+        title: "Status Close Test",
+        type: "task",
+        priority: 2,
+      });
+
+      // Change status to 'closed' (NOT using closeCell which works correctly)
+      const updated = await adapter.changeCellStatus(projectKey, cell.id, "closed", {
+        reason: "Done via status change"
+      });
+
+      // Should set closed_at when status changes to 'closed'
+      expect(updated.status).toBe("closed");
+      expect(updated.closed_at).toBeGreaterThan(0);
+      expect(updated.closed_at).not.toBeNull();
+    });
+
+    test("RED: changeCellStatus from 'closed' to 'open' clears closed_at", async () => {
+      const cell = await adapter.createCell(projectKey, {
+        title: "Reopen via status Test",
+        type: "task",
+        priority: 2,
+      });
+
+      // Close first
+      await adapter.closeCell(projectKey, cell.id, "Done");
+
+      // Reopen via status change (NOT using reopenCell)
+      const reopened = await adapter.changeCellStatus(projectKey, cell.id, "open");
+
+      // Should clear closed_at when status changes away from 'closed'
+      expect(reopened.status).toBe("open");
+      expect(reopened.closed_at).toBeNull();
+    });
+
     test("falls back to 'cell' when package.json not found", async () => {
       const nonExistentPath = "/path/that/does/not/exist";
       const testAdapter = createHiveAdapter(db, nonExistentPath);

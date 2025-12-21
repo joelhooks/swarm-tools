@@ -5,14 +5,14 @@
  * DurableMailbox + DurableDeferred pattern.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Effect } from "effect";
-import { ask, respond, askWithMailbox } from "./ask";
-import { DurableMailbox } from "./mailbox";
-import { DurableDeferred } from "./deferred";
+import { createInMemorySwarmMailLibSQL } from "../../libsql.convenience";
+import type { SwarmMailAdapter } from "../../types/adapter";
+import type { DatabaseAdapter } from "../../types/database";
+import { ask, askWithMailbox, respond } from "./ask";
 import { DurableAskLive } from "./layers";
-import { resetDatabase, closeDatabase } from "../index";
-import { randomUUID } from "node:crypto";
+import { DurableMailbox } from "./mailbox";
 
 // ============================================================================
 // Test Fixtures
@@ -33,15 +33,16 @@ interface TestResponse {
 // Setup/Teardown
 // ============================================================================
 
-let testDbPath: string;
+let swarmMail: SwarmMailAdapter;
+let db: DatabaseAdapter;
 
-beforeEach(async () => {
-  testDbPath = `/tmp/ask-test-${randomUUID()}`;
-  await resetDatabase(testDbPath);
+beforeAll(async () => {
+  swarmMail = await createInMemorySwarmMailLibSQL("ask-test");
+  db = await swarmMail.getDatabase();
 });
 
-afterEach(async () => {
-  await closeDatabase(testDbPath);
+afterAll(async () => {
+  await swarmMail.close();
 });
 
 // ============================================================================
@@ -57,13 +58,13 @@ describe("Ask Pattern", () => {
       const agentA = yield* mailboxService.create({
         agent: "agent-a",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       const agentB = yield* mailboxService.create({
         agent: "agent-b",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       // Agent B: Listen for request and respond
@@ -81,7 +82,7 @@ describe("Ask Pattern", () => {
                 status: "success",
                 data: { username: "testuser", id: 123 },
               },
-              testDbPath,
+              db,
             ).pipe(Effect.provide(DurableAskLive)),
           );
 
@@ -99,6 +100,7 @@ describe("Ask Pattern", () => {
         to: "agent-b",
         payload: { action: "getUserData", userId: 123 },
         ttlSeconds: 5,
+        db: db,
       });
 
       expect(response.status).toBe("success");
@@ -118,7 +120,7 @@ describe("Ask Pattern", () => {
       const agentA = yield* mailboxService.create({
         agent: "agent-a",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       // No one listening, should timeout after 1 second
@@ -127,6 +129,7 @@ describe("Ask Pattern", () => {
         to: "agent-b-nonexistent",
         payload: { action: "getUserData", userId: 123 },
         ttlSeconds: 1,
+        db: db,
       });
 
       return response;
@@ -148,7 +151,7 @@ describe("Ask Pattern", () => {
       const agentB = yield* mailboxService.create({
         agent: "agent-b",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       const responder = Effect.promise(async () => {
@@ -157,7 +160,7 @@ describe("Ask Pattern", () => {
             respond<TestResponse>(
               envelope,
               { status: "success", message: "One-off response" },
-              testDbPath,
+              db,
             ).pipe(Effect.provide(DurableAskLive)),
           );
           await Effect.runPromise(envelope.commit());
@@ -174,7 +177,7 @@ describe("Ask Pattern", () => {
         to: "agent-b",
         payload: { action: "ping", userId: 0 },
         ttlSeconds: 5,
-        projectPath: testDbPath,
+        db: db,
       });
 
       expect(response.status).toBe("success");
@@ -194,13 +197,13 @@ describe("Ask Pattern", () => {
       const agentA = yield* mailboxService.create({
         agent: "agent-a",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       const agentB = yield* mailboxService.create({
         agent: "agent-b",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       // Agent B: Respond to all requests (limit to 3)
@@ -214,7 +217,7 @@ describe("Ask Pattern", () => {
                 status: "success",
                 data: { userId: envelope.payload.userId },
               },
-              testDbPath,
+              db,
             ).pipe(Effect.provide(DurableAskLive)),
           );
           await Effect.runPromise(envelope.commit());
@@ -232,18 +235,21 @@ describe("Ask Pattern", () => {
           to: "agent-b",
           payload: { action: "getData", userId: 1 },
           ttlSeconds: 5,
+          db: db,
         }),
         ask<TestRequest, TestResponse>({
           mailbox: agentA,
           to: "agent-b",
           payload: { action: "getData", userId: 2 },
           ttlSeconds: 5,
+          db: db,
         }),
         ask<TestRequest, TestResponse>({
           mailbox: agentA,
           to: "agent-b",
           payload: { action: "getData", userId: 3 },
           ttlSeconds: 5,
+          db: db,
         }),
       ];
 
@@ -270,13 +276,13 @@ describe("Ask Pattern", () => {
       const agentA = yield* mailboxService.create({
         agent: "agent-a",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       const agentB = yield* mailboxService.create({
         agent: "agent-b",
         projectKey: "test-proj",
-        projectPath: testDbPath,
+        db: db,
       });
 
       const responder = Effect.promise(async () => {
@@ -286,7 +292,7 @@ describe("Ask Pattern", () => {
             respond<TestResponse>(
               envelope,
               { status: "success" },
-              testDbPath,
+              db,
             ).pipe(Effect.provide(DurableAskLive)),
           );
           await Effect.runPromise(envelope.commit());
@@ -302,6 +308,7 @@ describe("Ask Pattern", () => {
         payload: { action: "test", userId: 0 },
         threadId: "conversation-123",
         ttlSeconds: 5,
+        db: db,
       });
 
       expect(response.status).toBe("success");

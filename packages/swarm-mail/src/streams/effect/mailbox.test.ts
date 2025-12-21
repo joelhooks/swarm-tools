@@ -1,23 +1,39 @@
 /**
  * Tests for DurableMailbox service
  */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { Effect, Layer } from "effect";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { Effect } from "effect";
+import { createInMemorySwarmMailLibSQL } from "../../libsql.convenience";
+import type { SwarmMailAdapter } from "../../types/adapter";
+import type { DatabaseAdapter } from "../../types/database";
+import { DurableCursorLayer } from "./cursor";
 import { DurableMailbox, DurableMailboxLive, type Envelope } from "./mailbox";
-import { DurableCursor, DurableCursorLive } from "./cursor";
-import { resetDatabase, closeDatabase } from "../index";
 
 describe("DurableMailbox", () => {
-  const projectPath = "/tmp/mailbox-test";
   const projectKey = "/test/project";
+  let swarmMail: SwarmMailAdapter;
+  let db: DatabaseAdapter;
 
-  beforeEach(async () => {
-    await resetDatabase(projectPath);
+  beforeAll(async () => {
+    swarmMail = await createInMemorySwarmMailLibSQL("mailbox-test");
+    db = await swarmMail.getDatabase();
   });
 
   afterAll(async () => {
-    await closeDatabase(projectPath);
+    await swarmMail.close();
   });
+
+  // Helper to run programs with both layers
+  async function runMailboxProgram<A, E>(
+    program: Effect.Effect<A, E, DurableMailbox>,
+  ): Promise<A> {
+    return Effect.runPromise(
+      program.pipe(
+        Effect.provide(DurableMailboxLive),
+        Effect.provide(DurableCursorLayer),
+      ),
+    );
+  }
 
   describe("send/receive cycle", () => {
     it("should send and receive a message", async () => {
@@ -28,13 +44,13 @@ describe("DurableMailbox", () => {
         const senderMailbox = yield* mailboxService.create({
           agent: "sender",
           projectKey,
-          projectPath,
+          db,
         });
 
         const receiverMailbox = yield* mailboxService.create({
           agent: "receiver",
           projectKey,
-          projectPath,
+          db,
         });
 
         // Send message
@@ -59,13 +75,7 @@ describe("DurableMailbox", () => {
         return messages;
       });
 
-      const layer = Layer.provideMerge(
-        DurableMailboxLive,
-        Layer.succeed(DurableCursor, DurableCursorLive),
-      );
-      const messages = await Effect.runPromise(
-        program.pipe(Effect.provide(layer)),
-      );
+      const messages = await runMailboxProgram(program);
 
       expect(messages).toHaveLength(1);
       expect(messages[0]?.payload).toEqual({
@@ -82,13 +92,13 @@ describe("DurableMailbox", () => {
         const senderMailbox = yield* mailboxService.create({
           agent: "sender",
           projectKey,
-          projectPath,
+          db,
         });
 
         const receiverMailbox = yield* mailboxService.create({
           agent: "receiver",
           projectKey,
-          projectPath,
+          db,
         });
 
         // Send message with replyTo
@@ -107,11 +117,7 @@ describe("DurableMailbox", () => {
         });
       });
 
-      const layer = Layer.provideMerge(
-        DurableMailboxLive,
-        Layer.succeed(DurableCursor, DurableCursorLive),
-      );
-      await Effect.runPromise(program.pipe(Effect.provide(layer)));
+      await runMailboxProgram(program);
     });
 
     it("should filter messages by recipient", async () => {
@@ -121,19 +127,19 @@ describe("DurableMailbox", () => {
         const senderMailbox = yield* mailboxService.create({
           agent: "sender",
           projectKey,
-          projectPath,
+          db,
         });
 
         const agent1Mailbox = yield* mailboxService.create({
           agent: "agent1",
           projectKey,
-          projectPath,
+          db,
         });
 
         const agent2Mailbox = yield* mailboxService.create({
           agent: "agent2",
           projectKey,
-          projectPath,
+          db,
         });
 
         // Send to agent1 only
@@ -175,13 +181,7 @@ describe("DurableMailbox", () => {
         return { agent1Messages, agent2Messages };
       });
 
-      const layer = Layer.provideMerge(
-        DurableMailboxLive,
-        Layer.succeed(DurableCursor, DurableCursorLive),
-      );
-      const { agent1Messages, agent2Messages } = await Effect.runPromise(
-        program.pipe(Effect.provide(layer)),
-      );
+      const { agent1Messages, agent2Messages } = await runMailboxProgram(program);
 
       expect(agent1Messages).toHaveLength(1);
       expect(agent1Messages[0]?.payload.for).toBe("agent1");
@@ -199,13 +199,13 @@ describe("DurableMailbox", () => {
         const senderMailbox = yield* mailboxService.create({
           agent: "sender",
           projectKey,
-          projectPath,
+          db,
         });
 
         const receiverMailbox = yield* mailboxService.create({
           agent: "receiver",
           projectKey,
-          projectPath,
+          db,
         });
 
         // Send message
@@ -229,11 +229,7 @@ describe("DurableMailbox", () => {
         });
       });
 
-      const layer = Layer.provideMerge(
-        DurableMailboxLive,
-        Layer.succeed(DurableCursor, DurableCursorLive),
-      );
-      await Effect.runPromise(program.pipe(Effect.provide(layer)));
+      await runMailboxProgram(program);
     });
 
     it("should return null when no messages", async () => {
@@ -243,18 +239,14 @@ describe("DurableMailbox", () => {
         const mailbox = yield* mailboxService.create({
           agent: "receiver",
           projectKey,
-          projectPath,
+          db,
         });
 
         const peeked = yield* mailbox.peek();
         expect(peeked).toBeNull();
       });
 
-      const layer = Layer.provideMerge(
-        DurableMailboxLive,
-        Layer.succeed(DurableCursor, DurableCursorLive),
-      );
-      await Effect.runPromise(program.pipe(Effect.provide(layer)));
+      await runMailboxProgram(program);
     });
   });
 });

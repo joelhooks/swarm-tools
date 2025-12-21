@@ -289,3 +289,84 @@ describe("Migration Runner - Schema Fixes", () => {
     expect(agentsValidation.valid).toBe(true);
   });
 });
+
+describe("Migration Runner - Cursors Table Migration (stream_id → stream)", () => {
+  let client: Client;
+
+  beforeEach(() => {
+    client = createClient({ url: ":memory:" });
+  });
+
+  afterEach(async () => {
+    await client.close();
+  });
+
+  test("RED: migrates cursors table from stream_id to stream column", async () => {
+    // Create old cursors schema (PGLite format with stream_id)
+    await client.execute(`
+      CREATE TABLE cursors (
+        stream_id TEXT PRIMARY KEY,
+        position INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    // Insert legacy data
+    await client.execute(`
+      INSERT INTO cursors (stream_id, position, updated_at)
+      VALUES ('test-stream', 42, ${Date.now()})
+    `);
+
+    const { cursorsTable } = await import("./schema/streams.js");
+
+    // Migrate should detect old schema and recreate table
+    await migrateDatabase(client, { cursorsTable });
+
+    // Verify new schema is correct
+    const validation = await validateSchema(client, { cursorsTable });
+    expect(validation.valid).toBe(true);
+
+    // Verify table has new columns
+    const columns = await client.execute(`PRAGMA table_info(cursors)`);
+    const columnNames = columns.rows.map(r => r.name as string);
+    
+    expect(columnNames).toContain("stream");
+    expect(columnNames).toContain("checkpoint");
+    expect(columnNames).not.toContain("stream_id");
+
+    // Note: Data is lost during DROP TABLE recreate
+    // This is acceptable as cursors are ephemeral stream positions
+  });
+
+  test("RED: leaves cursors table unchanged if already migrated", async () => {
+    const { cursorsTable } = await import("./schema/streams.js");
+
+    // Create new cursors schema
+    await client.execute(`
+      CREATE TABLE cursors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stream TEXT NOT NULL,
+        checkpoint TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(stream, checkpoint)
+      )
+    `);
+
+    // Insert data with new schema
+    await client.execute(`
+      INSERT INTO cursors (stream, checkpoint, position, updated_at)
+      VALUES ('test-stream', 'main', 42, ${Date.now()})
+    `);
+
+    // Migrate should be a no-op
+    await migrateDatabase(client, { cursorsTable });
+
+    // Verify data is preserved
+    const rows = await client.execute(`SELECT * FROM cursors`);
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].stream).toBe("test-stream");
+    expect(rows.rows[0].checkpoint).toBe("main");
+    expect(rows.rows[0].position).toBe(42);
+  });
+});

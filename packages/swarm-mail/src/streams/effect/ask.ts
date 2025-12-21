@@ -32,6 +32,7 @@ import { DurableCursor } from "./cursor";
 import { DurableMailbox, type Mailbox } from "./mailbox";
 import { DurableDeferred, type DeferredConfig } from "./deferred";
 import type { TimeoutError, NotFoundError } from "./deferred";
+import type { DatabaseAdapter } from "../../types/database";
 
 // ============================================================================
 // Types
@@ -53,8 +54,8 @@ export interface AskConfig<Req> {
   readonly threadId?: string;
   /** Optional importance level */
   readonly importance?: "low" | "normal" | "high" | "urgent";
-  /** Optional project path for database isolation */
-  readonly projectPath?: string;
+  /** Database adapter for deferred storage */
+  readonly db: DatabaseAdapter;
 }
 
 // ============================================================================
@@ -98,7 +99,7 @@ export function ask<Req, Res>(
     // Create deferred for response
     const deferredConfig: DeferredConfig = {
       ttlSeconds: config.ttlSeconds ?? 60,
-      projectPath: config.projectPath,
+      db: config.db,
     };
     const responseHandle = yield* deferred.create<Res>(deferredConfig);
 
@@ -144,7 +145,7 @@ export function askWithMailbox<Req, Res>(config: {
   readonly ttlSeconds?: number;
   readonly threadId?: string;
   readonly importance?: "low" | "normal" | "high" | "urgent";
-  readonly projectPath?: string;
+  readonly db: DatabaseAdapter;
 }): Effect.Effect<
   Res,
   TimeoutError | NotFoundError,
@@ -156,7 +157,7 @@ export function askWithMailbox<Req, Res>(config: {
     const mailbox = yield* mailboxService.create({
       agent: config.agent,
       projectKey: config.projectKey,
-      projectPath: config.projectPath,
+      db: config.db,
     });
 
     return yield* ask<Req, Res>({
@@ -166,7 +167,7 @@ export function askWithMailbox<Req, Res>(config: {
       ttlSeconds: config.ttlSeconds,
       threadId: config.threadId,
       importance: config.importance,
-      projectPath: config.projectPath,
+      db: config.db,
     });
   });
 }
@@ -188,7 +189,7 @@ export function askWithMailbox<Req, Res>(config: {
 export function respond<T>(
   envelope: { readonly replyTo?: string },
   value: T,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, NotFoundError, DurableDeferred> {
   return Effect.gen(function* () {
     if (!envelope.replyTo) {
@@ -197,6 +198,6 @@ export function respond<T>(
     }
 
     const deferred = yield* DurableDeferred;
-    yield* deferred.resolve(envelope.replyTo, value, projectPath);
+    yield* deferred.resolve(envelope.replyTo, value, db);
   });
 }

@@ -21,7 +21,7 @@
 import { and, eq, gte, gt, inArray, lte, sql } from "drizzle-orm";
 import type { SwarmDb } from "../db/client.js";
 import { eventsTable } from "../db/schema/streams.js";
-import { getDatabase, withTiming } from "../streams/index.js";
+import { withTiming } from "../streams/index.js";
 import type { DatabaseAdapter } from "../types/database.js";
 import { updateProjectionsDrizzle } from "./projections-drizzle.js";
 import type { CellEvent } from "./events.js";
@@ -219,8 +219,15 @@ export async function appendCellEvent(
 ): Promise<CellEvent & { id: number; sequence: number }> {
   const { toDrizzleDb } = await import("../libsql.convenience.js");
 
-  const db = dbOverride ?? (await getDatabase(projectPath));
-  const swarmDb = toDrizzleDb(db);
+  if (!dbOverride) {
+    throw new Error(
+      "[hive/store] dbOverride parameter is required. " +
+      "PGlite getDatabase() has been removed. " +
+      "Use createHiveAdapter() instead of calling appendCellEvent() directly."
+    );
+  }
+  
+  const swarmDb = toDrizzleDb(dbOverride);
 
   return appendCellEventDrizzle(swarmDb, event);
 }
@@ -243,8 +250,15 @@ export async function readCellEvents(
   return withTiming("readCellEvents", async () => {
     const { toDrizzleDb } = await import("../libsql.convenience.js");
 
-    const db = dbOverride ?? (await getDatabase(projectPath));
-    const swarmDb = toDrizzleDb(db);
+    if (!dbOverride) {
+      throw new Error(
+        "[hive/store] dbOverride parameter is required. " +
+        "PGlite getDatabase() has been removed. " +
+        "Use createHiveAdapter() instead of calling readCellEvents() directly."
+      );
+    }
+
+    const swarmDb = toDrizzleDb(dbOverride);
 
     return readCellEventsDrizzle(swarmDb, options);
   });
@@ -280,8 +294,15 @@ export async function replayCellEvents(
     const startTime = Date.now();
     const { toDrizzleDb } = await import("../libsql.convenience.js");
 
-    const db = dbOverride ?? (await getDatabase(projectPath));
-    const swarmDb = toDrizzleDb(db);
+    if (!dbOverride) {
+      throw new Error(
+        "[hive/store] dbOverride parameter is required. " +
+        "PGlite getDatabase() has been removed. " +
+        "Use createHiveAdapter() instead of calling replayCellEvents() directly."
+      );
+    }
+
+    const swarmDb = toDrizzleDb(dbOverride);
 
     // Optionally clear cell-specific materialized views using Drizzle
     if (options.clearViews) {

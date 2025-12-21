@@ -78,7 +78,9 @@ describe("Streams Schema", () => {
   test("cursorsTable has correct structure", () => {
     expect(cursorsTable).toBeDefined();
 
-    expect(cursorsTable.stream_id).toBeDefined();
+    expect(cursorsTable.id).toBeDefined();
+    expect(cursorsTable.stream).toBeDefined();
+    expect(cursorsTable.checkpoint).toBeDefined();
     expect(cursorsTable.position).toBeDefined();
     expect(cursorsTable.updated_at).toBeDefined();
   });

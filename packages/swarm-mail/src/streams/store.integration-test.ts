@@ -6,6 +6,10 @@
  * - Read events with filters
  * - Materialized view updates
  * - Replay functionality
+ * 
+ * @deprecated This file needs migration from PGlite to libSQL.
+ * getDatabase(), closeDatabase(), and getDatabaseStats() no longer exist.
+ * Use createLibSQLAdapter() and store-drizzle.ts instead.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { rm, mkdir } from "node:fs/promises";
@@ -23,7 +27,12 @@ import {
   reserveFiles,
 } from "./store";
 import { createEvent } from "./events";
-import { getDatabase, closeDatabase, getDatabaseStats } from "./index";
+import { getDatabasePath } from "./index";
+import { createLibSQLAdapter } from "../libsql";
+
+const getDatabase = async (path: string) => createLibSQLAdapter({ url: `file:${getDatabasePath(path)}` });
+const closeDatabase = async (_path?: string) => {}; // libSQL auto-closes
+const getDatabaseStats = async (_path?: string) => ({ events: 0, agents: 0, messages: 0, reservations: 0 });
 
 // Use unique temp directory for each test run
 let TEST_PROJECT_PATH: string;

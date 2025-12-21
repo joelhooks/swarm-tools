@@ -18,7 +18,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { closeDatabase } from "./index";
 import {
   initAgent,
   sendAgentMessage,
@@ -43,11 +42,11 @@ describe("Agent Mail Tools", () => {
   });
 
   afterEach(async () => {
-    await closeDatabase(TEST_PROJECT_PATH);
+    // Clean up database files - no need for explicit close
     try {
-      await rm(join(TEST_PROJECT_PATH, ".opencode"), { recursive: true });
+      await rm(join(TEST_PROJECT_PATH, ".opencode"), { recursive: true, force: true });
     } catch {
-      // Ignore
+      // Ignore cleanup errors
     }
   });
 
@@ -772,6 +771,115 @@ describe("Agent Mail Tools", () => {
       const health = await checkHealth(TEST_PROJECT_PATH);
 
       expect(health.stats?.agents).toBe(2);
+    });
+  });
+
+  // ==========================================================================
+  // DurableLock Integration
+  // ==========================================================================
+
+  describe("DurableLock Integration", () => {
+    it("uses DurableLock for file reservation locking", async () => {
+      const agent = await initAgent({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: "Worker",
+      });
+
+      // Reserve files
+      const result = await reserveAgentFiles({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: agent.agentName,
+        paths: ["src/auth.ts"],
+        reason: "bd-123: Auth work",
+      });
+
+      expect(result.granted.length).toBe(1);
+
+      // Verify lock was created in locks table
+      const { getDatabasePath } = await import("./index");
+      const { createLibSQLAdapter } = await import("../libsql");
+      
+      const dbPath = getDatabasePath(TEST_PROJECT_PATH);
+      const adapter = await createLibSQLAdapter({ url: `file:${dbPath}` });
+      
+      const locks = await adapter.query<{ resource: string; holder: string }>(
+        "SELECT resource, holder FROM locks",
+        []
+      );
+
+      expect(locks.rows.length).toBe(1);
+      expect(locks.rows[0]?.resource).toMatch(/^src\/auth\.ts$/);
+      
+      await adapter.close();
+    });
+
+    it("releases DurableLock when files are released", async () => {
+      const agent = await initAgent({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: "Worker",
+      });
+
+      // Reserve then release
+      await reserveAgentFiles({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: agent.agentName,
+        paths: ["src/auth.ts"],
+      });
+
+      await releaseAgentFiles({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: agent.agentName,
+      });
+
+      // Verify lock was deleted from locks table
+      const { getDatabasePath } = await import("./index");
+      const { createLibSQLAdapter } = await import("../libsql");
+      
+      const dbPath = getDatabasePath(TEST_PROJECT_PATH);
+      const adapter = await createLibSQLAdapter({ url: `file:${dbPath}` });
+      
+      const locks = await adapter.query<{ resource: string }>(
+        "SELECT resource FROM locks",
+        []
+      );
+
+      expect(locks.rows.length).toBe(0);
+      
+      await adapter.close();
+    });
+
+    it("respects lock expiry (TTL)", async () => {
+      const agent = await initAgent({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: "Worker",
+      });
+
+      // Reserve with 1 second TTL
+      await reserveAgentFiles({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: agent.agentName,
+        paths: ["src/temp.ts"],
+        ttlSeconds: 1,
+      });
+
+      // Wait for expiry
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // Another agent should be able to acquire
+      const agent2 = await initAgent({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: "Worker2",
+      });
+
+      const result = await reserveAgentFiles({
+        projectPath: TEST_PROJECT_PATH,
+        agentName: agent2.agentName,
+        paths: ["src/temp.ts"],
+      });
+
+      // Should succeed (no conflicts, lock expired)
+      expect(result.granted.length).toBe(1);
+      expect(result.conflicts.length).toBe(0);
     });
   });
 });

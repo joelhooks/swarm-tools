@@ -70,8 +70,9 @@ describe("libSQL streams schema", () => {
     test("events table has correct columns", async () => {
       await createLibSQLStreamsSchema(db);
 
-      const columns = await db.query<{ name: string; type: string }>(`
-        SELECT name, type FROM pragma_table_info('events')
+      // Use table_xinfo to include generated columns (hidden: 3)
+      const columns = await db.query<{ name: string; type: string; hidden: number }>(`
+        PRAGMA table_xinfo('events')
       `);
 
       const columnMap = Object.fromEntries(
@@ -83,7 +84,7 @@ describe("libSQL streams schema", () => {
         type: "TEXT",
         project_key: "TEXT",
         timestamp: "INTEGER",
-        sequence: "INTEGER",
+        sequence: "INTEGER", // Generated column (hidden: 3)
         data: "TEXT", // JSON stored as TEXT
         created_at: "TEXT", // ISO timestamp
       });

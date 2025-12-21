@@ -94,6 +94,8 @@ export const FileReservedEventSchema = BaseEventSchema.extend({
   ttl_seconds: z.number().default(3600),
   /** Absolute expiry timestamp */
   expires_at: z.number(),
+  /** DurableLock holder IDs (one per path) */
+  lock_holder_ids: z.array(z.string()).optional(),
 });
 
 export const FileReleasedEventSchema = BaseEventSchema.extend({
@@ -103,6 +105,8 @@ export const FileReleasedEventSchema = BaseEventSchema.extend({
   paths: z.array(z.string()).optional(),
   /** Specific reservation IDs to release */
   reservation_ids: z.array(z.number()).optional(),
+  /** DurableLock holder IDs to release */
+  lock_holder_ids: z.array(z.string()).optional(),
 });
 
 // ============================================================================

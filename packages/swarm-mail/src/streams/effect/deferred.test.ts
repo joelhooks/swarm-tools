@@ -11,11 +11,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
-import { closeDatabase } from "../index";
+import { createInMemorySwarmMailLibSQL } from "../../libsql.convenience";
+import type { DatabaseAdapter } from "../../types/database";
 import {
   TimeoutError,
   NotFoundError,
@@ -26,29 +25,19 @@ import {
   DurableDeferredLive,
 } from "./deferred";
 
-let TEST_PROJECT_PATH: string;
+let db: DatabaseAdapter;
+let closeDb: () => Promise<void>;
 
 describe("DurableDeferred", () => {
   beforeEach(async () => {
-    TEST_PROJECT_PATH = join(
-      tmpdir(),
-      `deferred-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    );
-    await mkdir(TEST_PROJECT_PATH, { recursive: true });
+    const testId = randomUUID().slice(0, 8);
+    const swarmMail = await createInMemorySwarmMailLibSQL(testId);
+    db = await swarmMail.getDatabase();
+    closeDb = () => swarmMail.close();
   });
 
   afterEach(async () => {
-    try {
-      await closeDatabase(TEST_PROJECT_PATH);
-      // Small delay to let PGLite fully release file handles
-      await new Promise((r) => setTimeout(r, 50));
-      await rm(join(TEST_PROJECT_PATH, ".opencode"), {
-        recursive: true,
-        force: true,
-      });
-    } catch {
-      // Ignore cleanup errors
-    }
+    await closeDb();
   });
 
   describe("create", () => {
@@ -57,7 +46,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<string>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -75,13 +64,13 @@ describe("DurableDeferred", () => {
         const handle1 = yield* _(
           createDeferred<string>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
         const handle2 = yield* _(
           createDeferred<string>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -100,7 +89,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<{ message: string }>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -112,7 +101,7 @@ describe("DurableDeferred", () => {
               resolveDeferred(
                 handle.url,
                 { message: "resolved!" },
-                TEST_PROJECT_PATH,
+                db,
               ),
             );
           }).pipe(Effect.provide(DurableDeferredLive)),
@@ -134,7 +123,7 @@ describe("DurableDeferred", () => {
           resolveDeferred(
             "deferred:nonexistent",
             { value: 42 },
-            TEST_PROJECT_PATH,
+            db,
           ),
         );
       });
@@ -157,7 +146,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<string>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -169,7 +158,7 @@ describe("DurableDeferred", () => {
               rejectDeferred(
                 handle.url,
                 new Error("Something went wrong"),
-                TEST_PROJECT_PATH,
+                db,
               ),
             );
           }).pipe(Effect.provide(DurableDeferredLive)),
@@ -196,7 +185,7 @@ describe("DurableDeferred", () => {
           rejectDeferred(
             "deferred:nonexistent",
             new Error("test"),
-            TEST_PROJECT_PATH,
+            db,
           ),
         );
       });
@@ -215,7 +204,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<string>({
             ttlSeconds: 1, // 1 second timeout
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -238,7 +227,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<number>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -246,14 +235,14 @@ describe("DurableDeferred", () => {
         Effect.runFork(
           Effect.gen(function* (_) {
             yield* _(Effect.sleep("50 millis"));
-            yield* _(resolveDeferred(handle.url, 1, TEST_PROJECT_PATH));
+            yield* _(resolveDeferred(handle.url, 1, db));
           }).pipe(Effect.provide(DurableDeferredLive)),
         );
 
         Effect.runFork(
           Effect.gen(function* (_) {
             yield* _(Effect.sleep("100 millis"));
-            yield* _(resolveDeferred(handle.url, 2, TEST_PROJECT_PATH));
+            yield* _(resolveDeferred(handle.url, 2, db));
           }).pipe(Effect.provide(DurableDeferredLive)),
         );
 
@@ -271,12 +260,12 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<string>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
         // Resolve immediately
-        yield* _(resolveDeferred(handle.url, "resolved", TEST_PROJECT_PATH));
+        yield* _(resolveDeferred(handle.url, "resolved", db));
 
         // Wait for value
         const result = yield* _(handle.value);
@@ -296,7 +285,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<string>({
             ttlSeconds: 1,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -304,7 +293,7 @@ describe("DurableDeferred", () => {
         yield* _(Effect.sleep("1500 millis"));
 
         // Cleanup
-        const count = yield* _(cleanupDeferreds(TEST_PROJECT_PATH));
+        const count = yield* _(cleanupDeferreds(db));
         expect(count).toBeGreaterThanOrEqual(0);
       });
 
@@ -326,7 +315,7 @@ describe("DurableDeferred", () => {
         const handle = yield* _(
           createDeferred<TestData>({
             ttlSeconds: 60,
-            projectPath: TEST_PROJECT_PATH,
+            db,
           }),
         );
 
@@ -337,7 +326,7 @@ describe("DurableDeferred", () => {
               resolveDeferred(
                 handle.url,
                 { id: 1, name: "test", tags: ["a", "b"] },
-                TEST_PROJECT_PATH,
+                db,
               ),
             );
           }).pipe(Effect.provide(DurableDeferredLive)),

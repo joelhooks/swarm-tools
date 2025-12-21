@@ -23,118 +23,104 @@ export const SWARM_MAIL_VERSION = "0.1.0";
 
 export { createSwarmMailAdapter } from "./adapter";
 export type {
-  DatabaseAdapter,
-  SwarmMailAdapter,
-  EventStoreAdapter,
-  AgentAdapter,
-  MessagingAdapter,
-  ReservationAdapter,
-  SchemaAdapter,
-  ReadEventsOptions,
-  InboxOptions,
-  Message,
-  Reservation,
-  Conflict,
+	AgentAdapter,
+	Conflict,
+	DatabaseAdapter,
+	EventStoreAdapter,
+	InboxOptions,
+	Message,
+	MessagingAdapter,
+	ReadEventsOptions,
+	Reservation,
+	ReservationAdapter,
+	SchemaAdapter,
+	SwarmMailAdapter,
 } from "./types";
-
-
 
 // ============================================================================
 // LibSQL Adapter
 // ============================================================================
 
-export { createLibSQLAdapter } from "./libsql";
 export type { LibSQLConfig } from "./libsql";
+export { createLibSQLAdapter } from "./libsql";
 
 // LibSQL Convenience Layer
 export {
-  getSwarmMailLibSQL,
-  createInMemorySwarmMailLibSQL,
-  createInMemorySwarmMailLibSQL as createInMemorySwarmMail, // Alias for backward compatibility
-  closeSwarmMailLibSQL,
-  closeAllSwarmMailLibSQL,
-  closeAllSwarmMailLibSQL as closeAllSwarmMail, // Alias for backward compatibility
-  getDatabasePath as getLibSQLDatabasePath,
-  getProjectTempDirName as getLibSQLProjectTempDirName,
-  hashProjectPath as hashLibSQLProjectPath,
+	closeAllSwarmMailLibSQL,
+	closeAllSwarmMailLibSQL as closeAllSwarmMail, // Alias for backward compatibility
+	closeSwarmMailLibSQL,
+	createInMemorySwarmMailLibSQL,
+	createInMemorySwarmMailLibSQL as createInMemorySwarmMail, // Alias for backward compatibility
+	getDatabasePath as getLibSQLDatabasePath,
+	getProjectTempDirName as getLibSQLProjectTempDirName,
+	getSwarmMailLibSQL,
+	hashProjectPath as hashLibSQLProjectPath,
 } from "./libsql.convenience";
-
+export {
+	createLibSQLMemorySchema,
+	dropLibSQLMemorySchema,
+	EMBEDDING_DIM as LIBSQL_EMBEDDING_DIM,
+	validateLibSQLMemorySchema,
+} from "./memory/libsql-schema";
 // LibSQL Schemas
 export {
-  createLibSQLStreamsSchema,
-  dropLibSQLStreamsSchema,
-  validateLibSQLStreamsSchema,
+	createLibSQLStreamsSchema,
+	dropLibSQLStreamsSchema,
+	validateLibSQLStreamsSchema,
 } from "./streams/libsql-schema";
-export {
-  createLibSQLMemorySchema,
-  dropLibSQLMemorySchema,
-  validateLibSQLMemorySchema,
-  EMBEDDING_DIM as LIBSQL_EMBEDDING_DIM,
-} from "./memory/libsql-schema";
 
 // ============================================================================
-// Streams Module Exports (selective - avoid PGlite WASM loading)
+// Streams Module Exports
 // ============================================================================
-
-// NOTE: We import from specific files under streams/, NOT from streams/index.ts
-// to avoid triggering PGlite WASM loading at import time.
-
-// Swarm Mail functions (legacy PGlite-based, deprecated - use adapter instead)
-export {
-  initSwarmAgent,
-  sendSwarmMessage,
-  getSwarmInbox,
-  readSwarmMessage,
-  reserveSwarmFiles,
-  releaseSwarmFiles,
-  acknowledgeSwarmMessage,
-  checkSwarmHealth as checkSwarmMailHealth,
-} from "./streams/swarm-mail";
-
-// Event types and creation (from events.ts)
-export { createEvent } from "./streams/events";
-export type {
-  MailSessionState,
-  DecompositionGeneratedEvent,
-  SubtaskOutcomeEvent,
-} from "./streams/events";
-
-// Event store primitives (now using Drizzle via wrapper functions)
-export { appendEvent, readEvents } from "./streams/index";
-
-// Projections (now using Drizzle via wrapper functions)
-export {
-  getAgent,
-  getActiveReservations,
-  getEvalRecords,
-  getEvalStats,
-} from "./streams/index";
-export type { EvalRecord } from "./streams/projections-drizzle";
-
-// Database management - LAZY LOADED via dynamic import to avoid WASM loading
-// Users should call these functions, not import PGlite directly
-export async function getDatabase(projectPath?: string) {
-  const { getDatabase: getDb } = await import("./streams/index.js");
-  return getDb(projectPath);
-}
-
-export async function closeDatabase(projectPath?: string) {
-  const { closeDatabase: closeDb } = await import("./streams/index.js");
-  return closeDb(projectPath);
-}
-
-export async function closeAllDatabases() {
-  const { closeAllDatabases: closeAll } = await import("./streams/index.js");
-  return closeAll();
-}
-
-export async function resetDatabase(projectPath?: string) {
-  const { resetDatabase: reset } = await import("./streams/index.js");
-  return reset(projectPath);
-}
 
 // Re-export checkSwarmHealth from correct location
 export { checkHealth as checkSwarmHealth } from "./streams/agent-mail";
+
+// Auto-migration (project DB → global DB)
+export {
+	backupOldDb,
+	detectSourceType,
+	getGlobalDbPath,
+	migrateLibSQLToGlobal,
+	migratePGLiteToGlobal,
+	migrateProjectToGlobal,
+	needsMigration,
+} from "./streams/auto-migrate";
+export type {
+	MigrationResult as AutoMigrationResult,
+	MigrationStats as AutoMigrationStats,
+	SourceType,
+} from "./streams/auto-migrate";
+export type {
+	DecompositionGeneratedEvent,
+	MailSessionState,
+	SubtaskOutcomeEvent,
+} from "./streams/events";
+// Event types and creation (from events.ts)
+export { createEvent } from "./streams/events";
+// Event store primitives (now using Drizzle via wrapper functions)
+// Projections (now using Drizzle via wrapper functions)
+export {
+	appendEvent,
+	getActiveReservations,
+	getAgent,
+	getEvalRecords,
+	getEvalStats,
+	getOldProjectDbPaths,
+	readEvents,
+} from "./streams/index";
+export type { EvalRecord } from "./streams/projections-drizzle";
+// Swarm Mail functions
+export {
+	acknowledgeSwarmMessage,
+	checkSwarmHealth as checkSwarmMailHealth,
+	getSwarmInbox,
+	initSwarmAgent,
+	readSwarmMessage,
+	releaseSwarmFiles,
+	reserveSwarmFiles,
+	sendSwarmMessage,
+} from "./streams/swarm-mail";
 
 // ============================================================================
 // Hive Module Exports (work item tracking)
@@ -142,62 +128,55 @@ export { checkHealth as checkSwarmHealth } from "./streams/agent-mail";
 
 export * from "./hive";
 
-
-
 // ============================================================================
 // Memory Module Exports (semantic memory store)
 // ============================================================================
 
-export {
-  createMemoryStore,
-  EMBEDDING_DIM,
-} from "./memory/store";
-export type {
-  Memory,
-  SearchResult,
-  SearchOptions,
-} from "./memory/store";
-
 export { createMemoryAdapter } from "./memory/adapter";
-
-export {
-  Ollama,
-  OllamaError,
-  getDefaultConfig,
-  makeOllamaLive,
-} from "./memory/ollama";
-export type { MemoryConfig } from "./memory/ollama";
-
-export {
-  memoryMigration,
-  memoryMigrations,
-} from "./memory/migrations";
-
-export {
-  legacyDatabaseExists,
-  migrateLegacyMemories,
-  getMigrationStatus,
-  getDefaultLegacyPath,
-  targetHasMemories,
-} from "./memory/migrate-legacy";
 export type {
-  MigrationOptions,
-  MigrationResult,
+	MigrationOptions,
+	MigrationResult,
 } from "./memory/migrate-legacy";
-
+export {
+	getDefaultLegacyPath,
+	getMigrationStatus,
+	legacyDatabaseExists,
+	migrateLegacyMemories,
+	targetHasMemories,
+} from "./memory/migrate-legacy";
+export {
+	memoryMigration,
+	memoryMigrations,
+} from "./memory/migrations";
+export type { MemoryConfig } from "./memory/ollama";
+export {
+	getDefaultConfig,
+	makeOllamaLive,
+	Ollama,
+	OllamaError,
+} from "./memory/ollama";
+export type {
+	Memory,
+	SearchOptions,
+	SearchResult,
+} from "./memory/store";
+export {
+	createMemoryStore,
+	EMBEDDING_DIM,
+} from "./memory/store";
+export type {
+	ExportOptions as MemoryExportOptions,
+	ImportOptions as MemoryImportOptions,
+	MemoryExport,
+	MemoryImportResult,
+} from "./memory/sync";
 // Memory sync (JSONL export/import for git)
 export {
-  exportMemories,
-  importMemories,
-  syncMemories,
-  parseMemoryJSONL,
-  serializeMemoryToJSONL,
-} from "./memory/sync";
-export type {
-  MemoryExport,
-  MemoryImportResult,
-  ExportOptions as MemoryExportOptions,
-  ImportOptions as MemoryImportOptions,
+	exportMemories,
+	importMemories,
+	parseMemoryJSONL,
+	serializeMemoryToJSONL,
+	syncMemories,
 } from "./memory/sync";
 
 // Memory test utilities
@@ -207,19 +186,18 @@ export { createTestMemoryDb } from "./memory/test-utils";
 // Drizzle Database Client (for memory store)
 // ============================================================================
 
-export { getDb, createInMemoryDb, closeDb } from "./db";
-export { createDrizzleClient } from "./db/drizzle";
 export type { SwarmDb } from "./db";
-export { toSwarmDb, toDrizzleDb } from "./libsql.convenience";
-
+export { closeDb, createInMemoryDb, getDb } from "./db";
+export { createDrizzleClient } from "./db/drizzle";
+export { toDrizzleDb, toSwarmDb } from "./libsql.convenience";
 
 // ============================================================================
 // PGlite → libSQL Migration
 // ============================================================================
 
 export {
-  migratePGliteToLibSQL,
-  pgliteExists,
-  type MigrationOptions as PGliteMigrationOptions,
-  type MigrationResult as PGliteMigrationResult,
+	type MigrationOptions as PGliteMigrationOptions,
+	type MigrationResult as PGliteMigrationResult,
+	migratePGliteToLibSQL,
+	pgliteExists,
 } from "./migrate-pglite-to-libsql";

@@ -1,8 +1,16 @@
 /**
- * libSQL Streams Schema
+ * libSQL Streams Schema - Event Store Tables and Indexes
  *
- * Translation of PGLite/PostgreSQL event store schema to libSQL.
- * Parallel to migrations.ts but using libSQL-compatible syntax.
+ * Provides table creation and index DDL for event store.
+ * 
+ * ## Schema Source of Truth
+ * - **Table structure**: db/schema/streams.ts (Drizzle schema)
+ * - **Index DDL**: This file (Drizzle doesn't auto-create indexes)
+ *
+ * ## Synchronization
+ * Table definitions MUST match db/schema/streams.ts exactly.
+ * Changes to table structures should be made in db/schema/streams.ts first,
+ * then reflected here.
  *
  * ## Key Differences from PostgreSQL
  *
@@ -14,11 +22,6 @@
  * | `BOOLEAN`           | `INTEGER` (0/1)                     |
  * | `CURRENT_TIMESTAMP` | `datetime('now')`                   |
  * | `BIGINT`            | `INTEGER`                           |
- *
- * ## Compatibility Note
- *
- * This schema is functionally equivalent to migration v0 in migrations.ts.
- * When using libSQL, adapter.ts should call this instead of running migrations.
  *
  * @module streams/libsql-schema
  */
@@ -55,13 +58,15 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Events Table (append-only log)
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (eventsTable)
+  // Source of truth: db/schema/streams.ts
   await db.exec(`
     CREATE TABLE IF NOT EXISTS events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
       project_key TEXT NOT NULL,
       timestamp INTEGER NOT NULL,
-      sequence INTEGER,
+      sequence INTEGER GENERATED ALWAYS AS (id) STORED,
       data TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     )
@@ -91,6 +96,7 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Agents Table (materialized view)
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (agentsTable)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS agents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +119,7 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Messages Table (materialized view)
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (messagesTable)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +152,7 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Message Recipients Table (many-to-many)
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (messageRecipientsTable)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS message_recipients (
       message_id INTEGER NOT NULL,
@@ -164,6 +172,7 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Reservations Table (file locks)
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (reservationsTable)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS reservations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,7 +183,8 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
       reason TEXT,
       created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL,
-      released_at INTEGER
+      released_at INTEGER,
+      lock_holder_id TEXT
     )
   `);
 
@@ -203,6 +213,7 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Locks Table (distributed mutex)
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (locksTable)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS locks (
       resource TEXT PRIMARY KEY,
@@ -226,6 +237,26 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   // ========================================================================
   // Cursors Table (stream positions) - matches Effect DurableCursor schema
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/streams.ts (cursorsTable)
+  
+  // Check if cursors table exists with old schema (stream_id instead of stream)
+  const cursorsExists = await db.query<{ name: string }>(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='cursors'`
+  );
+  
+  if (cursorsExists.rows.length > 0) {
+    // Check if it has the old schema (stream_id column)
+    const columns = await db.query<{ name: string }>(
+      `PRAGMA table_xinfo('cursors')`
+    );
+    const columnNames = columns.rows.map(r => r.name);
+    
+    if (columnNames.includes('stream_id') && !columnNames.includes('stream')) {
+      // Old schema detected - drop and recreate
+      await db.exec(`DROP TABLE cursors`);
+    }
+  }
+  
   await db.exec(`
     CREATE TABLE IF NOT EXISTS cursors (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -294,8 +325,9 @@ export async function validateLibSQLStreamsSchema(db: DatabaseAdapter): Promise<
     if (tables.rows.length !== 7) return false;
 
     // Check events table has required columns
+    // Use table_xinfo to include generated columns (like sequence)
     const eventsCols = await db.query(`
-      SELECT name FROM pragma_table_info('events')
+      PRAGMA table_xinfo('events')
     `);
     const eventsColNames = eventsCols.rows.map((r: any) => r.name as string);
     const requiredEventsCols = ["id", "type", "project_key", "timestamp", "sequence", "data", "created_at"];

@@ -1,16 +1,27 @@
 /**
- * Event Store - Append-only event log with PGLite
+ * Event Store - Append-only event log (DEPRECATED - use store-drizzle.ts)
  *
- * Core operations:
- * - append(): Add events to the log
- * - read(): Read events with filters
- * - replay(): Rebuild state from events
- * - replayBatched(): Rebuild state with pagination (for large logs)
+ * Legacy PGlite-based event store. This file exists only for backward compatibility
+ * and migration support. New code should use store-drizzle.ts instead.
  *
- * All state changes go through events. Projections compute current state.
+ * @deprecated Use store-drizzle.ts with DatabaseAdapter
  */
-import { getDatabase, withTiming } from "./index";
+import { withTiming } from "./index";
 import type { DatabaseAdapter } from "../types/database";
+
+/**
+ * Require dbOverride parameter (PGlite getDatabase removed)
+ */
+function requireDbOverride(dbOverride?: DatabaseAdapter, fnName?: string): DatabaseAdapter {
+  if (!dbOverride) {
+    throw new Error(
+      `[streams/store] dbOverride parameter is required for ${fnName || "this function"}. ` +
+      "PGlite getDatabase() has been removed. " +
+      "Use store-drizzle.ts functions or pass DatabaseAdapter explicitly."
+    );
+  }
+  return dbOverride;
+}
 import {
   type AgentEvent,
   createEvent,
@@ -71,7 +82,7 @@ export async function appendEvent(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<AgentEvent & { id: number; sequence: number }> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   // Extract common fields
   const { type, project_key, timestamp, ...rest } = event;
@@ -109,7 +120,7 @@ export async function appendEvents(
   dbOverride?: DatabaseAdapter,
 ): Promise<Array<AgentEvent & { id: number; sequence: number }>> {
   return withTiming("appendEvents", async () => {
-    const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+    const db = requireDbOverride(dbOverride);
     const results: Array<AgentEvent & { id: number; sequence: number }> = [];
 
     await db.exec("BEGIN");
@@ -184,7 +195,7 @@ export async function readEvents(
   dbOverride?: DatabaseAdapter,
 ): Promise<Array<AgentEvent & { id: number; sequence: number }>> {
   return withTiming("readEvents", async () => {
-    const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+    const db = requireDbOverride(dbOverride);
 
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -271,7 +282,7 @@ export async function getLatestSequence(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<number> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const query = projectKey
     ? "SELECT MAX(sequence) as seq FROM events WHERE project_key = $1"
@@ -306,7 +317,7 @@ export async function replayEvents(
 ): Promise<{ eventsReplayed: number; duration: number }> {
   return withTiming("replayEvents", async () => {
     const startTime = Date.now();
-    const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+    const db = requireDbOverride(dbOverride);
 
     // Optionally clear materialized views
     if (options.clearViews) {
@@ -403,9 +414,7 @@ export async function replayEventsBatched(
     const startTime = Date.now();
     const batchSize = options.batchSize ?? 1000;
     const fromSequence = options.fromSequence ?? 0;
-    const db =
-      dbOverride ??
-      ((await getDatabase(projectPath)) as unknown as DatabaseAdapter);
+    const db = requireDbOverride(dbOverride, "replayEventsBatched");
 
     // Optionally clear materialized views
     if (options.clearViews) {
@@ -649,13 +658,16 @@ async function handleFileReserved(
   // FIX: Bulk insert reservations to avoid N+1 queries
   if (event.paths.length > 0) {
     // Each path gets its own VALUES clause with placeholders:
-    // ($1=project_key, $2=agent_name, $3=path1, $4=exclusive, $5=reason, $6=created_at, $7=expires_at)
-    // ($1=project_key, $2=agent_name, $8=path2, $4=exclusive, $5=reason, $6=created_at, $7=expires_at)
+    // ($1=project_key, $2=agent_name, $3=path1, $4=exclusive, $5=reason, $6=created_at, $7=expires_at, $8=lock_holder_id1)
+    // ($1=project_key, $2=agent_name, $9=path2, $4=exclusive, $5=reason, $6=created_at, $7=expires_at, $10=lock_holder_id2)
     // etc.
+    const lockHolderIds = event.lock_holder_ids || [];
+    const baseParamCount = 3 + event.paths.length; // project_key, agent_name, ...paths
+    
     const values = event.paths
       .map(
         (_, i) =>
-          `($1, $2, $${i + 3}, $${event.paths.length + 3}, $${event.paths.length + 4}, $${event.paths.length + 5}, $${event.paths.length + 6})`,
+          `($1, $2, $${i + 3}, $${baseParamCount}, $${baseParamCount + 1}, $${baseParamCount + 2}, $${baseParamCount + 3}, $${baseParamCount + 4 + i})`,
       )
       .join(", ");
 
@@ -663,10 +675,11 @@ async function handleFileReserved(
       event.project_key, // $1
       event.agent_name, // $2
       ...event.paths, // $3, $4, ... (one per path)
-      event.exclusive, // $N+3
-      event.reason || null, // $N+4
-      event.timestamp, // $N+5
-      event.expires_at, // $N+6
+      event.exclusive, // $baseParamCount
+      event.reason || null, // $baseParamCount+1
+      event.timestamp, // $baseParamCount+2
+      event.expires_at, // $baseParamCount+3
+      ...lockHolderIds.map((id, i) => id || null), // $baseParamCount+4, $baseParamCount+5, ... (one per path)
     ];
 
     // FIX: Make idempotent by deleting existing active reservations first
@@ -683,7 +696,7 @@ async function handleFileReserved(
     }
 
     await db.query(
-      `INSERT INTO reservations (project_key, agent_name, path_pattern, exclusive, reason, created_at, expires_at)
+      `INSERT INTO reservations (project_key, agent_name, path_pattern, exclusive, reason, created_at, expires_at, lock_holder_id)
        VALUES ${values}`,
       params,
     );
@@ -1072,6 +1085,7 @@ export async function reserveFiles(
     reason?: string;
     exclusive?: boolean;
     ttlSeconds?: number;
+    lockHolderIds?: string[];
   } = {},
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
@@ -1085,6 +1099,7 @@ export async function reserveFiles(
     exclusive: options.exclusive ?? true,
     ttl_seconds: ttlSeconds,
     expires_at: Date.now() + ttlSeconds * 1000,
+    lock_holder_ids: options.lockHolderIds,
   });
 
   return appendEvent(event, projectPath, dbOverride) as Promise<

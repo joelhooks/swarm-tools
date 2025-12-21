@@ -175,12 +175,26 @@ async function handleCellStatusChangedDrizzle(
   db: SwarmDb,
   event: CellEvent,
 ): Promise<void> {
+  const toStatus = event.to_status as string;
+  const updates: Partial<typeof beads.$inferInsert> = {
+    status: toStatus,
+    updated_at: event.timestamp,
+  };
+
+  // FIX: Set closed_at when status changes to 'closed'
+  // This satisfies CHECK constraint: ((status = 'closed') = (closed_at IS NOT NULL))
+  if (toStatus === "closed") {
+    updates.closed_at = event.timestamp;
+    updates.closed_reason = (event.reason as string | null | undefined) ?? null;
+  } else {
+    // Clear closed_at when status changes away from 'closed'
+    updates.closed_at = null;
+    updates.closed_reason = null;
+  }
+
   await db
     .update(beads)
-    .set({
-      status: event.to_status as string,
-      updated_at: event.timestamp,
-    })
+    .set(updates)
     .where(eq(beads.id, event.cell_id));
 }
 

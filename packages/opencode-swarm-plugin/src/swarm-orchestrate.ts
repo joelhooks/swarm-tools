@@ -44,6 +44,7 @@ import {
   getAgent,
   createEvent,
   appendEvent,
+  getSwarmMailLibSQL,
 } from "swarm-mail";
 import {
   addStrike,
@@ -386,104 +387,9 @@ interface VerificationGateResult {
   blockers: string[];
 }
 
-/**
- * UBS scan result schema
- */
-interface UbsScanResult {
-  exitCode: number;
-  bugs: Array<{
-    file: string;
-    line: number;
-    severity: string;
-    message: string;
-    category: string;
-  }>;
-  summary: {
-    total: number;
-    critical: number;
-    high: number;
-    medium: number;
-    low: number;
-  };
-}
-
-/**
- * Run UBS scan on files before completion
- *
- * @param files - Files to scan
- * @returns Scan result or null if UBS not available
- */
-async function runUbsScan(files: string[]): Promise<UbsScanResult | null> {
-  if (files.length === 0) {
-    return null;
-  }
-
-  // Check if UBS is available first
-  const ubsAvailable = await isToolAvailable("ubs");
-  if (!ubsAvailable) {
-    warnMissingTool("ubs");
-    return null;
-  }
-
-  try {
-    // Run UBS scan with JSON output
-    const result = await Bun.$`ubs scan ${files.join(" ")} --json`
-      .quiet()
-      .nothrow();
-
-    const output = result.stdout.toString();
-    if (!output.trim()) {
-      return {
-        exitCode: result.exitCode,
-        bugs: [],
-        summary: { total: 0, critical: 0, high: 0, medium: 0, low: 0 },
-      };
-    }
-
-    try {
-      const parsed = JSON.parse(output);
-
-      // Basic validation of structure
-      if (typeof parsed !== "object" || parsed === null) {
-        throw new Error("UBS output is not an object");
-      }
-      if (!Array.isArray(parsed.bugs)) {
-        console.warn("[swarm] UBS output missing bugs array, using empty");
-      }
-      if (typeof parsed.summary !== "object" || parsed.summary === null) {
-        console.warn("[swarm] UBS output missing summary object, using empty");
-      }
-
-      return {
-        exitCode: result.exitCode,
-        bugs: Array.isArray(parsed.bugs) ? parsed.bugs : [],
-        summary: parsed.summary || {
-          total: 0,
-          critical: 0,
-          high: 0,
-          medium: 0,
-          low: 0,
-        },
-      };
-    } catch (error) {
-      // UBS output wasn't JSON - this is an error condition
-      console.error(
-        `[swarm] CRITICAL: UBS scan failed to parse JSON output because output is malformed:`,
-        error,
-      );
-      console.error(
-        `[swarm] Raw output: ${output}. Try: Run 'ubs doctor' to check installation, verify UBS version with 'ubs --version' (need v1.0.0+), or check if UBS supports --json flag.`,
-      );
-      return {
-        exitCode: result.exitCode,
-        bugs: [],
-        summary: { total: 0, critical: 0, high: 0, medium: 0, low: 0 },
-      };
-    }
-  } catch {
-    return null;
-  }
-}
+// NOTE: UBS scan (runUbsScan, UbsScanResult) removed in v0.31
+// It was slowing down completion without proportional value.
+// Run UBS manually if needed: ubs scan <files>
 
 /**
  * Run typecheck verification
@@ -608,51 +514,22 @@ async function runTestVerification(
  * Run the full Verification Gate
  *
  * Implements the Gate Function (IDENTIFY → RUN → READ → VERIFY → CLAIM):
- * 1. UBS scan (already exists)
- * 2. Typecheck
- * 3. Tests for touched files
+ * 1. Typecheck
+ * 2. Tests for touched files
+ *
+ * NOTE: UBS scan was removed in v0.31 - it was slowing down completion
+ * without providing proportional value. Run UBS manually if needed.
  *
  * All steps must pass (or be skipped with valid reason) to proceed.
  */
 async function runVerificationGate(
   filesTouched: string[],
-  skipUbs: boolean = false,
+  _skipUbs: boolean = false, // Kept for backward compatibility, now ignored
 ): Promise<VerificationGateResult> {
   const steps: VerificationStep[] = [];
   const blockers: string[] = [];
 
-  // Step 1: UBS scan
-  if (!skipUbs && filesTouched.length > 0) {
-    const ubsResult = await runUbsScan(filesTouched);
-    if (ubsResult) {
-      const ubsStep: VerificationStep = {
-        name: "ubs_scan",
-        command: `ubs scan ${filesTouched.join(" ")}`,
-        passed: ubsResult.summary.critical === 0,
-        exitCode: ubsResult.exitCode,
-      };
-
-      if (!ubsStep.passed) {
-        ubsStep.error = `Found ${ubsResult.summary.critical} critical bugs`;
-        blockers.push(
-          `UBS found ${ubsResult.summary.critical} critical bug(s). Try: Run 'ubs scan ${filesTouched.join(" ")}' to see details, fix critical bugs in reported files, or use skip_ubs_scan=true to bypass (not recommended).`,
-        );
-      }
-
-      steps.push(ubsStep);
-    } else {
-      steps.push({
-        name: "ubs_scan",
-        command: "ubs scan",
-        passed: true,
-        exitCode: 0,
-        skipped: true,
-        skipReason: "UBS not available",
-      });
-    }
-  }
-
-  // Step 2: Typecheck
+  // Step 1: Typecheck (UBS scan removed in v0.31)
   const typecheckStep = await runTypecheckVerification();
   steps.push(typecheckStep);
   if (!typecheckStep.passed && !typecheckStep.skipped) {
@@ -1224,11 +1101,39 @@ export const swarm_broadcast = tool({
  * 4. VERIFY: All checks must pass
  * 5. ONLY THEN: Close the cell
  *
- * Closes cell, releases reservations, notifies coordinator.
+ * Closes cell, releases reservations, notifies coordinator, and resolves
+ * a DurableDeferred keyed by bead_id for cross-agent task completion signaling.
+ *
+ * ## DurableDeferred Integration
+ *
+ * When a coordinator spawns workers, it can create a deferred BEFORE spawning:
+ *
+ * ```typescript
+ * const swarmMail = await getSwarmMailLibSQL(projectPath);
+ * const db = await swarmMail.getDatabase();
+ *
+ * // Create deferred keyed by bead_id
+ * const deferredUrl = `deferred:${beadId}`;
+ * await db.query(
+ *   `INSERT INTO deferred (url, resolved, expires_at, created_at) VALUES (?, 0, ?, ?)`,
+ *   [deferredUrl, Date.now() + 3600000, Date.now()]
+ * );
+ *
+ * // Spawn worker (swarm_spawn_subtask...)
+ *
+ * // Await completion
+ * const result = await db.query<{ value: string }>(
+ *   `SELECT value FROM deferred WHERE url = ? AND resolved = 1`,
+ *   [deferredUrl]
+ * );
+ * ```
+ *
+ * When the worker calls swarm_complete, it resolves the deferred automatically.
+ * Coordinator can await without polling.
  */
 export const swarm_complete = tool({
   description:
-    "Mark subtask complete with Verification Gate. Runs UBS scan, typecheck, and tests before allowing completion.",
+    "Mark subtask complete with Verification Gate. Runs typecheck and tests before allowing completion.",
   args: {
     project_key: tool.schema.string().describe("Project path"),
     agent_name: tool.schema.string().describe("Your Agent Mail name"),
@@ -1241,16 +1146,12 @@ export const swarm_complete = tool({
     files_touched: tool.schema
       .array(tool.schema.string())
       .optional()
-      .describe("Files modified - will be verified (UBS, typecheck, tests)"),
-    skip_ubs_scan: tool.schema
-      .boolean()
-      .optional()
-      .describe("Skip UBS bug scan (default: false)"),
+      .describe("Files modified - will be verified (typecheck, tests)"),
     skip_verification: tool.schema
       .boolean()
       .optional()
       .describe(
-        "Skip ALL verification (UBS, typecheck, tests). Use sparingly! (default: false)",
+        "Skip ALL verification (typecheck, tests). Use sparingly! (default: false)",
       ),
     planned_files: tool.schema
       .array(tool.schema.string())
@@ -1397,7 +1298,7 @@ Continuing with completion, but this should be fixed for future subtasks.`;
       if (!args.skip_verification && args.files_touched?.length) {
         verificationResult = await runVerificationGate(
           args.files_touched,
-          args.skip_ubs_scan ?? false,
+          false,
         );
 
         // Block completion if verification failed
@@ -1431,39 +1332,9 @@ Continuing with completion, but this should be fixed for future subtasks.`;
         }
       }
 
-      // Legacy UBS-only path for backward compatibility (when no files_touched)
-      let ubsResult: UbsScanResult | null = null;
-      if (
-        !args.skip_verification &&
-        !verificationResult &&
-        args.files_touched?.length &&
-        !args.skip_ubs_scan
-      ) {
-        ubsResult = await runUbsScan(args.files_touched);
-
-        // Block completion if critical bugs found
-        if (ubsResult && ubsResult.summary.critical > 0) {
-          return JSON.stringify(
-            {
-              success: false,
-              error: `UBS found ${ubsResult.summary.critical} critical bug(s) that must be fixed before completing`,
-              ubs_scan: {
-                critical_count: ubsResult.summary.critical,
-                bugs: ubsResult.bugs.filter((b) => b.severity === "critical"),
-              },
-              hint: `Fix these critical bugs: ${ubsResult.bugs
-                .filter((b) => b.severity === "critical")
-                .map((b) => `${b.file}:${b.line} - ${b.message}`)
-                .slice(0, 3)
-                .join(
-                  "; ",
-                )}. Try: Run 'ubs scan ${args.files_touched?.join(" ") || "."} --json' for full report, fix reported issues, or use skip_ubs_scan=true to bypass (not recommended).`,
-            },
-            null,
-            2,
-          );
-        }
-      }
+      // NOTE: Legacy UBS-only path removed in v0.31
+      // UBS scan was slowing down completion without proportional value.
+      // Run UBS manually if needed: ubs scan <files>
 
       // Contract Validation - check files_touched against WorkerHandoff contract
       let contractValidation: { valid: boolean; violations: string[] } | null = null;
@@ -1567,6 +1438,47 @@ This will be recorded as a negative learning signal.`;
           },
           null,
           2,
+        );
+      }
+
+      // Resolve DurableDeferred for cross-agent task completion signaling
+      // This allows coordinator to await worker completion without polling
+      let deferredResolved = false;
+      let deferredError: string | undefined;
+      try {
+        const swarmMail = await getSwarmMailLibSQL(args.project_key);
+        const db = await swarmMail.getDatabase();
+        
+        // Resolve deferred keyed by bead_id
+        // Coordinator should have created this deferred before spawning worker
+        const deferredUrl = `deferred:${args.bead_id}`;
+        
+        // Check if deferred exists before resolving
+        const checkResult = await db.query<{ url: string; resolved: number }>(
+          `SELECT url, resolved FROM deferred WHERE url = ? AND resolved = 0`,
+          [deferredUrl],
+        );
+        
+        if (checkResult.rows.length > 0) {
+          // Resolve with completion payload
+          await db.query(
+            `UPDATE deferred SET resolved = 1, value = ? WHERE url = ? AND resolved = 0`,
+            [JSON.stringify({ completed: true, summary: args.summary }), deferredUrl],
+          );
+          
+          deferredResolved = true;
+        } else {
+          // Deferred doesn't exist - worker was likely not spawned via swarm pattern
+          // This is non-fatal - just log for debugging
+          console.info(
+            `[swarm_complete] No deferred found for ${args.bead_id} - task may not be part of active swarm`,
+          );
+        }
+      } catch (error) {
+        // Non-fatal - deferred resolution is optional for backward compatibility
+        deferredError = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[swarm_complete] Failed to resolve deferred (non-fatal): ${deferredError}`,
         );
       }
 
@@ -1737,6 +1649,8 @@ This will be recorded as a negative learning signal.`;
         sync_error: syncError,
         message_sent: messageSent,
         message_error: messageError,
+        deferred_resolved: deferredResolved,
+        deferred_error: deferredError,
         agent_registration: {
           verified: agentRegistered,
           warning: registrationWarning || undefined,
@@ -1755,21 +1669,6 @@ This will be recorded as a negative learning signal.`;
           : args.skip_verification
             ? { skipped: true, reason: "skip_verification=true" }
             : { skipped: true, reason: "no files_touched provided" },
-        ubs_scan: ubsResult
-          ? {
-              ran: true,
-              bugs_found: ubsResult.summary.total,
-              summary: ubsResult.summary,
-              warnings: ubsResult.bugs.filter((b) => b.severity !== "critical"),
-            }
-          : verificationResult
-            ? { ran: true, included_in_verification_gate: true }
-            : {
-                ran: false,
-                reason: args.skip_ubs_scan
-                  ? "skipped"
-                  : "no files or ubs unavailable",
-              },
         learning_prompt: `## Reflection
 
 Did you learn anything reusable during this subtask? Consider:
@@ -1820,9 +1719,7 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
       // Determine which step failed
       let failedStep = "unknown";
       if (errorMessage.includes("verification")) {
-        failedStep = "Verification Gate (UBS/typecheck/tests)";
-      } else if (errorMessage.includes("UBS") || errorMessage.includes("ubs")) {
-        failedStep = "UBS scan";
+        failedStep = "Verification Gate (typecheck/tests)";
       } else if (errorMessage.includes("evaluation")) {
         failedStep = "Self-evaluation parsing";
       } else if (
@@ -1863,10 +1760,9 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
         errorStack
           ? `### Stack Trace\n\`\`\`\n${errorStack.slice(0, 1000)}\n\`\`\`\n`
           : "",
-        `### Context`,
+         `### Context`,
         `- **Summary**: ${args.summary}`,
         `- **Files touched**: ${args.files_touched?.length ? args.files_touched.join(", ") : "none"}`,
-        `- **Skip UBS**: ${args.skip_ubs_scan ?? false}`,
         `- **Skip verification**: ${args.skip_verification ?? false}`,
         "",
         `### Recovery Actions`,
@@ -1912,10 +1808,9 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
           coordinator_notified: notificationSent,
           stack_trace: errorStack?.slice(0, 500),
           hint: "Check the error message above. Common issues: bead not found, session not initialized.",
-          context: {
+           context: {
             summary: args.summary,
             files_touched: args.files_touched || [],
-            skip_ubs_scan: args.skip_ubs_scan ?? false,
             skip_verification: args.skip_verification ?? false,
           },
           recovery: {
@@ -1927,7 +1822,6 @@ Files touched: ${args.files_touched?.join(", ") || "none recorded"}`,
             ],
             common_fixes: {
               "Verification Gate": "Use skip_verification=true to bypass (not recommended)",
-              "UBS scan": "Use skip_ubs_scan=true to bypass",
               "Cell close": "Check cell status with hive_query(), may need hive_update() first",
               "Self-evaluation": "Check evaluation JSON format matches EvaluationSchema",
             },
@@ -2554,8 +2448,9 @@ export const swarm_recover = tool({
   },
   async execute(args) {
     try {
-      const { getDatabase } = await import("swarm-mail");
-      const db = await getDatabase(args.project_key);
+      const { getSwarmMailLibSQL } = await import("swarm-mail");
+      const swarmMail = await getSwarmMailLibSQL(args.project_key);
+      const db = await swarmMail.getDatabase();
 
       // Query most recent checkpoint for this epic
       const result = await db.query<{

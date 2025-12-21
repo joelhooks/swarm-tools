@@ -8,9 +8,9 @@
  *
  * @example
  * ```typescript
- * // Using Effect API
+ * // Using Effect API with DatabaseAdapter
  * const program = Effect.gen(function* (_) {
- *   const lock = yield* _(acquireLock("my-resource", { ttlSeconds: 30 }))
+ *   const lock = yield* _(acquireLock("my-resource", { ttlSeconds: 30, db }))
  *   try {
  *     // Critical section
  *   } finally {
@@ -21,14 +21,14 @@
  * // Or use withLock helper
  * const program = Effect.gen(function* (_) {
  *   const lock = yield* _(DurableLock)
- *   yield* _(lock.withLock("my-resource", Effect.succeed(42)))
+ *   yield* _(lock.withLock("my-resource", Effect.succeed(42), { db }))
  * }).pipe(Effect.provide(DurableLockLive))
  * ```
  */
 
-import { Context, Effect, Layer, Schedule } from "effect";
-import { getDatabase } from "../index";
 import { randomUUID } from "node:crypto";
+import { Context, Effect, Layer, Schedule } from "effect";
+import type { DatabaseAdapter } from "../../types/database";
 
 // ============================================================================
 // Types & Errors
@@ -57,9 +57,10 @@ export interface LockConfig {
   baseDelayMs?: number;
 
   /**
-   * Project path for database instance
+   * Database adapter for lock storage
+   * Required for all operations
    */
-  projectPath?: string;
+  db: DatabaseAdapter;
 
   /**
    * Custom holder ID (defaults to generated UUID)
@@ -119,7 +120,7 @@ export class DurableLock extends Context.Tag("DurableLock")<
      */
     readonly acquire: (
       resource: string,
-      config?: LockConfig,
+      config: LockConfig,
     ) => Effect.Effect<LockHandle, LockError>;
 
     /**
@@ -130,7 +131,7 @@ export class DurableLock extends Context.Tag("DurableLock")<
     readonly release: (
       resource: string,
       holder: string,
-      projectPath?: string,
+      db: DatabaseAdapter,
     ) => Effect.Effect<void, LockError>;
 
     /**
@@ -141,10 +142,32 @@ export class DurableLock extends Context.Tag("DurableLock")<
     readonly withLock: <A, E, R>(
       resource: string,
       effect: Effect.Effect<A, E, R>,
-      config?: LockConfig,
+      config: LockConfig,
     ) => Effect.Effect<A, E | LockError, R | DurableLock>;
   }
 >() {}
+
+// ============================================================================
+// Schema Initialization
+// ============================================================================
+
+/**
+ * Ensure locks table exists (SQLite syntax)
+ */
+async function ensureLocksTable(db: DatabaseAdapter): Promise<void> {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS locks (
+      resource TEXT PRIMARY KEY,
+      holder TEXT NOT NULL,
+      seq INTEGER NOT NULL DEFAULT 0,
+      acquired_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_locks_expires ON locks(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_locks_holder ON locks(holder);
+  `);
+}
 
 // ============================================================================
 // Implementation
@@ -159,39 +182,44 @@ async function tryAcquire(
   resource: string,
   holder: string,
   expiresAt: number,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Promise<{ seq: number; acquiredAt: number } | null> {
-  const db = await getDatabase(projectPath);
+  await ensureLocksTable(db);
   const now = Date.now();
 
-  try {
-    // Try INSERT first (no existing lock)
-    const insertResult = await db.query<{ seq: number }>(
-      `INSERT INTO locks (resource, holder, seq, acquired_at, expires_at)
-       VALUES ($1, $2, 0, $3, $4)
-       RETURNING seq`,
-      [resource, holder, now, expiresAt],
-    );
+  // Check if lock already exists
+  const existingLock = await db.query<{ holder: string; seq: number; expires_at: number }>(
+    `SELECT holder, seq, expires_at FROM locks WHERE resource = ?`,
+    [resource],
+  );
 
-    if (insertResult.rows.length > 0) {
-      return { seq: insertResult.rows[0]!.seq, acquiredAt: now };
-    }
-  } catch {
-    // INSERT failed - lock exists, try UPDATE
-    const updateResult = await db.query<{ seq: number }>(
-      `UPDATE locks
-       SET holder = $2, seq = seq + 1, acquired_at = $3, expires_at = $4
-       WHERE resource = $1
-         AND (expires_at < $3 OR holder = $2)
-       RETURNING seq`,
-      [resource, holder, now, expiresAt],
-    );
+  const existing = existingLock.rows[0];
 
-    if (updateResult.rows.length > 0) {
-      return { seq: updateResult.rows[0]!.seq, acquiredAt: now };
-    }
+  if (!existing) {
+    // No existing lock - INSERT new one
+    await db.exec(`
+      INSERT INTO locks (resource, holder, seq, acquired_at, expires_at)
+      VALUES ('${resource}', '${holder}', 0, ${now}, ${expiresAt})
+    `);
+    return { seq: 0, acquiredAt: now };
   }
 
+  // Lock exists - check if we can acquire it
+  const isExpired = existing.expires_at < now;
+  const isSameHolder = existing.holder === holder;
+
+  if (isExpired || isSameHolder) {
+    // We can take over - UPDATE with incremented seq
+    const newSeq = existing.seq + 1;
+    await db.exec(`
+      UPDATE locks
+      SET holder = '${holder}', seq = ${newSeq}, acquired_at = ${now}, expires_at = ${expiresAt}
+      WHERE resource = '${resource}'
+    `);
+    return { seq: newSeq, acquiredAt: now };
+  }
+
+  // Lock is held by someone else and not expired - contention
   return null;
 }
 
@@ -201,18 +229,22 @@ async function tryAcquire(
 async function tryRelease(
   resource: string,
   holder: string,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Promise<boolean> {
-  const db = await getDatabase(projectPath);
+  await ensureLocksTable(db);
 
-  const result = await db.query<{ holder: string }>(
-    `DELETE FROM locks
-     WHERE resource = $1 AND holder = $2
-     RETURNING holder`,
+  // Check if lock exists with this holder before deleting
+  const checkResult = await db.query<{ holder: string }>(
+    `SELECT holder FROM locks WHERE resource = ? AND holder = ?`,
     [resource, holder],
   );
 
-  return result.rows.length > 0;
+  if (checkResult.rows.length === 0) {
+    return false;
+  }
+
+  await db.exec(`DELETE FROM locks WHERE resource = '${resource}' AND holder = '${holder}'`);
+  return true;
 }
 
 /**
@@ -220,16 +252,16 @@ async function tryRelease(
  */
 function acquireImpl(
   resource: string,
-  config?: LockConfig,
+  config: LockConfig,
 ): Effect.Effect<LockHandle, LockError> {
   return Effect.gen(function* (_) {
     const {
       ttlSeconds = 30,
       maxRetries = 10,
       baseDelayMs = 50,
-      projectPath,
+      db,
       holderId,
-    } = config || {};
+    } = config;
 
     const holder = holderId || randomUUID();
     const expiresAt = Date.now() + ttlSeconds * 1000;
@@ -242,7 +274,7 @@ function acquireImpl(
     // Attempt acquisition with retries
     const result = yield* _(
       Effect.tryPromise({
-        try: () => tryAcquire(resource, holder, expiresAt, projectPath),
+        try: () => tryAcquire(resource, holder, expiresAt, db),
         catch: (error) => ({
           _tag: "DatabaseError" as const,
           error: error as Error,
@@ -275,7 +307,7 @@ function acquireImpl(
       seq,
       acquiredAt,
       expiresAt,
-      release: () => releaseImpl(resource, holder, projectPath),
+      release: () => releaseImpl(resource, holder, db),
     };
 
     return lockHandle;
@@ -288,12 +320,12 @@ function acquireImpl(
 function releaseImpl(
   resource: string,
   holder: string,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, LockError> {
   return Effect.gen(function* (_) {
     const released = yield* _(
       Effect.tryPromise({
-        try: () => tryRelease(resource, holder, projectPath),
+        try: () => tryRelease(resource, holder, db),
         catch: (error) => ({
           _tag: "DatabaseError" as const,
           error: error as Error,
@@ -319,7 +351,7 @@ function releaseImpl(
 function withLockImpl<A, E, R>(
   resource: string,
   effect: Effect.Effect<A, E, R>,
-  config?: LockConfig,
+  config: LockConfig,
 ): Effect.Effect<A, E | LockError, R | DurableLock> {
   return Effect.gen(function* (_) {
     const lock = yield* _(DurableLock);
@@ -362,7 +394,7 @@ export const DurableLockLive = Layer.succeed(DurableLock, {
  */
 export function acquireLock(
   resource: string,
-  config?: LockConfig,
+  config: LockConfig,
 ): Effect.Effect<LockHandle, LockError, DurableLock> {
   return Effect.gen(function* (_) {
     const service = yield* _(DurableLock);
@@ -376,11 +408,11 @@ export function acquireLock(
 export function releaseLock(
   resource: string,
   holder: string,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, LockError, DurableLock> {
   return Effect.gen(function* (_) {
     const service = yield* _(DurableLock);
-    return yield* _(service.release(resource, holder, projectPath));
+    return yield* _(service.release(resource, holder, db));
   });
 }
 
@@ -390,7 +422,7 @@ export function releaseLock(
 export function withLock<A, E, R>(
   resource: string,
   effect: Effect.Effect<A, E, R>,
-  config?: LockConfig,
+  config: LockConfig,
 ): Effect.Effect<A, E | LockError, R | DurableLock> {
   return Effect.gen(function* (_) {
     const service = yield* _(DurableLock);

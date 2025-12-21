@@ -1,10 +1,11 @@
 /**
- * Swarm Mail Debug Tools - Event inspection and state debugging
+ * Swarm Mail Debug Tools (DEPRECATED - PGlite functions removed)
  *
- * Tools for inspecting the event store, agent state, and system health.
- * Useful for debugging issues and understanding system behavior.
+ * Legacy PGlite-based debug tools. This file exists only for backward compatibility.
+ * Most functions now require explicit DatabaseAdapter parameter.
+ *
+ * @deprecated Use adapter-based debugging tools instead
  */
-import { getDatabase, getDatabaseStats } from "./index";
 import { readEvents, getLatestSequence, replayEventsBatched } from "./store";
 import { getAgent, getActiveReservations, getMessage } from "./projections";
 import type { AgentEvent } from "./events";
@@ -382,6 +383,8 @@ async function debugEventsPaginated(
 
 /**
  * Get detailed agent information
+ * 
+ * @deprecated Use Drizzle-based queries directly with DatabaseAdapter
  */
 export async function debugAgent(
   options: DebugAgentOptions,
@@ -399,18 +402,33 @@ export async function debugAgent(
     };
   }
 
-  // Get message counts
-  const db = await getDatabase(projectPath);
-  const sentResult = await db.query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM messages WHERE project_key = $1 AND from_agent = $2`,
-    [projectPath, agentName],
-  );
-  const receivedResult = await db.query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM message_recipients mr
-     JOIN messages m ON mr.message_id = m.id
-     WHERE m.project_key = $1 AND mr.agent_name = $2`,
-    [projectPath, agentName],
-  );
+  // Get message counts using Drizzle
+  const { getDatabasePath } = await import("./index");
+  const { createLibSQLAdapter } = await import("../libsql");
+  const { toDrizzleDb } = await import("../libsql.convenience");
+  const { messagesTable, messageRecipientsTable } = await import("../db/schema/streams");
+  const { eq, sql, and } = await import("drizzle-orm");
+  
+  const dbPath = getDatabasePath(projectPath);
+  const adapter = await createLibSQLAdapter({ url: `file:${dbPath}` });
+  const swarmDb = toDrizzleDb(adapter);
+  
+  const sentResult = await swarmDb
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(messagesTable)
+    .where(and(
+      eq(messagesTable.project_key, projectPath),
+      eq(messagesTable.from_agent, agentName)
+    ));
+  
+  const receivedResult = await swarmDb
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(messageRecipientsTable)
+    .innerJoin(messagesTable, eq(messageRecipientsTable.message_id, messagesTable.id))
+    .where(and(
+      eq(messagesTable.project_key, projectPath),
+      eq(messageRecipientsTable.agent_name, agentName)
+    ));
 
   // Get active reservations
   const reservations = await getActiveReservations(
@@ -429,8 +447,8 @@ export async function debugAgent(
       last_active_at: agent.last_active_at,
     },
     stats: {
-      messagesSent: parseInt(sentResult.rows[0]?.count || "0"),
-      messagesReceived: parseInt(receivedResult.rows[0]?.count || "0"),
+      messagesSent: sentResult[0]?.count ?? 0,
+      messagesReceived: receivedResult[0]?.count ?? 0,
     },
     reservations: reservations.map((r) => ({
       id: r.id,
@@ -455,81 +473,16 @@ export async function debugAgent(
 
 /**
  * Get detailed message information with audit trail
+ * 
+ * @deprecated PGlite getDatabase() has been removed. Use Drizzle-based queries with DatabaseAdapter.
  */
 export async function debugMessage(
   options: DebugMessageOptions,
 ): Promise<DebugMessageResult> {
-  const { projectPath, messageId, includeEvents = false } = options;
-
-  // Get message from projections
-  const message = await getMessage(projectPath, messageId, projectPath);
-
-  if (!message) {
-    return {
-      message: null,
-      recipients: [],
-    };
-  }
-
-  // Get recipients
-  const db = await getDatabase(projectPath);
-  const recipientsResult = await db.query<{
-    agent_name: string;
-    read_at: string | null;
-    acked_at: string | null;
-  }>(
-    `SELECT agent_name, read_at, acked_at FROM message_recipients WHERE message_id = $1`,
-    [messageId],
+  throw new Error(
+    "[debug] debugMessage() requires refactoring after PGlite removal. " +
+    "Use Drizzle-based queries with DatabaseAdapter instead."
   );
-
-  const result: DebugMessageResult = {
-    message: {
-      id: message.id,
-      from_agent: message.from_agent,
-      subject: message.subject,
-      body: message.body ?? "",
-      thread_id: message.thread_id,
-      importance: message.importance,
-      created_at: message.created_at,
-    },
-    recipients: recipientsResult.rows.map((r) => ({
-      agent_name: r.agent_name,
-      read_at: r.read_at ? parseInt(r.read_at) : null,
-      acked_at: r.acked_at ? parseInt(r.acked_at) : null,
-    })),
-  };
-
-  // Include related events if requested
-  if (includeEvents) {
-    const allEvents = await readEvents(
-      { projectKey: projectPath },
-      projectPath,
-    );
-    const relatedEvents = allEvents.filter((e) => {
-      if (e.type === "message_sent" && e.subject === message.subject)
-        return true;
-      if (
-        (e.type === "message_read" || e.type === "message_acked") &&
-        e.message_id === messageId
-      )
-        return true;
-      return false;
-    });
-
-    result.events = relatedEvents.map((e) => {
-      const { id, sequence, type, timestamp, project_key, ...rest } = e;
-      return {
-        id,
-        sequence,
-        type,
-        timestamp,
-        timestamp_human: formatTimestamp(timestamp),
-        ...rest,
-      };
-    });
-  }
-
-  return result;
 }
 
 /**
@@ -663,63 +616,14 @@ export async function getEventTimeline(options: {
 
 /**
  * Get complete state snapshot for debugging
+ * 
+ * @deprecated PGlite getDatabase() has been removed. Use Drizzle-based queries with DatabaseAdapter.
  */
 export async function inspectState(
   options: InspectStateOptions,
 ): Promise<InspectStateResult> {
-  const { projectPath, format = "object" } = options;
-
-  const db = await getDatabase(projectPath);
-
-  // Get all agents
-  const agentsResult = await db.query<{
-    name: string;
-    program: string;
-    model: string;
-    task_description: string | null;
-  }>(
-    `SELECT name, program, model, task_description FROM agents WHERE project_key = $1`,
-    [projectPath],
+  throw new Error(
+    "[debug] inspectState() requires refactoring after PGlite removal. " +
+    "Use Drizzle-based queries with DatabaseAdapter instead."
   );
-
-  // Get all messages
-  const messagesResult = await db.query<{
-    id: number;
-    from_agent: string;
-    subject: string;
-    thread_id: string | null;
-  }>(
-    `SELECT id, from_agent, subject, thread_id FROM messages WHERE project_key = $1`,
-    [projectPath],
-  );
-
-  // Get active reservations
-  const reservationsResult = await db.query<{
-    id: number;
-    agent_name: string;
-    path_pattern: string;
-  }>(
-    `SELECT id, agent_name, path_pattern FROM reservations 
-     WHERE project_key = $1 AND released_at IS NULL AND expires_at > $2`,
-    [projectPath, Date.now()],
-  );
-
-  // Get stats
-  const stats = await getDatabaseStats(projectPath);
-  const latestSequence = await getLatestSequence(projectPath, projectPath);
-
-  const result: InspectStateResult = {
-    agents: agentsResult.rows,
-    messages: messagesResult.rows,
-    reservations: reservationsResult.rows,
-    eventCount: stats.events,
-    latestSequence,
-    stats,
-  };
-
-  if (format === "json") {
-    result.json = JSON.stringify(result, null, 2);
-  }
-
-  return result;
 }

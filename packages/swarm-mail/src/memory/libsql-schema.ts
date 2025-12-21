@@ -1,7 +1,16 @@
 /**
- * libSQL Memory Schema
+ * libSQL Memory Schema - FTS5 and Vector Extensions
  *
- * Translation of PGlite/pgvector memory schema to libSQL native vectors.
+ * Provides FTS5 full-text search and vector indexes for memories table.
+ * 
+ * ## Schema Source of Truth
+ * - **Table structure**: db/schema/memory.ts (Drizzle schema)
+ * - **FTS5/vector DDL**: This file (raw SQL - Drizzle can't create these)
+ * 
+ * ## Synchronization
+ * The memories table definition MUST match db/schema/memory.ts exactly.
+ * Changes to table structure should be made in db/schema/memory.ts first,
+ * then reflected here.
  *
  * ## Key Differences from PGlite
  *
@@ -29,12 +38,13 @@ import type { Client } from "@libsql/client";
 export const EMBEDDING_DIM = 1024;
 
 /**
- * Create libSQL memory schema with vector support
+ * Create libSQL memory schema with FTS5 and vector support
  *
  * Creates:
- * - memories table with F32_BLOB vector column
- * - FTS5 virtual table for full-text search
- * - Indexes for performance
+ * - memories table (structure from db/schema/memory.ts)
+ * - FTS5 virtual table for full-text search (Drizzle can't create this)
+ * - Vector index (Drizzle can't create this)
+ * - Standard indexes for performance
  *
  * Idempotent - safe to call multiple times.
  *
@@ -54,6 +64,9 @@ export async function createLibSQLMemorySchema(db: Client): Promise<void> {
   // ========================================================================
   // Memories Table
   // ========================================================================
+  // IMPORTANT: This table structure MUST match db/schema/memory.ts (Drizzle schema)
+  // Source of truth: db/schema/memory.ts
+  // Reason for duplication: Convenience for tests and migrations
   await db.execute(`
     CREATE TABLE IF NOT EXISTS memories (
       id TEXT PRIMARY KEY,
@@ -69,7 +82,7 @@ export async function createLibSQLMemorySchema(db: Client): Promise<void> {
   `);
 
   // ========================================================================
-  // Indexes
+  // Indexes (Drizzle doesn't auto-create these)
   // ========================================================================
   
   // Collection filtering index
@@ -80,13 +93,14 @@ export async function createLibSQLMemorySchema(db: Client): Promise<void> {
 
   // Vector index for cosine similarity search
   // libSQL requires explicit index creation for vector_top_k() queries
+  // MUST be raw SQL - Drizzle doesn't support libsql_vector_idx() function
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_memories_embedding 
     ON memories(libsql_vector_idx(embedding))
   `);
 
   // ========================================================================
-  // FTS5 Virtual Table (replaces PostgreSQL GIN index)
+  // FTS5 Virtual Table (raw SQL - Drizzle can't create virtual tables)
   // ========================================================================
   
   // FTS5 virtual table for full-text search

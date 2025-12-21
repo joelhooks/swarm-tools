@@ -1,18 +1,23 @@
 /**
- * Swarm Mail Projections Layer - Query materialized views
+ * Swarm Mail Projections Layer (DEPRECATED - use projections-drizzle.ts)
  *
- * Projections are the read-side of CQRS. They query denormalized
- * materialized views for fast reads. Views are updated by the
- * event store when events are appended.
+ * Legacy PGlite-based projections. This file exists only for backward compatibility.
+ * New code should use projections-drizzle.ts instead.
  *
- * Key projections:
- * - getAgents: List registered agents
- * - getInbox: Get messages for an agent
- * - getActiveReservations: Get current file locks
- * - checkConflicts: Detect reservation conflicts
+ * @deprecated Use projections-drizzle.ts with DatabaseAdapter
  */
-import { getDatabase } from "./index";
 import type { DatabaseAdapter } from "../types/database";
+
+function requireDbOverride(dbOverride?: DatabaseAdapter): DatabaseAdapter {
+  if (!dbOverride) {
+    throw new Error(
+      "[streams/projections] dbOverride parameter is required. " +
+      "PGlite getDatabase() has been removed. " +
+      "Use projections-drizzle.ts functions instead."
+    );
+  }
+  return dbOverride;
+}
 import { minimatch } from "minimatch";
 
 // ============================================================================
@@ -50,6 +55,7 @@ export interface Reservation {
   reason: string | null;
   created_at: number;
   expires_at: number;
+  lock_holder_id?: string | null;
 }
 
 export interface Conflict {
@@ -75,7 +81,7 @@ export async function getAgents(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<Agent[]> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const result = await db.query<Agent>(
     `SELECT id, name, program, model, task_description, registered_at, last_active_at
@@ -102,7 +108,7 @@ export async function getAgent(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<Agent | null> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const result = await db.query<Agent>(
     `SELECT id, name, program, model, task_description, registered_at, last_active_at
@@ -142,7 +148,7 @@ export async function getInbox(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<Message[]> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const {
     limit = 50,
@@ -197,7 +203,7 @@ export async function getMessage(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<Message | null> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const result = await db.query<Message>(
     `SELECT id, from_agent, subject, body, thread_id, importance, ack_required, created_at
@@ -223,7 +229,7 @@ export async function getThreadMessages(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<Message[]> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const result = await db.query<Message>(
     `SELECT id, from_agent, subject, body, thread_id, importance, ack_required, created_at
@@ -254,11 +260,11 @@ export async function getActiveReservations(
   agentName?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<Reservation[]> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const now = Date.now();
   const baseQuery = `
-    SELECT id, agent_name, path_pattern, exclusive, reason, created_at, expires_at
+    SELECT id, agent_name, path_pattern, exclusive, reason, created_at, expires_at, lock_holder_id
     FROM reservations
     WHERE project_key = $1 
       AND released_at IS NULL 
@@ -424,7 +430,7 @@ export async function getEvalRecords(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<EvalRecord[]> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   const conditions = ["project_key = $1"];
   const params: (string | number)[] = [projectKey];
@@ -517,7 +523,7 @@ export async function getEvalStats(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<EvalStats> {
-  const db = dbOverride ?? (await getDatabase(projectPath) as unknown as DatabaseAdapter);
+  const db = requireDbOverride(dbOverride);
 
   // Get overall stats
   const overallResult = await db.query<{

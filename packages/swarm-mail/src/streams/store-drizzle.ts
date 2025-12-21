@@ -556,10 +556,11 @@ export async function appendEvent(
   projectPath?: string,
   dbOverride?: any,
 ): Promise<AgentEvent & { id: number; sequence: number }> {
-  const { getDatabase } = await import("./index.js");
+  const { getDatabasePath } = await import("./index.js");
+  const { createLibSQLAdapter } = await import("../libsql.js");
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
-  const db = dbOverride ?? (await getDatabase(projectPath));
+  const db = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
   const swarmDb = toDrizzleDb(db);
   
   return appendEventDrizzle(swarmDb, event);
@@ -581,10 +582,11 @@ export async function readEvents(
   projectPath?: string,
   dbOverride?: any,
 ): Promise<Array<AgentEvent & { id: number; sequence: number }>> {
-  const { getDatabase } = await import("./index.js");
+  const { getDatabasePath } = await import("./index.js");
+  const { createLibSQLAdapter } = await import("../libsql.js");
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
-  const db = dbOverride ?? (await getDatabase(projectPath));
+  const db = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
   const swarmDb = toDrizzleDb(db);
   
   return readEventsDrizzle(swarmDb, options);
@@ -598,10 +600,11 @@ export async function getLatestSequence(
   projectPath?: string,
   dbOverride?: any,
 ): Promise<number> {
-  const { getDatabase } = await import("./index.js");
+  const { getDatabasePath } = await import("./index.js");
+  const { createLibSQLAdapter } = await import("../libsql.js");
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
-  const db = dbOverride ?? (await getDatabase(projectPath));
+  const db = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
   const swarmDb = toDrizzleDb(db);
   
   return getLatestSequenceDrizzle(swarmDb, projectKey);

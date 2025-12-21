@@ -3,34 +3,38 @@
  *
  * Tests for Effect-TS cursor service with checkpointing
  */
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
 import type { AgentRegisteredEvent } from "../events";
 import { DurableCursor, DurableCursorLayer, type CursorConfig } from "./cursor";
-import {
-  appendEvent,
-  closeDatabase,
-  createEvent,
-  resetDatabase,
-} from "../index";
+import { createEvent } from "../index";
+import { createInMemorySwarmMailLibSQL } from "../../libsql.convenience";
+import type { DatabaseAdapter } from "../../types/database";
+import type { SwarmMailAdapter } from "../../types/adapter";
 
 // ============================================================================
 // Test Utilities
 // ============================================================================
 
-const TEST_PROJECT = "/tmp/cursor-test";
+// Shared test database adapter
+let db: DatabaseAdapter;
+let swarmMail: SwarmMailAdapter;
+let closeDb: () => Promise<void>;
 
 beforeEach(async () => {
-  await resetDatabase(TEST_PROJECT);
+  const testId = randomUUID().slice(0, 8);
+  swarmMail = await createInMemorySwarmMailLibSQL(testId);
+  db = await swarmMail.getDatabase();
+  closeDb = () => swarmMail.close();
+  
+  // Reset cursors table
+  await db.exec("DELETE FROM cursors");
 });
 
 afterEach(async () => {
-  await closeDatabase(TEST_PROJECT);
+  await closeDb();
 });
-
-async function cleanup() {
-  await closeDatabase(TEST_PROJECT);
-}
 
 /**
  * Helper to run Effect programs with DurableCursor service
@@ -48,14 +52,12 @@ async function runWithCursor<A, E>(
 describe("DurableCursor", () => {
   describe("create", () => {
     it("creates a cursor with initial position 0", async () => {
-      await cleanup();
-
       const program = Effect.gen(function* () {
         const service = yield* DurableCursor;
         const cursor = yield* service.create({
           stream: "test-stream",
           checkpoint: "test-checkpoint",
-          projectPath: TEST_PROJECT,
+          db,
         });
 
         const position = yield* cursor.getPosition();
@@ -67,15 +69,13 @@ describe("DurableCursor", () => {
     });
 
     it("resumes from last checkpoint position", async () => {
-      await cleanup();
-
       // First cursor - commit at sequence 5
       const program1 = Effect.gen(function* () {
         const service = yield* DurableCursor;
         const cursor = yield* service.create({
           stream: "test-stream",
           checkpoint: "test-checkpoint",
-          projectPath: TEST_PROJECT,
+          db,
         });
 
         yield* cursor.commit(5);
@@ -90,7 +90,7 @@ describe("DurableCursor", () => {
         const cursor = yield* service.create({
           stream: "test-stream",
           checkpoint: "test-checkpoint",
-          projectPath: TEST_PROJECT,
+          db,
         });
 
         return yield* cursor.getPosition();
@@ -101,21 +101,19 @@ describe("DurableCursor", () => {
     });
 
     it("supports multiple independent checkpoints", async () => {
-      await cleanup();
-
       const program = Effect.gen(function* () {
         const service = yield* DurableCursor;
 
         const cursor1 = yield* service.create({
           stream: "test-stream",
           checkpoint: "checkpoint-a",
-          projectPath: TEST_PROJECT,
+          db,
         });
 
         const cursor2 = yield* service.create({
           stream: "test-stream",
           checkpoint: "checkpoint-b",
-          projectPath: TEST_PROJECT,
+          db,
         });
 
         yield* cursor1.commit(10);
@@ -135,8 +133,6 @@ describe("DurableCursor", () => {
 
   describe("consume", () => {
     it("consumes events from current position", async () => {
-      await cleanup();
-
       // Append test events
       const events = [
         createEvent("agent_registered", {
@@ -160,7 +156,7 @@ describe("DurableCursor", () => {
       ];
 
       for (const event of events) {
-        await appendEvent(event, TEST_PROJECT);
+        await swarmMail.appendEvent(event);
       }
 
       // Create cursor and consume outside Effect.gen
@@ -169,7 +165,7 @@ describe("DurableCursor", () => {
         return yield* service.create({
           stream: "test-stream",
           checkpoint: "test-consumer",
-          projectPath: TEST_PROJECT,
+          db,
           batchSize: 2,
         });
       });
@@ -189,8 +185,6 @@ describe("DurableCursor", () => {
     });
 
     it("resumes consumption from checkpoint", async () => {
-      await cleanup();
-
       // Append test events
       const events = [
         createEvent("agent_registered", {
@@ -214,7 +208,7 @@ describe("DurableCursor", () => {
       ];
 
       for (const event of events) {
-        await appendEvent(event, TEST_PROJECT);
+        await swarmMail.appendEvent(event);
       }
 
       // First consumer - consume first event only
@@ -223,7 +217,7 @@ describe("DurableCursor", () => {
         return yield* service.create({
           stream: "test-stream",
           checkpoint: "resume-test",
-          projectPath: TEST_PROJECT,
+          db,
         });
       });
 
@@ -246,7 +240,7 @@ describe("DurableCursor", () => {
         return yield* service.create({
           stream: "test-stream",
           checkpoint: "resume-test",
-          projectPath: TEST_PROJECT,
+          db,
         });
       });
 
@@ -264,20 +258,17 @@ describe("DurableCursor", () => {
     });
 
     it("supports event type filtering", async () => {
-      await cleanup();
-
       // Append mixed event types
-      await appendEvent(
+      await swarmMail.appendEvent(
         createEvent("agent_registered", {
           project_key: "test-project",
           agent_name: "agent-1",
           program: "test",
           model: "test-model",
         }),
-        TEST_PROJECT,
       );
 
-      await appendEvent(
+      await swarmMail.appendEvent(
         createEvent("message_sent", {
           project_key: "test-project",
           from_agent: "agent-1",
@@ -287,17 +278,15 @@ describe("DurableCursor", () => {
           importance: "normal",
           ack_required: false,
         }),
-        TEST_PROJECT,
       );
 
-      await appendEvent(
+      await swarmMail.appendEvent(
         createEvent("agent_registered", {
           project_key: "test-project",
           agent_name: "agent-2",
           program: "test",
           model: "test-model",
         }),
-        TEST_PROJECT,
       );
 
       const program = Effect.gen(function* () {
@@ -305,7 +294,7 @@ describe("DurableCursor", () => {
         return yield* service.create({
           stream: "test-stream",
           checkpoint: "filter-test",
-          projectPath: TEST_PROJECT,
+          db,
           types: ["agent_registered"],
         });
       });
@@ -322,17 +311,14 @@ describe("DurableCursor", () => {
     });
 
     it("commits update cursor position", async () => {
-      await cleanup();
-
       // Append test events
-      await appendEvent(
+      await swarmMail.appendEvent(
         createEvent("agent_registered", {
           project_key: "test-project",
           agent_name: "agent-1",
           program: "test",
           model: "test-model",
         }),
-        TEST_PROJECT,
       );
 
       const program = Effect.gen(function* () {
@@ -340,7 +326,7 @@ describe("DurableCursor", () => {
         return yield* service.create({
           stream: "test-stream",
           checkpoint: "commit-test",
-          projectPath: TEST_PROJECT,
+          db,
         });
       });
 
@@ -363,14 +349,12 @@ describe("DurableCursor", () => {
     });
 
     it("handles empty streams gracefully", async () => {
-      await cleanup();
-
       const program = Effect.gen(function* () {
         const service = yield* DurableCursor;
         return yield* service.create({
           stream: "empty-stream",
           checkpoint: "empty-test",
-          projectPath: TEST_PROJECT,
+          db,
         });
       });
 
@@ -387,12 +371,10 @@ describe("DurableCursor", () => {
 
   describe("commit", () => {
     it("persists position across cursor instances", async () => {
-      await cleanup();
-
       const config: CursorConfig = {
         stream: "test-stream",
         checkpoint: "persist-test",
-        projectPath: TEST_PROJECT,
+        db,
       };
 
       // First cursor - commit position

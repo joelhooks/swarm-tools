@@ -17,7 +17,7 @@
  * - DurableDeferred for request/response messaging
  */
 import { createEvent } from "./events";
-import { isDatabaseHealthy, getDatabaseStats } from "./index";
+// Note: isDatabaseHealthy and getDatabaseStats have been removed (PGlite infrastructure cleanup)
 import {
   checkConflicts,
   getActiveReservations,
@@ -273,16 +273,27 @@ export async function sendSwarmMessage(
   );
 
   // Get the message ID from the messages table (not the event ID)
-  const { getDatabase } = await import("./index");
-  const db = await getDatabase(projectPath);
-  const result = await db.query<{ id: number }>(
-    `SELECT id FROM messages 
-     WHERE project_key = $1 AND from_agent = $2 AND subject = $3
-     ORDER BY created_at DESC LIMIT 1`,
-    [projectPath, fromAgent, subject],
-  );
+  const { getDatabasePath } = await import("./index");
+  const { createLibSQLAdapter } = await import("../libsql");
+  const { toDrizzleDb } = await import("../libsql.convenience");
+  const { messagesTable } = await import("../db/schema/streams");
+  const { eq, desc, and } = await import("drizzle-orm");
+  
+  const dbPath = getDatabasePath(projectPath);
+  const adapter = await createLibSQLAdapter({ url: `file:${dbPath}` });
+  const swarmDb = toDrizzleDb(adapter);
+  const result = await swarmDb
+    .select({ id: messagesTable.id })
+    .from(messagesTable)
+    .where(and(
+      eq(messagesTable.project_key, projectPath),
+      eq(messagesTable.from_agent, fromAgent),
+      eq(messagesTable.subject, subject)
+    ))
+    .orderBy(desc(messagesTable.created_at))
+    .limit(1);
 
-  const messageId = result.rows[0]?.id ?? 0;
+  const messageId = result[0]?.id ?? 0;
 
   return {
     success: true,
@@ -529,24 +540,15 @@ export async function acknowledgeSwarmMessage(
 
 /**
  * Check if the swarm mail store is healthy
+ * 
+ * @deprecated PGlite infrastructure has been removed. Use adapter.checkHealth() instead.
  */
 export async function checkSwarmHealth(
   projectPath?: string,
 ): Promise<SwarmHealthResult> {
-  const healthy = await isDatabaseHealthy(projectPath);
-
-  if (!healthy) {
-    return {
-      healthy: false,
-      database: "disconnected",
-    };
-  }
-
-  const stats = await getDatabaseStats(projectPath);
-
-  return {
-    healthy: true,
-    database: "connected",
-    stats,
-  };
+  throw new Error(
+    "[swarm-mail] checkSwarmHealth() has been removed. " +
+    "PGlite infrastructure is deprecated. " +
+    "Use createSwarmMailAdapter() and call adapter.checkHealth() instead."
+  );
 }

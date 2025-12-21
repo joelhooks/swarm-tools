@@ -21,9 +21,9 @@
  * ```
  */
 import { Context, Effect, Ref, Stream } from "effect";
-import { getDatabase } from "../index";
 import { readEvents } from "../store";
 import type { AgentEvent } from "../events";
+import type { DatabaseAdapter } from "../../types/database";
 
 // ============================================================================
 // Types
@@ -37,8 +37,8 @@ export interface CursorConfig {
   readonly stream: string;
   /** Checkpoint identifier (e.g. "agents/bar/position") */
   readonly checkpoint: string;
-  /** Project path for database location */
-  readonly projectPath?: string;
+  /** Database adapter for cursor storage */
+  readonly db: DatabaseAdapter;
   /** Batch size for reading events (default: 100) */
   readonly batchSize?: number;
   /** Optional filters for event types */
@@ -96,17 +96,16 @@ export class DurableCursor extends Context.Tag("DurableCursor")<
 // ============================================================================
 
 /**
- * Initialize cursor table schema
+ * Initialize cursor table schema (SQLite syntax)
  */
-async function initializeCursorSchema(projectPath?: string): Promise<void> {
-  const db = await getDatabase(projectPath);
+async function ensureCursorsTable(db: DatabaseAdapter): Promise<void> {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS cursors (
-      id SERIAL PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       stream TEXT NOT NULL,
       checkpoint TEXT NOT NULL,
-      position BIGINT NOT NULL DEFAULT 0,
-      updated_at BIGINT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
       UNIQUE(stream, checkpoint)
     );
 
@@ -121,28 +120,26 @@ async function initializeCursorSchema(projectPath?: string): Promise<void> {
 async function loadCursorPosition(
   stream: string,
   checkpoint: string,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Promise<number> {
-  await initializeCursorSchema(projectPath);
-  const db = await getDatabase(projectPath);
+  await ensureCursorsTable(db);
 
-  const result = await db.query<{ position: string }>(
-    `SELECT position FROM cursors WHERE stream = $1 AND checkpoint = $2`,
+  const result = await db.query<{ position: number }>(
+    `SELECT position FROM cursors WHERE stream = ? AND checkpoint = ?`,
     [stream, checkpoint],
   );
 
   if (result.rows.length === 0) {
     // Initialize cursor at position 0
-    await db.query(
-      `INSERT INTO cursors (stream, checkpoint, position, updated_at)
-       VALUES ($1, $2, 0, $3)
-       ON CONFLICT (stream, checkpoint) DO NOTHING`,
-      [stream, checkpoint, Date.now()],
-    );
+    await db.exec(`
+      INSERT INTO cursors (stream, checkpoint, position, updated_at)
+      VALUES ('${stream}', '${checkpoint}', 0, ${Date.now()})
+      ON CONFLICT (stream, checkpoint) DO NOTHING
+    `);
     return 0;
   }
 
-  return parseInt(result.rows[0]?.position || "0");
+  return result.rows[0]?.position ?? 0;
 }
 
 /**
@@ -152,17 +149,14 @@ async function saveCursorPosition(
   stream: string,
   checkpoint: string,
   position: number,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Promise<void> {
-  const db = await getDatabase(projectPath);
-
-  await db.query(
-    `INSERT INTO cursors (stream, checkpoint, position, updated_at)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (stream, checkpoint)
-     DO UPDATE SET position = EXCLUDED.position, updated_at = EXCLUDED.updated_at`,
-    [stream, checkpoint, position, Date.now()],
-  );
+  await db.exec(`
+    INSERT INTO cursors (stream, checkpoint, position, updated_at)
+    VALUES ('${stream}', '${checkpoint}', ${position}, ${Date.now()})
+    ON CONFLICT (stream, checkpoint)
+    DO UPDATE SET position = EXCLUDED.position, updated_at = EXCLUDED.updated_at
+  `);
 }
 
 /**
@@ -172,7 +166,7 @@ function createCursorImpl(config: CursorConfig): Effect.Effect<Cursor> {
   return Effect.gen(function* () {
     // Load initial position from database
     const initialPosition = yield* Effect.promise(() =>
-      loadCursorPosition(config.stream, config.checkpoint, config.projectPath),
+      loadCursorPosition(config.stream, config.checkpoint, config.db),
     );
 
     // Create mutable reference for current position
@@ -186,7 +180,7 @@ function createCursorImpl(config: CursorConfig): Effect.Effect<Cursor> {
             config.stream,
             config.checkpoint,
             sequence,
-            config.projectPath,
+            config.db,
           ),
         );
         yield* Ref.set(positionRef, sequence);
@@ -223,7 +217,8 @@ function createCursorImpl(config: CursorConfig): Effect.Effect<Cursor> {
                     limit: batchSize,
                     types: config.types,
                   },
-                  config.projectPath,
+                  undefined, // no projectPath
+                  config.db, // pass db directly
                 );
 
                 if (events.length === 0) {

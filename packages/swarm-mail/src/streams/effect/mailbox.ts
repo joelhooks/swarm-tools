@@ -31,6 +31,7 @@ import { Context, Effect, Layer } from "effect";
 import { DurableCursor, type Cursor } from "./cursor";
 import { appendEvent } from "../store";
 import type { MessageSentEvent } from "../events";
+import type { DatabaseAdapter } from "../../types/database";
 
 // ============================================================================
 // Types
@@ -62,8 +63,8 @@ export interface MailboxConfig {
   readonly agent: string;
   /** Project key for scoping messages */
   readonly projectKey: string;
-  /** Optional project path for database location */
-  readonly projectPath?: string;
+  /** Database adapter for mailbox storage */
+  readonly db: DatabaseAdapter;
   /** Batch size for reading messages (default: 100) */
   readonly batchSize?: number;
 }
@@ -217,7 +218,8 @@ function createSendFn(config: MailboxConfig): <T>(
             timestamp: Date.now(),
             ...event,
           },
-          config.projectPath,
+          undefined, // projectPath not needed
+          config.db, // pass db directly
         ),
       );
     });
@@ -292,7 +294,7 @@ function createMailboxImpl(
     const cursor = yield* cursorService.create({
       stream: `projects/${config.projectKey}/events`,
       checkpoint: `agents/${config.agent}/mailbox`,
-      projectPath: config.projectPath,
+      db: config.db,
       batchSize: config.batchSize,
       types: ["message_sent"], // Only read message_sent events
     });

@@ -11,8 +11,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Effect } from "effect";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DurableLock,
   DurableLockLive,
@@ -20,27 +20,41 @@ import {
   releaseLock,
   withLock,
   type LockHandle,
+  type LockConfig,
 } from "./lock";
-import { closeDatabase, resetDatabase } from "../index";
+import { createInMemorySwarmMailLibSQL } from "../../libsql.convenience";
+import type { DatabaseAdapter } from "../../types/database";
 
-// Isolated test path for each test run
-let testDbPath: string;
+// Shared test database adapter
+let db: DatabaseAdapter;
+let closeDb: () => Promise<void>;
 
 describe("DurableLock", () => {
   beforeEach(async () => {
-    testDbPath = `/tmp/lock-test-${randomUUID()}`;
-    await resetDatabase(testDbPath);
+    const testId = randomUUID().slice(0, 8);
+    const swarmMail = await createInMemorySwarmMailLibSQL(testId);
+    db = await swarmMail.getDatabase();
+    closeDb = () => swarmMail.close();
+    
+    // Reset locks table
+    await db.exec("DELETE FROM locks");
   });
 
   afterEach(async () => {
-    await closeDatabase(testDbPath);
+    await closeDb();
+  });
+
+  // Helper to create config with db
+  const config = (overrides?: Partial<Omit<LockConfig, "db">>): LockConfig => ({
+    db,
+    ...overrides,
   });
 
   describe("Basic acquire/release", () => {
     it("should acquire and release a lock", async () => {
       const program = Effect.gen(function* (_) {
         const service = yield* _(DurableLock);
-        const lock = yield* _(service.acquire("test-resource"));
+        const lock = yield* _(service.acquire("test-resource", config()));
 
         expect(lock.resource).toBe("test-resource");
         expect(lock.holder).toBeDefined();
@@ -56,7 +70,7 @@ describe("DurableLock", () => {
 
     it("should use convenience function acquireLock", async () => {
       const program = Effect.gen(function* (_) {
-        const lock = yield* _(acquireLock("test-resource"));
+        const lock = yield* _(acquireLock("test-resource", config()));
 
         expect(lock.resource).toBe("test-resource");
         expect(lock.seq).toBe(0);
@@ -69,8 +83,8 @@ describe("DurableLock", () => {
 
     it("should use convenience function releaseLock", async () => {
       const program = Effect.gen(function* (_) {
-        const lock = yield* _(acquireLock("test-resource"));
-        yield* _(releaseLock(lock.resource, lock.holder));
+        const lock = yield* _(acquireLock("test-resource", config()));
+        yield* _(releaseLock(lock.resource, lock.holder, db));
       });
 
       await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
@@ -82,12 +96,12 @@ describe("DurableLock", () => {
       const program = Effect.gen(function* (_) {
         // First lock succeeds
         const lock1 = yield* _(
-          acquireLock("test-resource", { ttlSeconds: 10 }),
+          acquireLock("test-resource", config({ ttlSeconds: 10 })),
         );
 
         // Second lock should timeout after retries
         const result2 = yield* _(
-          acquireLock("test-resource", { maxRetries: 2, baseDelayMs: 10 }).pipe(
+          acquireLock("test-resource", config({ maxRetries: 2, baseDelayMs: 10 })).pipe(
             Effect.either,
           ),
         );
@@ -112,14 +126,14 @@ describe("DurableLock", () => {
       const program = Effect.gen(function* (_) {
         const holder = "custom-holder-123";
         const lock1 = yield* _(
-          acquireLock("test-resource", { holderId: holder, ttlSeconds: 10 }),
+          acquireLock("test-resource", config({ holderId: holder, ttlSeconds: 10 })),
         );
 
         expect(lock1.seq).toBe(0);
 
         // Same holder can re-acquire (increments seq)
         const lock2 = yield* _(
-          acquireLock("test-resource", { holderId: holder, ttlSeconds: 10 }),
+          acquireLock("test-resource", config({ holderId: holder, ttlSeconds: 10 })),
         );
 
         expect(lock2.seq).toBe(1);
@@ -137,7 +151,7 @@ describe("DurableLock", () => {
     it("should allow acquisition after lock expires", async () => {
       const program = Effect.gen(function* (_) {
         // Acquire with 1 second TTL
-        const lock1 = yield* _(acquireLock("test-resource", { ttlSeconds: 1 }));
+        const lock1 = yield* _(acquireLock("test-resource", config({ ttlSeconds: 1 })));
 
         expect(lock1.seq).toBe(0);
 
@@ -146,7 +160,7 @@ describe("DurableLock", () => {
 
         // Different holder can now acquire
         const lock2 = yield* _(
-          acquireLock("test-resource", { holderId: "other" }),
+          acquireLock("test-resource", config({ holderId: "other" })),
         );
 
         expect(lock2.seq).toBeGreaterThan(0); // Sequence incremented
@@ -172,6 +186,7 @@ describe("DurableLock", () => {
               executed = true;
               return 42;
             }),
+            config(),
           ),
         );
 
@@ -191,6 +206,7 @@ describe("DurableLock", () => {
             .withLock(
               "test-resource",
               Effect.fail(new Error("Intentional failure")),
+              config(),
             )
             .pipe(Effect.either),
         );
@@ -198,7 +214,7 @@ describe("DurableLock", () => {
         expect(result._tag).toBe("Left");
 
         // Lock should be released - we can acquire it again
-        const lock = yield* _(service.acquire("test-resource"));
+        const lock = yield* _(service.acquire("test-resource", config()));
         expect(lock.seq).toBe(0); // Lock was deleted, seq resets
 
         yield* _(lock.release());
@@ -209,7 +225,7 @@ describe("DurableLock", () => {
 
     it("should pass through effect result", async () => {
       const program = Effect.gen(function* (_) {
-        const result = yield* _(withLock("test-resource", Effect.succeed(42)));
+        const result = yield* _(withLock("test-resource", Effect.succeed(42), config()));
 
         expect(result).toBe(42);
       });
@@ -222,11 +238,11 @@ describe("DurableLock", () => {
     it("should handle concurrent acquisition attempts", async () => {
       const program = Effect.gen(function* (_) {
         const attempts = Array.from({ length: 5 }, (_, i) =>
-          acquireLock("test-resource", {
+          acquireLock("test-resource", config({
             holderId: `holder-${i}`,
             maxRetries: 3,
             baseDelayMs: 10,
-          }).pipe(Effect.either),
+          })).pipe(Effect.either),
         );
 
         // Run all attempts in parallel
@@ -264,16 +280,16 @@ describe("DurableLock", () => {
         // Sequential acquisitions
         for (let i = 0; i < 3; i++) {
           const lock = yield* _(
-            acquireLock("test-resource", { holderId: `holder-${i}` }),
+            acquireLock("test-resource", config({ holderId: `holder-${i}` })),
           );
           results.push(lock);
           yield* _(lock.release());
         }
 
         // All get seq=0 because lock is deleted after each release
-        expect(results[0]!.seq).toBe(0);
-        expect(results[1]!.seq).toBe(0);
-        expect(results[2]!.seq).toBe(0);
+        expect(results[0]?.seq).toBe(0);
+        expect(results[1]?.seq).toBe(0);
+        expect(results[2]?.seq).toBe(0);
       });
 
       await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
@@ -283,11 +299,11 @@ describe("DurableLock", () => {
   describe("Error handling", () => {
     it("should fail with LockNotHeld when releasing unowned lock", async () => {
       const program = Effect.gen(function* (_) {
-        const lock = yield* _(acquireLock("test-resource"));
+        const lock = yield* _(acquireLock("test-resource", config()));
 
         // Try to release with wrong holder
         const result = yield* _(
-          releaseLock("test-resource", "wrong-holder").pipe(Effect.either),
+          releaseLock("test-resource", "wrong-holder", db).pipe(Effect.either),
         );
 
         expect(result._tag).toBe("Left");
@@ -309,7 +325,7 @@ describe("DurableLock", () => {
 
     it("should fail with LockNotHeld when releasing already-released lock", async () => {
       const program = Effect.gen(function* (_) {
-        const lock = yield* _(acquireLock("test-resource"));
+        const lock = yield* _(acquireLock("test-resource", config()));
 
         // First release succeeds
         yield* _(lock.release());
@@ -331,7 +347,7 @@ describe("DurableLock", () => {
     it("should respect custom TTL", async () => {
       const program = Effect.gen(function* (_) {
         const ttlSeconds = 5;
-        const lock = yield* _(acquireLock("test-resource", { ttlSeconds }));
+        const lock = yield* _(acquireLock("test-resource", config({ ttlSeconds })));
 
         const expectedExpiry = lock.acquiredAt + ttlSeconds * 1000;
         expect(lock.expiresAt).toBeGreaterThanOrEqual(expectedExpiry - 100);
@@ -346,7 +362,7 @@ describe("DurableLock", () => {
     it("should respect custom holder ID", async () => {
       const program = Effect.gen(function* (_) {
         const holderId = "my-custom-holder-id";
-        const lock = yield* _(acquireLock("test-resource", { holderId }));
+        const lock = yield* _(acquireLock("test-resource", config({ holderId })));
 
         expect(lock.holder).toBe(holderId);
 
@@ -359,13 +375,13 @@ describe("DurableLock", () => {
     it("should respect retry configuration", async () => {
       const program = Effect.gen(function* (_) {
         // Hold lock
-        const lock1 = yield* _(acquireLock("test-resource"));
+        const lock1 = yield* _(acquireLock("test-resource", config()));
 
         const startTime = Date.now();
 
         // Try to acquire with quick timeout (2 retries, 10ms each)
         const result = yield* _(
-          acquireLock("test-resource", { maxRetries: 2, baseDelayMs: 10 }).pipe(
+          acquireLock("test-resource", config({ maxRetries: 2, baseDelayMs: 10 })).pipe(
             Effect.either,
           ),
         );

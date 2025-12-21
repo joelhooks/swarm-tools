@@ -135,6 +135,7 @@ export const reservationsTable = sqliteTable(
     created_at: integer("created_at").notNull(),
     expires_at: integer("expires_at").notNull(),
     released_at: integer("released_at"),
+    lock_holder_id: text("lock_holder_id"),
   },
   (table) => ({
     projectIdx: index("idx_reservations_project").on(table.project_key),
@@ -174,12 +175,17 @@ export const locksTable = sqliteTable(
 export const cursorsTable = sqliteTable(
   "cursors",
   {
-    stream_id: text("stream_id").primaryKey(),
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    stream: text("stream").notNull(),
+    checkpoint: text("checkpoint").notNull(),
     position: integer("position").notNull().default(0),
     updated_at: integer("updated_at").notNull(),
   },
   (table) => ({
+    streamIdx: index("idx_cursors_stream").on(table.stream),
+    checkpointIdx: index("idx_cursors_checkpoint").on(table.checkpoint),
     updatedIdx: index("idx_cursors_updated").on(table.updated_at),
+    // UNIQUE(stream, checkpoint) handled in schema SQL
   }),
 );
 

@@ -20,6 +20,7 @@ import {
   checkConflicts,
 } from "./projections";
 import { createEvent } from "./events";
+import { needsMigration, migrateProjectToGlobal } from "./auto-migrate";
 // Removed: isDatabaseHealthy, getDatabaseStats (PGlite infrastructure cleanup)
 
 // ============================================================================
@@ -228,6 +229,8 @@ async function getProjectDatabase(projectPath: string) {
 
 /**
  * Initialize an agent for this session
+ * 
+ * Automatically migrates old project-local databases to global DB on first init.
  */
 export async function initAgent(
   options: InitAgentOptions,
@@ -239,6 +242,17 @@ export async function initAgent(
     model = "unknown",
     taskDescription,
   } = options;
+
+  // Auto-migrate old project DBs to global DB (fast check, runs once per project)
+  if (needsMigration(projectPath)) {
+    try {
+      const result = await migrateProjectToGlobal(projectPath);
+      console.log(`[SwarmMail] Migrated ${result.sourceType} DB → global (${result.stats.events} events, ${result.stats.messages} messages)`);
+    } catch (err) {
+      // Log but don't fail - migration is best-effort
+      console.warn(`[SwarmMail] Migration failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Get database adapter
   const db = await getProjectDatabase(projectPath);

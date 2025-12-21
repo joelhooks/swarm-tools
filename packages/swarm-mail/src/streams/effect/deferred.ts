@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * const response = await DurableDeferred.create<Response>({ ttlSeconds: 60 })
+ * const response = await DurableDeferred.create<Response>({ ttlSeconds: 60, db })
  * await actor.append({ payload: message, replyTo: response.url })
  * return response.value // blocks until resolved or timeout
  * ```
@@ -20,7 +20,7 @@
 
 import { Context, Deferred, Duration, Effect, Layer } from "effect";
 import { nanoid } from "nanoid";
-import { getDatabase } from "../index";
+import type { DatabaseAdapter } from "../../types/database";
 
 // ============================================================================
 // Errors
@@ -69,8 +69,8 @@ export interface DeferredHandle<T> {
 export interface DeferredConfig {
   /** Time-to-live in seconds before timeout */
   readonly ttlSeconds: number;
-  /** Optional project path for database isolation */
-  readonly projectPath?: string;
+  /** Database adapter for storage */
+  readonly db: DatabaseAdapter;
 }
 
 // ============================================================================
@@ -97,11 +97,12 @@ export class DurableDeferred extends Context.Tag("DurableDeferred")<
      *
      * @param url - Deferred identifier
      * @param value - Resolution value
+     * @param db - Database adapter
      */
     readonly resolve: <T>(
       url: string,
       value: T,
-      projectPath?: string,
+      db: DatabaseAdapter,
     ) => Effect.Effect<void, NotFoundError>;
 
     /**
@@ -109,11 +110,12 @@ export class DurableDeferred extends Context.Tag("DurableDeferred")<
      *
      * @param url - Deferred identifier
      * @param error - Error to reject with
+     * @param db - Database adapter
      */
     readonly reject: (
       url: string,
       error: Error,
-      projectPath?: string,
+      db: DatabaseAdapter,
     ) => Effect.Effect<void, NotFoundError>;
 
     /**
@@ -122,7 +124,7 @@ export class DurableDeferred extends Context.Tag("DurableDeferred")<
     readonly await: <T>(
       url: string,
       ttlSeconds: number,
-      projectPath?: string,
+      db: DatabaseAdapter,
     ) => Effect.Effect<T, TimeoutError | NotFoundError>;
   }
 >() {}
@@ -138,19 +140,18 @@ export class DurableDeferred extends Context.Tag("DurableDeferred")<
 const activeDefersMap = new Map<string, Deferred.Deferred<unknown, Error>>();
 
 /**
- * Ensure deferred table exists in database
+ * Ensure deferred table exists in database (SQLite syntax)
  */
-async function ensureDeferredTable(projectPath?: string): Promise<void> {
-  const db = await getDatabase(projectPath);
+async function ensureDeferredTable(db: DatabaseAdapter): Promise<void> {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS deferred (
-      id SERIAL PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       url TEXT NOT NULL UNIQUE,
-      resolved BOOLEAN NOT NULL DEFAULT FALSE,
-      value JSONB,
+      resolved INTEGER NOT NULL DEFAULT 0,
+      value TEXT,
       error TEXT,
-      expires_at BIGINT NOT NULL,
-      created_at BIGINT NOT NULL
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_deferred_url ON deferred(url);
@@ -161,15 +162,20 @@ async function ensureDeferredTable(projectPath?: string): Promise<void> {
 /**
  * Clean up expired deferred entries
  */
-async function cleanupExpired(projectPath?: string): Promise<number> {
-  const db = await getDatabase(projectPath);
+async function cleanupExpired(db: DatabaseAdapter): Promise<number> {
   const now = Date.now();
-  // DELETE...RETURNING returns the deleted rows, so count them directly
-  const result = await db.query<{ url: string }>(
-    `DELETE FROM deferred WHERE expires_at < $1 RETURNING url`,
+  
+  // Count expired entries first
+  const countResult = await db.query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM deferred WHERE expires_at < ?`,
     [now],
   );
-  return result.rows.length;
+  const count = countResult.rows[0]?.count ?? 0;
+  
+  // Delete expired entries (use parameterized query)
+  await db.query(`DELETE FROM deferred WHERE expires_at < ?`, [now]);
+  
+  return count;
 }
 
 /**
@@ -178,35 +184,34 @@ async function cleanupExpired(projectPath?: string): Promise<number> {
 function createImpl<T>(
   config: DeferredConfig,
 ): Effect.Effect<DeferredHandle<T>> {
-  return Effect.gen(function* (_) {
+  return Effect.gen(function* () {
+    const { db, ttlSeconds } = config;
+    
     // Ensure table exists
-    yield* _(Effect.promise(() => ensureDeferredTable(config.projectPath)));
+    yield* Effect.promise(() => ensureDeferredTable(db));
 
     // Generate unique URL
     const url = `deferred:${nanoid()}`;
-    const expiresAt = Date.now() + config.ttlSeconds * 1000;
+    const expiresAt = Date.now() + ttlSeconds * 1000;
+    const createdAt = Date.now();
 
     // Create Effect.Deferred for instant resolution
-    const deferred = yield* _(Deferred.make<T, Error>());
+    const deferred = yield* Deferred.make<T, Error>();
     activeDefersMap.set(url, deferred as Deferred.Deferred<unknown, Error>);
 
-    // Insert into database
-    const db = yield* _(Effect.promise(() => getDatabase(config.projectPath)));
-    yield* _(
-      Effect.promise(() =>
-        db.query(
-          `INSERT INTO deferred (url, resolved, expires_at, created_at)
-           VALUES ($1, $2, $3, $4)`,
-          [url, false, expiresAt, Date.now()],
-        ),
+    // Insert into database (use parameterized query)
+    yield* Effect.promise(() =>
+      db.query(
+        `INSERT INTO deferred (url, resolved, expires_at, created_at) VALUES (?, 0, ?, ?)`,
+        [url, expiresAt, createdAt],
       ),
     );
 
     // Create value getter that directly calls awaitImpl (doesn't need service context)
     const value: Effect.Effect<T, TimeoutError | NotFoundError> = awaitImpl<T>(
       url,
-      config.ttlSeconds,
-      config.projectPath,
+      ttlSeconds,
+      db,
     );
 
     return { url, value };
@@ -219,39 +224,40 @@ function createImpl<T>(
 function resolveImpl<T>(
   url: string,
   value: T,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, NotFoundError> {
-  return Effect.gen(function* (_) {
-    yield* _(Effect.promise(() => ensureDeferredTable(projectPath)));
+  return Effect.gen(function* () {
+    yield* Effect.promise(() => ensureDeferredTable(db));
 
-    const db = yield* _(Effect.promise(() => getDatabase(projectPath)));
-
-    // Update database
-    const result = yield* _(
-      Effect.promise(() =>
-        db.query<{ url: string }>(
-          `UPDATE deferred 
-           SET resolved = TRUE, value = $1::jsonb
-           WHERE url = $2 AND resolved = FALSE
-           RETURNING url`,
-          [JSON.stringify(value), url],
-        ),
+    // Check if deferred exists and is not resolved
+    const checkResult = yield* Effect.promise(() =>
+      db.query<{ url: string; resolved: number }>(
+        `SELECT url, resolved FROM deferred WHERE url = ? AND resolved = 0`,
+        [url],
       ),
     );
 
-    if (result.rows.length === 0) {
-      yield* _(Effect.fail(new NotFoundError(url)));
+    if (checkResult.rows.length === 0) {
+      yield* Effect.fail(new NotFoundError(url));
+      return;
     }
+
+    // Update database with serialized value
+    const serializedValue = JSON.stringify(value);
+    yield* Effect.promise(() =>
+      db.query(
+        `UPDATE deferred SET resolved = 1, value = ? WHERE url = ? AND resolved = 0`,
+        [serializedValue, url],
+      ),
+    );
 
     // Resolve in-memory deferred if it exists
     const deferred = activeDefersMap.get(url);
     if (deferred) {
-      yield* _(
-        Deferred.succeed(deferred, value as unknown) as Effect.Effect<
-          boolean,
-          never
-        >,
-      );
+      yield* Deferred.succeed(deferred, value as unknown) as Effect.Effect<
+        boolean,
+        never
+      >;
     }
   });
 }
@@ -262,34 +268,36 @@ function resolveImpl<T>(
 function rejectImpl(
   url: string,
   error: Error,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, NotFoundError> {
-  return Effect.gen(function* (_) {
-    yield* _(Effect.promise(() => ensureDeferredTable(projectPath)));
+  return Effect.gen(function* () {
+    yield* Effect.promise(() => ensureDeferredTable(db));
 
-    const db = yield* _(Effect.promise(() => getDatabase(projectPath)));
-
-    // Update database
-    const result = yield* _(
-      Effect.promise(() =>
-        db.query<{ url: string }>(
-          `UPDATE deferred 
-           SET resolved = TRUE, error = $1
-           WHERE url = $2 AND resolved = FALSE
-           RETURNING url`,
-          [error.message, url],
-        ),
+    // Check if deferred exists and is not resolved
+    const checkResult = yield* Effect.promise(() =>
+      db.query<{ url: string; resolved: number }>(
+        `SELECT url, resolved FROM deferred WHERE url = ? AND resolved = 0`,
+        [url],
       ),
     );
 
-    if (result.rows.length === 0) {
-      yield* _(Effect.fail(new NotFoundError(url)));
+    if (checkResult.rows.length === 0) {
+      yield* Effect.fail(new NotFoundError(url));
+      return;
     }
+
+    // Update database with error
+    yield* Effect.promise(() =>
+      db.query(
+        `UPDATE deferred SET resolved = 1, error = ? WHERE url = ? AND resolved = 0`,
+        [error.message, url],
+      ),
+    );
 
     // Reject in-memory deferred if it exists
     const deferred = activeDefersMap.get(url);
     if (deferred) {
-      yield* _(Deferred.fail(deferred, error) as Effect.Effect<boolean, never>);
+      yield* Deferred.fail(deferred, error) as Effect.Effect<boolean, never>;
     }
   });
 }
@@ -300,27 +308,25 @@ function rejectImpl(
 function awaitImpl<T>(
   url: string,
   ttlSeconds: number,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<T, TimeoutError | NotFoundError> {
-  return Effect.gen(function* (_) {
-    yield* _(Effect.promise(() => ensureDeferredTable(projectPath)));
+  return Effect.gen(function* () {
+    yield* Effect.promise(() => ensureDeferredTable(db));
 
     // Check if we have an in-memory deferred
     const deferred = activeDefersMap.get(url);
     if (deferred) {
       // Use in-memory deferred with timeout
-      const result = yield* _(
-        Deferred.await(deferred as Deferred.Deferred<T, Error>).pipe(
-          Effect.timeoutFail({
-            duration: Duration.seconds(ttlSeconds),
-            onTimeout: () => new TimeoutError(url, ttlSeconds),
-          }),
-          Effect.catchAll((error) =>
-            Effect.fail(
-              error instanceof NotFoundError || error instanceof TimeoutError
-                ? error
-                : new NotFoundError(url),
-            ),
+      const result = yield* Deferred.await(deferred as Deferred.Deferred<T, Error>).pipe(
+        Effect.timeoutFail({
+          duration: Duration.seconds(ttlSeconds),
+          onTimeout: () => new TimeoutError(url, ttlSeconds),
+        }),
+        Effect.catchAll((error) =>
+          Effect.fail(
+            error instanceof NotFoundError || error instanceof TimeoutError
+              ? error
+              : new NotFoundError(url),
           ),
         ),
       );
@@ -331,7 +337,6 @@ function awaitImpl<T>(
     }
 
     // Fall back to polling database
-    const db = yield* _(Effect.promise(() => getDatabase(projectPath)));
     const startTime = Date.now();
     const timeoutMs = ttlSeconds * 1000;
 
@@ -339,42 +344,38 @@ function awaitImpl<T>(
     while (true) {
       // Check timeout
       if (Date.now() - startTime > timeoutMs) {
-        return yield* _(Effect.fail(new TimeoutError(url, ttlSeconds)));
+        return yield* Effect.fail(new TimeoutError(url, ttlSeconds));
       }
 
       // Query database
-      const result = yield* _(
-        Effect.promise(() =>
-          db.query<{ resolved: boolean; value: unknown; error: string | null }>(
-            `SELECT resolved, value, error FROM deferred WHERE url = $1`,
-            [url],
-          ),
+      const result = yield* Effect.promise(() =>
+        db.query<{ resolved: number; value: string | null; error: string | null }>(
+          `SELECT resolved, value, error FROM deferred WHERE url = ?`,
+          [url],
         ),
       );
 
       const row = result.rows[0];
       if (!row) {
-        return yield* _(Effect.fail(new NotFoundError(url)));
+        return yield* Effect.fail(new NotFoundError(url));
       }
 
-      // Check if resolved
-      if (row.resolved) {
+      // Check if resolved (SQLite uses 0/1 for boolean)
+      if (row.resolved === 1) {
         if (row.error) {
           // Convert stored error message to NotFoundError
-          return yield* _(Effect.fail(new NotFoundError(url)));
+          return yield* Effect.fail(new NotFoundError(url));
         }
-        // Value should exist if resolved=true and error=null
+        // Value should exist if resolved=1 and error=null
         if (!row.value) {
-          return yield* _(Effect.fail(new NotFoundError(url)));
+          return yield* Effect.fail(new NotFoundError(url));
         }
-        // PGLite returns JSONB as parsed object already
-        return (
-          typeof row.value === "string" ? JSON.parse(row.value) : row.value
-        ) as T;
+        // Parse JSON value
+        return JSON.parse(row.value) as T;
       }
 
       // Sleep before next poll (100ms)
-      yield* _(Effect.sleep(Duration.millis(100)));
+      yield* Effect.sleep(Duration.millis(100));
     }
   });
 }
@@ -403,9 +404,9 @@ export const DurableDeferredLive = Layer.succeed(DurableDeferred, {
 export function createDeferred<T>(
   config: DeferredConfig,
 ): Effect.Effect<DeferredHandle<T>, never, DurableDeferred> {
-  return Effect.gen(function* (_) {
-    const service = yield* _(DurableDeferred);
-    return yield* _(service.create<T>(config));
+  return Effect.gen(function* () {
+    const service = yield* DurableDeferred;
+    return yield* service.create<T>(config);
   });
 }
 
@@ -415,11 +416,11 @@ export function createDeferred<T>(
 export function resolveDeferred<T>(
   url: string,
   value: T,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, NotFoundError, DurableDeferred> {
-  return Effect.gen(function* (_) {
-    const service = yield* _(DurableDeferred);
-    return yield* _(service.resolve(url, value, projectPath));
+  return Effect.gen(function* () {
+    const service = yield* DurableDeferred;
+    return yield* service.resolve(url, value, db);
   });
 }
 
@@ -429,17 +430,17 @@ export function resolveDeferred<T>(
 export function rejectDeferred(
   url: string,
   error: Error,
-  projectPath?: string,
+  db: DatabaseAdapter,
 ): Effect.Effect<void, NotFoundError, DurableDeferred> {
-  return Effect.gen(function* (_) {
-    const service = yield* _(DurableDeferred);
-    return yield* _(service.reject(url, error, projectPath));
+  return Effect.gen(function* () {
+    const service = yield* DurableDeferred;
+    return yield* service.reject(url, error, db);
   });
 }
 
 /**
  * Cleanup expired deferred entries (call periodically)
  */
-export function cleanupDeferreds(projectPath?: string): Effect.Effect<number> {
-  return Effect.promise(() => cleanupExpired(projectPath));
+export function cleanupDeferreds(db: DatabaseAdapter): Effect.Effect<number> {
+  return Effect.promise(() => cleanupExpired(db));
 }

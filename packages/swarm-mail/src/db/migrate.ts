@@ -214,6 +214,18 @@ export async function migrateDatabase(
       continue;
     }
 
+    // Special case: cursors table migration (stream_id → stream)
+    // Detect old PGLite schema and recreate table
+    if (tableName === "cursors") {
+      const needsCursorsMigration = await detectOldCursorsSchema(client);
+      if (needsCursorsMigration) {
+        // Drop old table (cursors are ephemeral, data loss is acceptable)
+        await client.execute({ sql: `DROP TABLE cursors`, args: [] });
+        await createTableFromSchema(client, tableName, tables);
+        continue;
+      }
+    }
+
     if (hasWrongTypes) {
       // Check if table has data
       const countResult = await client.execute({
@@ -242,6 +254,49 @@ export async function migrateDatabase(
         await addMissingColumn(client, issue, tables);
       }
     }
+  }
+}
+
+/**
+ * Detects if cursors table uses old PGLite schema (stream_id instead of stream).
+ * 
+ * Old schema: stream_id TEXT PRIMARY KEY, position INTEGER, updated_at INTEGER
+ * New schema: id INTEGER, stream TEXT, checkpoint TEXT, position INTEGER, updated_at INTEGER
+ * 
+ * @returns true if old schema detected, false otherwise
+ */
+async function detectOldCursorsSchema(client: Client): Promise<boolean> {
+  try {
+    // Check if cursors table exists
+    const tableExists = await client.execute({
+      sql: `SELECT name FROM sqlite_master WHERE type='table' AND name='cursors'`,
+      args: [],
+    });
+
+    if (tableExists.rows.length === 0) {
+      return false; // Table doesn't exist, no migration needed
+    }
+
+    // Check columns - use table_xinfo to see generated columns
+    const columns = await client.execute({
+      sql: `PRAGMA table_xinfo(cursors)`,
+      args: [],
+    });
+
+    const columnNames = columns.rows.map(r => r.name as string);
+
+    // Old schema has stream_id, new schema has stream + checkpoint
+    const hasOldColumn = columnNames.includes("stream_id");
+    const hasNewColumns = columnNames.includes("stream") && columnNames.includes("checkpoint");
+
+    // If has stream_id but not new columns, it's old schema
+    if (hasOldColumn && !hasNewColumns) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
   }
 }
 

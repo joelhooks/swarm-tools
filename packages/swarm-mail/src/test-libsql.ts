@@ -148,7 +148,8 @@ export async function createTestLibSQLDb(): Promise<{
       type TEXT NOT NULL,
       project_key TEXT NOT NULL,
       timestamp INTEGER NOT NULL,
-      data TEXT NOT NULL DEFAULT '{}'
+      data TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT
     )
   `);
 

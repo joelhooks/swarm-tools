@@ -522,3 +522,169 @@ export async function getEvalStatsDrizzle(
     byStrategy,
   };
 }
+
+// ============================================================================
+// Convenience Wrappers (compatible with old PGlite-based signatures)
+// ============================================================================
+
+/**
+ * Convenience wrapper for getAgentsDrizzle that matches the old signature.
+ */
+export async function getAgents(
+  projectKey: string,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Agent[]> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getAgentsDrizzle(swarmDb, projectKey);
+}
+
+/**
+ * Convenience wrapper for getAgentDrizzle
+ */
+export async function getAgent(
+  projectKey: string,
+  agentName: string,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Agent | null> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getAgentDrizzle(swarmDb, projectKey, agentName);
+}
+
+/**
+ * Convenience wrapper for getInboxDrizzle
+ */
+export async function getInbox(
+  projectKey: string,
+  agentName: string,
+  options?: InboxOptions,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Message[]> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getInboxDrizzle(swarmDb, projectKey, agentName, options);
+}
+
+/**
+ * Convenience wrapper for getMessageDrizzle
+ */
+export async function getMessage(
+  projectKey: string,
+  messageId: number,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Message | null> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getMessageDrizzle(swarmDb, projectKey, messageId);
+}
+
+/**
+ * Convenience wrapper for getThreadMessagesDrizzle
+ */
+export async function getThreadMessages(
+  projectKey: string,
+  threadId: string,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Message[]> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getThreadMessagesDrizzle(swarmDb, projectKey, threadId);
+}
+
+/**
+ * Convenience wrapper for getActiveReservationsDrizzle
+ */
+export async function getActiveReservations(
+  projectKey: string,
+  projectPath?: string,
+  agentName?: string,
+  dbOverride?: any,
+): Promise<Reservation[]> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getActiveReservationsDrizzle(swarmDb, projectKey, agentName);
+}
+
+/**
+ * Convenience wrapper for checkConflictsDrizzle
+ */
+export async function checkConflicts(
+  projectKey: string,
+  agentName: string,
+  paths: string[],
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Conflict[]> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return checkConflictsDrizzle(swarmDb, projectKey, agentName, paths);
+}
+
+/**
+ * Convenience wrapper for getEvalRecordsDrizzle
+ */
+export async function getEvalRecords(
+  projectKey: string,
+  options?: { limit?: number; strategy?: string },
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<EvalRecord[]> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getEvalRecordsDrizzle(swarmDb, projectKey, options);
+}
+
+/**
+ * Convenience wrapper for getEvalStatsDrizzle
+ */
+export async function getEvalStats(
+  projectKey: string,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<EvalStats> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getEvalStatsDrizzle(swarmDb, projectKey);
+}

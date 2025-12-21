@@ -22,6 +22,7 @@
  */
 
 import type { Client } from "@libsql/client";
+import { sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +30,7 @@ import { basename, join } from "node:path";
 import { createSwarmMailAdapter } from "./adapter.js";
 import { createDrizzleClient } from "./db/drizzle.js";
 import type { SwarmDb } from "./db/client.js";
-import { createLibSQLAdapter } from "./libsql.js";
+import { createLibSQLAdapter, convertPlaceholders } from "./libsql.js";
 import { createLibSQLMemorySchema } from "./memory/libsql-schema.js";
 import { createLibSQLStreamsSchema } from "./streams/libsql-schema.js";
 import type { SwarmMailAdapter } from "./types/adapter.js";
@@ -245,4 +246,43 @@ export function toSwarmDb(adapter: DatabaseAdapter): SwarmDb {
     throw new Error("DatabaseAdapter does not have getClient() method - must be a LibSQLAdapter");
   }
   return createDrizzleClient(adapterWithClient.getClient());
+}
+
+/**
+ * Convert DatabaseAdapter OR PGlite to SwarmDb (Drizzle client)
+ * 
+ * Supports both:
+ * - LibSQLAdapter (has getClient() method)
+ * - PGlite (direct instance)
+ * 
+ * @param db - DatabaseAdapter or PGlite instance
+ * @returns Drizzle client compatible with SwarmDb
+ * 
+ * @example
+ * ```typescript
+ * // Works with LibSQLAdapter
+ * const adapter = await createLibSQLAdapter();
+ * const drizzle = toDrizzleDb(adapter);
+ * 
+ * // Works with PGlite
+ * const pglite = await getDatabase(projectPath);
+ * const drizzle = toDrizzleDb(pglite);
+ * ```
+ */
+export function toDrizzleDb(db: any): SwarmDb {
+  // Check if it's a LibSQLAdapter (has getClient method)
+  if (db && typeof db.getClient === 'function') {
+    // LibSQL path - use existing createDrizzleClient
+    return createDrizzleClient(db.getClient());
+  }
+  
+  // Check if it's PGlite (has query and exec methods)
+  if (db && typeof db.query === 'function' && typeof db.exec === 'function') {
+    // PGlite path - use drizzle-orm/pglite adapter
+    const { drizzle } = require('drizzle-orm/pglite');
+    const { schema } = require('./db/schema/index.js');
+    return drizzle(db, { schema });
+  }
+  
+  throw new Error('Database must be either LibSQLAdapter (with getClient()) or PGlite (with query/exec)');
 }

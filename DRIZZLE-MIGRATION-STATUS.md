@@ -1,8 +1,112 @@
-# Drizzle Migration Type Error Fixes - Status
+# Drizzle Migration Status
 
-## Agent: QuickForest
-## Cell: opencode-swarm-monorepo-lf2p4u-mjdk1vfllm3
-## Status: BLOCKED (80% complete)
+## Epic: opencode-swarm-monorepo-lf2p4u-mjf9zd9kgo7
+## Branch: feat/drizzle-migration-and-tests
+## Last Updated: 2024-12-20
+
+---
+
+# COMPREHENSIVE PLAN
+
+## Current State Summary
+
+| Subsystem | Drizzle Status | Notes |
+|-----------|---------------|-------|
+| **Streams** | ✅ DONE | Wrappers added, exports updated |
+| **Memory** | ✅ DONE | Already uses Drizzle (raw SQL only for vector/FTS5) |
+| **Hive** | ❌ NOT STARTED | Still uses DatabaseAdapter (raw SQL) |
+
+## Test Status
+
+- **swarm-mail**: 595 pass, 15 skip, 0 fail ✅
+- **opencode-swarm-plugin**: 423 pass, 0 fail ✅
+- **Integration tests**: 440 pass, 18 skip, 6 fail ⚠️
+
+### Failing Tests (6)
+1. `agentmail_release` - reservation release count assertions (3 tests)
+2. `swarm_checkpoint` - DatabaseAdapter missing getClient() method (2 tests)
+3. Other checkpoint-related test
+
+---
+
+## Remaining Work
+
+### Phase 1: Fix Failing Tests (BLOCKING)
+**Priority: P0 - Must fix before proceeding**
+
+1. **agentmail_release tests** - Reservation release logic returning wrong counts
+2. **swarm_checkpoint tests** - Need LibSQLAdapter, not generic DatabaseAdapter
+
+### Phase 2: Hive Drizzle Conversion (MAIN WORK)
+**Priority: P1 - Core migration work**
+
+Files to convert (in order):
+1. `hive/store.ts` - Event store operations
+2. `hive/projections.ts` - Query projections  
+3. `hive/queries.ts` - Complex queries
+4. `hive/comments.ts` - Comment operations
+5. `hive/labels.ts` - Label operations
+6. `hive/dependencies.ts` - Dependency tracking
+
+**Approach:**
+- Follow streams pattern: create Drizzle functions, add wrappers for backward compat
+- Use `toSwarmDb()` to convert DatabaseAdapter → SwarmDb
+- Keep complex CTEs as raw SQL if Drizzle can't express them
+
+### Phase 3: Remove Duplicate Schemas
+**Priority: P2 - Cleanup**
+
+Duplicate schema files to consolidate:
+- `memory/libsql-schema.ts` (194 lines) → merge into `db/schema/memory.ts`
+- `streams/libsql-schema.ts` (306 lines) → merge into `db/schema/streams.ts`
+
+**Note:** These files contain DDL for FTS5 and vector indexes that Drizzle can't create. Keep the DDL functions, remove duplicate table definitions.
+
+### Phase 4: Integration Test Coverage
+**Priority: P3 - Quality**
+
+Current: 440 tests for ~92 tools
+Target: Happy-path coverage for all tools
+
+Tools needing tests:
+- Review existing coverage
+- Add missing tool tests
+- Focus on tools that touch database
+
+---
+
+## Blocked Work (from previous session)
+
+### Type Error Fixes (COMPLETED)
+These were fixed in previous sessions:
+- ✅ Message importance nullability
+- ✅ Boolean storage
+- ✅ Dynamic query builders
+- ✅ Drizzle schema property names
+
+---
+
+## Commands
+
+```bash
+# Run all tests
+bun turbo test
+
+# Run specific subsystem
+bun test packages/swarm-mail/src/hive/
+bun test packages/swarm-mail/src/streams/
+bun test packages/swarm-mail/src/memory/
+
+# Run integration tests
+bun test packages/opencode-swarm-plugin/src/*.integration.test.ts
+
+# Typecheck
+bun turbo typecheck
+```
+
+---
+
+# Historical Notes (Previous Session)
 
 ## Completed Fixes
 
@@ -129,6 +233,55 @@ bun turbo typecheck --filter=swarm-mail
 ```
 
 Expected: 0 errors
+
+## Memory Subsystem Status (✅ COMPLETE)
+
+**Agent:** WildCloud  
+**Cell:** opencode-swarm-monorepo-lf2p4u-mjf9zd9uul8  
+**Date:** December 19, 2024
+
+### Audit Results
+
+✅ **Memory subsystem is FULLY Drizzle-converted where technically possible.**
+
+All remaining raw SQL is **REQUIRED** for libSQL-specific features not supported by Drizzle ORM.
+
+### Files Using Drizzle ORM
+1. ✅ `store.ts` - Uses Drizzle for all standard queries (select, insert, update, delete)
+2. ✅ `adapter.ts` - Pure Drizzle (lines 331-334 for validate operation)
+3. ✅ `db/schema/memory.ts` - Drizzle schema definitions (matches libsql-schema.ts)
+
+### Files Using Required Raw SQL
+1. ✅ `libsql-schema.ts` - DDL for FTS5 + vector indexes (Drizzle can't create these)
+2. ✅ `store.ts` - Vector search + FTS5 queries (Drizzle doesn't support these operations)
+3. ✅ `migrate-legacy.ts` - PGlite API + DatabaseAdapter (correct abstraction)
+4. ✅ `sync.ts` - DatabaseAdapter (portable abstraction layer)
+
+### Raw SQL That MUST Stay
+
+**libSQL Vector Operations:**
+- `vector()` function calls (convert JSON array to F32_BLOB)
+- `vector_distance_cos()` (cosine similarity)
+- `vector_top_k()` (ANN search)
+- Vector indexes: `libsql_vector_idx()` function
+
+**FTS5 Full-Text Search:**
+- `CREATE VIRTUAL TABLE ... USING fts5()`
+- `CREATE TRIGGER` for FTS5 auto-sync
+- `WHERE content MATCH $query` (MATCH operator)
+- `fts.rank` for relevance scoring
+
+**DatabaseAdapter Abstraction:**
+- Portable queries between PGlite and libSQL
+- Migration tooling
+- JSONL sync operations
+
+### Test Results
+- Memory subsystem: 116 pass, 1 skip, 0 fail
+- Plugin integration: 7 pass, 0 fail
+
+### Documentation
+See `packages/swarm-mail/MEMORY-DRIZZLE-AUDIT.md` for detailed audit report.
 
 ## Notes
 

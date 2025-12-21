@@ -11,11 +11,25 @@
  *
  * Based on steveyegge/beads query patterns.
  *
+ * ## Drizzle Migration Status
+ * - ✅ resolvePartialId - Drizzle (simple LIKE query)
+ * - ✅ getStaleIssues - Drizzle (simple WHERE + ORDER BY)
+ * - ✅ getStatistics (partial) - Drizzle for counts, raw SQL for cache queries
+ * - ❌ getReadyWork - Raw SQL (complex cache EXISTS, dynamic WHERE, CASE sorting)
+ * - ❌ getBlockedIssues - Raw SQL (cache JOIN + JSON parsing)
+ * - ❌ getEpicsEligibleForClosure - Raw SQL (complex JOIN + GROUP BY + HAVING)
+ *
  * @module beads/queries
  */
 
 import type { DatabaseAdapter } from "../types/database.js";
 import type { Cell, CellStatus, HiveAdapter } from "../types/hive-adapter.js";
+import {
+  getCountsByTypeDrizzle,
+  getStaleIssuesDrizzle,
+  getStatusCountsDrizzle,
+  resolvePartialIdDrizzle,
+} from "./queries-drizzle.js";
 
 /**
  * Sort policy for ready work queries
@@ -66,6 +80,14 @@ export interface Statistics {
  *
  * By default returns both 'open' and 'in_progress' beads so epics/tasks
  * ready to close are visible (matching steveyegge/beads behavior).
+ * 
+ * ❌ KEPT AS RAW SQL: Complex query requirements
+ * - Uses blocked_beads_cache table with EXISTS subquery
+ * - Dynamic WHERE clause building based on options
+ * - Hybrid sort policy with complex CASE expressions
+ * - Label filtering with multiple EXISTS subqueries
+ * 
+ * Drizzle CAN do this, but readability/maintainability favors raw SQL here.
  */
 export async function getReadyWork(
   adapter: HiveAdapter,
@@ -134,6 +156,12 @@ export async function getReadyWork(
 
 /**
  * Get all blocked beads with their blockers
+ * 
+ * ❌ KEPT AS RAW SQL: Requires cache table JOIN and JSON parsing
+ * - JOINs with blocked_beads_cache materialized view
+ * - Parses blocker_ids JSON column (SQLite doesn't have native arrays)
+ * 
+ * Drizzle doesn't have great JSON column support for SQLite.
  */
 export async function getBlockedIssues(
   adapter: HiveAdapter,
@@ -162,6 +190,13 @@ export async function getBlockedIssues(
 
 /**
  * Get epics eligible for closure (all children closed)
+ * 
+ * ❌ KEPT AS RAW SQL: Complex GROUP BY + HAVING with conditional counts
+ * - Self-JOIN on beads table (parent → children)
+ * - GROUP BY with HAVING clause
+ * - Conditional COUNT with CASE
+ * 
+ * Drizzle's GROUP BY + HAVING is verbose and harder to read.
  */
 export async function getEpicsEligibleForClosure(
   adapter: HiveAdapter,
@@ -198,6 +233,9 @@ export async function getEpicsEligibleForClosure(
 
 /**
  * Get stale issues (not updated in N days)
+ * 
+ * ✅ MIGRATED TO DRIZZLE: Simple SELECT with WHERE, ORDER BY, LIMIT
+ * No complex joins or CTEs
  */
 export async function getStaleIssues(
   adapter: HiveAdapter,
@@ -205,44 +243,15 @@ export async function getStaleIssues(
   days: number,
   options: StaleOptions = {},
 ): Promise<Cell[]> {
-  const db = await adapter.getDatabase();
-
-  const conditions: string[] = [
-    "project_key = $1",
-    "status != 'closed'",
-    "deleted_at IS NULL",
-  ];
-  const params: unknown[] = [projectKey];
-  let paramIndex = 2;
-
-  // Calculate cutoff timestamp (days ago)
-  const cutoffTimestamp = Date.now() - days * 24 * 60 * 60 * 1000;
-  conditions.push(`updated_at < $${paramIndex++}`);
-  params.push(cutoffTimestamp);
-
-  // Optional status filter
-  if (options.status) {
-    conditions.push(`status = $${paramIndex++}`);
-    params.push(options.status);
-  }
-
-  let query = `
-    SELECT * FROM beads
-    WHERE ${conditions.join(" AND ")}
-    ORDER BY updated_at ASC
-  `;
-
-  if (options.limit) {
-    query += ` LIMIT $${paramIndex++}`;
-    params.push(options.limit);
-  }
-
-  const result = await db.query<Cell>(query, params);
-  return result.rows;
+  return getStaleIssuesDrizzle(adapter, projectKey, days, options);
 }
 
 /**
  * Get aggregate statistics
+ * 
+ * HYBRID APPROACH:
+ * - ✅ Status counts and type counts use Drizzle (simple aggregations)
+ * - ❌ Blocked/ready counts use raw SQL (requires blocked_beads_cache EXISTS)
  */
 export async function getStatistics(
   adapter: HiveAdapter,
@@ -250,31 +259,10 @@ export async function getStatistics(
 ): Promise<Statistics> {
   const db = await adapter.getDatabase();
 
-  // Get counts by status
-  const countsResult = await db.query<{
-    total: string;
-    open: string;
-    in_progress: string;
-    closed: string;
-  }>(
-    `SELECT
-      COALESCE(COUNT(*), 0) as total,
-      COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) as open,
-      COALESCE(SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END), 0) as in_progress,
-      COALESCE(SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END), 0) as closed
-    FROM beads
-    WHERE project_key = $1 AND deleted_at IS NULL`,
-    [projectKey],
-  );
+  // Get counts by status (DRIZZLE)
+  const counts = await getStatusCountsDrizzle(adapter, projectKey);
 
-  const counts = countsResult.rows[0] || {
-    total: "0",
-    open: "0",
-    in_progress: "0",
-    closed: "0",
-  };
-
-  // Get blocked count
+  // Get blocked count (RAW SQL - needs cache table JOIN)
   const blockedResult = await db.query<{ count: string }>(
     `SELECT COUNT(DISTINCT b.id) as count
      FROM beads b
@@ -285,7 +273,7 @@ export async function getStatistics(
 
   const blockedCount = parseInt(blockedResult.rows[0]?.count || "0");
 
-  // Get ready count (open beads not in blocked cache)
+  // Get ready count (RAW SQL - needs cache table EXISTS)
   const readyResult = await db.query<{ count: string }>(
     `SELECT COUNT(*) as count
      FROM beads b
@@ -300,25 +288,14 @@ export async function getStatistics(
 
   const readyCount = parseInt(readyResult.rows[0]?.count || "0");
 
-  // Get counts by type
-  const byTypeResult = await db.query<{ type: string; count: string }>(
-    `SELECT type, COUNT(*) as count
-     FROM beads
-     WHERE project_key = $1 AND deleted_at IS NULL
-     GROUP BY type`,
-    [projectKey],
-  );
-
-  const by_type: Record<string, number> = {};
-  for (const row of byTypeResult.rows) {
-    by_type[row.type] = parseInt(row.count);
-  }
+  // Get counts by type (DRIZZLE)
+  const by_type = await getCountsByTypeDrizzle(adapter, projectKey);
 
   return {
-    total_cells: parseInt(counts.total),
-    open: parseInt(counts.open),
-    in_progress: parseInt(counts.in_progress),
-    closed: parseInt(counts.closed),
+    total_cells: counts.total,
+    open: counts.open,
+    in_progress: counts.in_progress,
+    closed: counts.closed,
     blocked: blockedCount,
     ready: readyCount,
     by_type,
@@ -330,6 +307,8 @@ export async function getStatistics(
  * 
  * Cell ID format: {prefix}-{hash}-{timestamp}{random}
  * This function matches the hash portion (middle segment) and returns the full ID.
+ * 
+ * ✅ MIGRATED TO DRIZZLE: Simple SELECT with LIKE pattern, no joins or CTEs
  * 
  * @param adapter - HiveAdapter instance
  * @param projectKey - Project key to filter cells
@@ -351,31 +330,7 @@ export async function resolvePartialId(
   projectKey: string,
   partialHash: string,
 ): Promise<string | null> {
-  const db = await adapter.getDatabase();
-
-  // Use SQL LIKE with specific pattern for hash segment
-  // Pattern: %-{partialHash}%-% matches hash portion (second segment)
-  // The first % allows any prefix, %-{hash} ensures hash is after first hyphen,
-  // and %-% ensures there's a segment after the hash
-  const result = await db.query<Cell>(
-    `SELECT * FROM beads 
-     WHERE project_key = $1 
-       AND deleted_at IS NULL
-       AND id LIKE $2`,
-    [projectKey, `%-${partialHash}%-%`]
-  );
-
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  if (result.rows.length > 1) {
-    throw new Error(
-      `Ambiguous hash: multiple cells match '${partialHash}' (found ${result.rows.length} matches)`
-    );
-  }
-
-  return result.rows[0].id;
+  return resolvePartialIdDrizzle(adapter, projectKey, partialHash);
 }
 
 /**

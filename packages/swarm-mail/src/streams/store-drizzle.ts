@@ -55,7 +55,7 @@ export async function appendEventDrizzle(
       project_key,
       timestamp,
       data: JSON.stringify(rest),
-      sequence: null, // Auto-assigned by trigger or application logic
+      // sequence omitted - auto-assigned by database (SERIAL in PGlite, trigger in LibSQL)
     })
     .returning({ id: eventsTable.id, sequence: eventsTable.sequence });
 
@@ -541,4 +541,68 @@ async function handleSwarmRecoveredDrizzle(
         eq(swarmContextsTable.bead_id, event.bead_id),
       ),
     );
+}
+
+// ============================================================================
+// Convenience Wrappers (compatible with old PGlite-based signatures)
+// ============================================================================
+
+/**
+ * Convenience wrapper for appendEventDrizzle that matches the old signature.
+ * Gets database from adapter and converts to SwarmDb.
+ */
+export async function appendEvent(
+  event: AgentEvent,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<AgentEvent & { id: number; sequence: number }> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return appendEventDrizzle(swarmDb, event);
+}
+
+/**
+ * Convenience wrapper for readEventsDrizzle
+ */
+export async function readEvents(
+  options: {
+    projectKey?: string;
+    types?: AgentEvent["type"][];
+    since?: number;
+    until?: number;
+    afterSequence?: number;
+    limit?: number;
+    offset?: number;
+  } = {},
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<Array<AgentEvent & { id: number; sequence: number }>> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return readEventsDrizzle(swarmDb, options);
+}
+
+/**
+ * Convenience wrapper for getLatestSequenceDrizzle
+ */
+export async function getLatestSequence(
+  projectKey?: string,
+  projectPath?: string,
+  dbOverride?: any,
+): Promise<number> {
+  const { getDatabase } = await import("./index.js");
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
+  
+  return getLatestSequenceDrizzle(swarmDb, projectKey);
 }

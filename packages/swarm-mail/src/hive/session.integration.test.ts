@@ -18,13 +18,16 @@ import { convertPlaceholders, type DatabaseAdapter } from "../libsql.js";
 import { createHiveAdapter } from "./adapter.js";
 import { FlushManager } from "./flush-manager.js";
 import { parseJSONL } from "./jsonl.js";
-import { beadsMigration, cellsViewMigrationLibSQL } from "./migrations.js";
+import { beadsMigrationLibSQL, cellsViewMigrationLibSQL } from "./migrations.js";
 
 /**
  * Wrap libSQL client with DatabaseAdapter interface
  * Uses executeMultiple for exec() to handle multi-statement migrations
+ * 
+ * IMPORTANT: Includes getClient() method so toDrizzleDb() recognizes this
+ * as a LibSQL adapter (not PGlite).
  */
-function wrapLibSQL(client: Client): DatabaseAdapter {
+function wrapLibSQL(client: Client): DatabaseAdapter & { getClient: () => Client } {
 	return {
 		query: async <T>(sql: string, params?: unknown[]) => {
 			const converted = convertPlaceholders(sql, params);
@@ -39,6 +42,8 @@ function wrapLibSQL(client: Client): DatabaseAdapter {
 			await client.executeMultiple(converted.sql);
 		},
 		close: () => client.close(),
+		// Required for toDrizzleDb() to recognize this as LibSQL (not PGlite)
+		getClient: () => client,
 	};
 }
 
@@ -59,15 +64,16 @@ describe("Full Hive Session Flow", () => {
 		client = createClient({ url: ":memory:" });
 		db = wrapLibSQL(client);
 
-		// Create base schema (events table, schema_version) - required before migrations
-		await client.execute(`
+	// Create base schema (events table, schema_version) - required before migrations
+	await client.execute(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         sequence INTEGER,
         type TEXT NOT NULL,
         project_key TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
-        data TEXT NOT NULL DEFAULT '{}'
+        data TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT
       )
     `);
 		await client.execute(`
@@ -79,7 +85,7 @@ describe("Full Hive Session Flow", () => {
     `);
 
 		// Run hive migrations directly (beads tables, cells view)
-		await db.exec(beadsMigration.up);
+		await db.exec(beadsMigrationLibSQL.up);
 		await db.exec(cellsViewMigrationLibSQL.up);
 
 		adapter = createHiveAdapter(db, projectKey);

@@ -1,12 +1,11 @@
 /**
- * Beads Event Store - Append-only event log for bead operations
+ * Beads Event Store - Drizzle ORM Implementation
  *
- * Integrates bead events (from opencode-swarm-plugin) into the shared
- * swarm-mail event store. Follows same pattern as streams/store.ts but
- * for bead-specific events.
+ * Drizzle-based implementation of cell event store operations.
+ * Replaces raw SQL queries with type-safe Drizzle query builder.
  *
  * ## Architecture
- * - Bead events stored in shared `events` table (same as agent/message events)
+ * - Cell events stored in shared `events` table (same as agent/message events)
  * - Events trigger updateProjections() to update materialized views
  * - Events are NOT replayed for state (hybrid model - projections are source of truth)
  * - Event log provides audit trail and debugging for swarm coordination
@@ -19,9 +18,12 @@
  * @module beads/store
  */
 
+import { and, eq, gte, gt, inArray, lte, sql } from "drizzle-orm";
+import type { SwarmDb } from "../db/client.js";
+import { eventsTable } from "../db/schema/streams.js";
 import { getDatabase, withTiming } from "../streams/index.js";
 import type { DatabaseAdapter } from "../types/database.js";
-import { updateProjections } from "./projections.js";
+import { updateProjectionsDrizzle } from "./projections-drizzle.js";
 import type { CellEvent } from "./events.js";
 
 // No type guards needed - CellEvent type is already defined
@@ -36,8 +38,8 @@ import type { CellEvent } from "./events.js";
  * Timestamps are stored as BIGINT but parsed as JavaScript number.
  * Safe for dates before year 2286 (MAX_SAFE_INTEGER).
  */
-function parseTimestamp(timestamp: string): number {
-  const ts = parseInt(timestamp, 10);
+function parseTimestamp(timestamp: string | number): number {
+  const ts = typeof timestamp === "string" ? parseInt(timestamp, 10) : timestamp;
   if (Number.isNaN(ts)) {
     throw new Error(`[BeadsStore] Invalid timestamp: ${timestamp}`);
   }
@@ -50,16 +52,16 @@ function parseTimestamp(timestamp: string): number {
 }
 
 // ============================================================================
-// Event Store Operations
+// Event Store Operations (Drizzle)
 // ============================================================================
 
 /**
- * Options for reading bead events
+ * Options for reading cell events
  */
 export interface ReadCellEventsOptions {
   /** Filter by project key */
   projectKey?: string;
-  /** Filter by bead ID */
+  /** Filter by cell ID */
   cellId?: string;
   /** Filter by event types */
   types?: CellEvent["type"][];
@@ -76,12 +78,136 @@ export interface ReadCellEventsOptions {
 }
 
 /**
- * Append a bead event to the shared event store
+ * Append a cell event using Drizzle
+ *
+ * @param db - Drizzle database instance
+ * @param event - Cell event to append
+ * @returns Event with id and sequence
+ */
+export async function appendCellEventDrizzle(
+  db: SwarmDb,
+  event: CellEvent,
+): Promise<CellEvent & { id: number; sequence: number }> {
+  const { type, project_key, timestamp, ...rest } = event;
+
+  // Insert event
+  const result = await db
+    .insert(eventsTable)
+    .values({
+      type,
+      project_key,
+      timestamp,
+      data: JSON.stringify(rest),
+      // sequence omitted - auto-assigned by database (SERIAL in PGlite, trigger in LibSQL)
+    })
+    .returning({ id: eventsTable.id, sequence: eventsTable.sequence });
+
+  const row = result[0];
+  if (!row) {
+    throw new Error("[BeadsStore] Failed to insert event - no row returned");
+  }
+
+  let { id, sequence } = row;
+
+  // LibSQL workaround: RETURNING gives pre-trigger value, sequence may be null
+  // If sequence is null, fetch it after trigger has run
+  if (sequence == null) {
+    const seqResult = await db
+      .select({ sequence: eventsTable.sequence })
+      .from(eventsTable)
+      .where(eq(eventsTable.id, id));
+    sequence = seqResult[0]?.sequence ?? id; // Fallback to id if still null
+  }
+
+  // Update materialized views based on event type
+  await updateProjectionsDrizzle(db, { ...event, id, sequence } as any);
+
+  return { ...event, id, sequence };
+}
+
+/**
+ * Read cell events with optional filters using Drizzle
+ *
+ * @param db - Drizzle database instance
+ * @param options - Filter options
+ * @returns Array of cell events with id and sequence
+ */
+export async function readCellEventsDrizzle(
+  db: SwarmDb,
+  options: ReadCellEventsOptions = {},
+): Promise<Array<CellEvent & { id: number; sequence: number }>> {
+  const conditions = [];
+
+  // Always filter for cell events (type starts with "cell_")
+  conditions.push(sql`${eventsTable.type} LIKE 'cell_%'`);
+
+  if (options.projectKey) {
+    conditions.push(eq(eventsTable.project_key, options.projectKey));
+  }
+
+  if (options.cellId) {
+    // cell_id is stored in data JSON field
+    // Use json_extract for SQLite compatibility
+    conditions.push(sql`json_extract(${eventsTable.data}, '$.cell_id') = ${options.cellId}`);
+  }
+
+  if (options.types && options.types.length > 0) {
+    conditions.push(inArray(eventsTable.type, options.types));
+  }
+
+  if (options.since !== undefined) {
+    conditions.push(gte(eventsTable.timestamp, options.since));
+  }
+
+  if (options.until !== undefined) {
+    conditions.push(lte(eventsTable.timestamp, options.until));
+  }
+
+  if (options.afterSequence !== undefined) {
+    conditions.push(gt(eventsTable.sequence, options.afterSequence));
+  }
+
+  let query = db
+    .select()
+    .from(eventsTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(eventsTable.sequence)
+    .$dynamic();
+
+  if (options.limit) {
+    query = query.limit(options.limit);
+  }
+
+  if (options.offset) {
+    query = query.offset(options.offset);
+  }
+
+  const rows = await query;
+
+  return rows.map((row) => {
+    const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+    return {
+      id: row.id,
+      type: row.type as CellEvent["type"],
+      project_key: row.project_key,
+      timestamp: parseTimestamp(row.timestamp),
+      sequence: row.sequence ?? 0,
+      ...data,
+    } as CellEvent & { id: number; sequence: number };
+  });
+}
+
+// ============================================================================
+// Convenience Wrappers (compatible with old signatures)
+// ============================================================================
+
+/**
+ * Append a cell event to the shared event store (convenience wrapper)
  *
  * Events are stored in the same `events` table as agent/message events.
  * Triggers updateProjections() to update materialized views.
  *
- * @param event - Bead event to append
+ * @param event - Cell event to append
  * @param projectPath - Optional project path for database location
  * @param dbOverride - Optional database adapter for dependency injection
  * @returns Event with id and sequence number
@@ -91,53 +217,23 @@ export async function appendCellEvent(
   projectPath?: string,
   dbOverride?: DatabaseAdapter,
 ): Promise<CellEvent & { id: number; sequence: number }> {
-  const db = dbOverride ?? ((await getDatabase(projectPath)) as unknown as DatabaseAdapter);
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
 
-  // Extract common fields (same structure as agent events)
-  const { type, project_key, timestamp, ...rest } = event;
+  const db = dbOverride ?? (await getDatabase(projectPath));
+  const swarmDb = toDrizzleDb(db);
 
-
-
-  // Insert into shared events table
-  const result = await db.query<{ id: number; sequence: number }>(
-    `INSERT INTO events (type, project_key, timestamp, data)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, sequence`,
-    [type, project_key, timestamp, JSON.stringify(rest)],
-  );
-
-  const row = result.rows[0];
-  if (!row) {
-    throw new Error("[BeadsStore] Failed to insert event - no row returned");
-  }
-  let { id, sequence } = row;
-  
-  // LibSQL workaround: RETURNING gives pre-trigger value, sequence may be null
-  // If sequence is null, fetch it after trigger has run
-  if (sequence == null) {
-    const seqResult = await db.query<{ sequence: number }>(
-      `SELECT sequence FROM events WHERE id = $1`,
-      [id],
-    );
-    sequence = seqResult.rows[0]?.sequence ?? id; // Fallback to id if still null
-  }
-
-  // Update materialized views based on event type
-  // Cast to any to match projections' loose event type (with index signature)
-  await updateProjections(db, { ...event, id, sequence } as any);
-
-  return { ...event, id, sequence };
+  return appendCellEventDrizzle(swarmDb, event);
 }
 
 /**
- * Read bead events with optional filters
+ * Read cell events with optional filters (convenience wrapper)
  *
- * Queries the shared events table for bead events (type starts with "cell_").
+ * Queries the shared events table for cell events (type starts with "cell_").
  *
  * @param options - Filter options
  * @param projectPath - Optional project path for database location
  * @param dbOverride - Optional database adapter for dependency injection
- * @returns Array of bead events with id and sequence
+ * @returns Array of cell events with id and sequence
  */
 export async function readCellEvents(
   options: ReadCellEventsOptions = {},
@@ -145,101 +241,24 @@ export async function readCellEvents(
   dbOverride?: DatabaseAdapter,
 ): Promise<Array<CellEvent & { id: number; sequence: number }>> {
   return withTiming("readCellEvents", async () => {
-    const db = dbOverride ?? ((await getDatabase(projectPath)) as unknown as DatabaseAdapter);
+    const { toDrizzleDb } = await import("../libsql.convenience.js");
 
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-    let paramIndex = 1;
+    const db = dbOverride ?? (await getDatabase(projectPath));
+    const swarmDb = toDrizzleDb(db);
 
-    // Always filter for bead events (type starts with "cell_")
-    conditions.push(`type LIKE 'cell_%'`);
-
-    if (options.projectKey) {
-      conditions.push(`project_key = $${paramIndex++}`);
-      params.push(options.projectKey);
-    }
-
-    if (options.cellId) {
-      // cell_id is stored in data JSON field
-      conditions.push(`data->>'cell_id' = $${paramIndex++}`);
-      params.push(options.cellId);
-    }
-
-    if (options.types && options.types.length > 0) {
-      // SQLite uses IN instead of ANY
-      const placeholders = options.types.map(() => `$${paramIndex++}`).join(", ");
-      conditions.push(`type IN (${placeholders})`);
-      params.push(...options.types);
-    }
-
-    if (options.since !== undefined) {
-      conditions.push(`timestamp >= $${paramIndex++}`);
-      params.push(options.since);
-    }
-
-    if (options.until !== undefined) {
-      conditions.push(`timestamp <= $${paramIndex++}`);
-      params.push(options.until);
-    }
-
-    if (options.afterSequence !== undefined) {
-      conditions.push(`sequence > $${paramIndex++}`);
-      params.push(options.afterSequence);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    let query = `
-      SELECT id, type, project_key, timestamp, sequence, data
-      FROM events
-      ${whereClause}
-      ORDER BY sequence ASC
-    `;
-
-    if (options.limit) {
-      query += ` LIMIT $${paramIndex++}`;
-      params.push(options.limit);
-    }
-
-    if (options.offset) {
-      query += ` OFFSET $${paramIndex++}`;
-      params.push(options.offset);
-    }
-
-    const result = await db.query<{
-      id: number;
-      type: string;
-      project_key: string;
-      timestamp: string;
-      sequence: number;
-      data: string;
-    }>(query, params);
-
-    return result.rows.map((row) => {
-      const data =
-        typeof row.data === "string" ? JSON.parse(row.data) : row.data;
-      return {
-        id: row.id,
-        type: row.type as CellEvent["type"],
-        project_key: row.project_key,
-        timestamp: parseTimestamp(row.timestamp as string),
-        sequence: row.sequence,
-        ...data,
-      } as CellEvent & { id: number; sequence: number };
-    });
+    return readCellEventsDrizzle(swarmDb, options);
   });
 }
 
 /**
- * Replay bead events to rebuild materialized views
+ * Replay cell events to rebuild materialized views
  *
  * Useful for:
  * - Recovering from projection corruption
  * - Migrating to new schema
  * - Debugging state issues
  *
- * Note: Unlike swarm-mail agent events, bead projections are NOT rebuilt
+ * Note: Unlike swarm-mail agent events, cell projections are NOT rebuilt
  * from events in normal operation (hybrid CRUD + audit trail model).
  * This function is for recovery/debugging only.
  *
@@ -259,69 +278,56 @@ export async function replayCellEvents(
 ): Promise<{ eventsReplayed: number; duration: number }> {
   return withTiming("replayCellEvents", async () => {
     const startTime = Date.now();
-    const db = dbOverride ?? ((await getDatabase(projectPath)) as unknown as DatabaseAdapter);
+    const { toDrizzleDb } = await import("../libsql.convenience.js");
 
-    // Optionally clear bead-specific materialized views
+    const db = dbOverride ?? (await getDatabase(projectPath));
+    const swarmDb = toDrizzleDb(db);
+
+    // Optionally clear cell-specific materialized views using Drizzle
     if (options.clearViews) {
+      const { beads, beadComments, beadLabels, beadDependencies, blockedBeadsCache, dirtyBeads } = 
+        await import("../db/schema/hive.js");
+
       if (options.projectKey) {
-        // Clear for specific project
-        await db.query(
-          `DELETE FROM bead_comments WHERE cell_id IN (
-            SELECT id FROM beads WHERE project_key = $1
-          )`,
-          [options.projectKey],
-        );
-        await db.query(
-          `DELETE FROM bead_labels WHERE cell_id IN (
-            SELECT id FROM beads WHERE project_key = $1
-          )`,
-          [options.projectKey],
-        );
-        await db.query(
-          `DELETE FROM bead_dependencies WHERE cell_id IN (
-            SELECT id FROM beads WHERE project_key = $1
-          )`,
-          [options.projectKey],
-        );
-        await db.query(
-          `DELETE FROM blocked_beads_cache WHERE cell_id IN (
-            SELECT id FROM beads WHERE project_key = $1
-          )`,
-          [options.projectKey],
-        );
-        await db.query(`DELETE FROM dirty_beads WHERE cell_id IN (
-            SELECT id FROM beads WHERE project_key = $1
-          )`, [options.projectKey]);
-        await db.query(`DELETE FROM beads WHERE project_key = $1`, [
-          options.projectKey,
-        ]);
+        // Clear for specific project using Drizzle
+        // Get cell IDs for this project first
+        const cellIds = await swarmDb
+          .select({ id: beads.id })
+          .from(beads)
+          .where(eq(beads.project_key, options.projectKey));
+        
+        const cellIdList = cellIds.map(r => r.id);
+        
+        if (cellIdList.length > 0) {
+          // Delete related data in proper order (foreign keys)
+          await swarmDb.delete(beadComments).where(inArray(beadComments.cell_id, cellIdList));
+          await swarmDb.delete(beadLabels).where(inArray(beadLabels.cell_id, cellIdList));
+          await swarmDb.delete(beadDependencies).where(inArray(beadDependencies.cell_id, cellIdList));
+          await swarmDb.delete(blockedBeadsCache).where(inArray(blockedBeadsCache.cell_id, cellIdList));
+          await swarmDb.delete(dirtyBeads).where(inArray(dirtyBeads.cell_id, cellIdList));
+          await swarmDb.delete(beads).where(eq(beads.project_key, options.projectKey));
+        }
       } else {
-        // Clear all bead views
-        await db.exec(`
-          DELETE FROM bead_comments;
-          DELETE FROM bead_labels;
-          DELETE FROM bead_dependencies;
-          DELETE FROM blocked_beads_cache;
-          DELETE FROM dirty_beads;
-          DELETE FROM beads;
-        `);
+        // Clear all cell views using Drizzle
+        await swarmDb.delete(beadComments);
+        await swarmDb.delete(beadLabels);
+        await swarmDb.delete(beadDependencies);
+        await swarmDb.delete(blockedBeadsCache);
+        await swarmDb.delete(dirtyBeads);
+        await swarmDb.delete(beads);
       }
     }
 
-    // Read all bead events
-    const events = await readCellEvents(
-      {
-        projectKey: options.projectKey,
-        afterSequence: options.fromSequence,
-      },
-      projectPath,
-      dbOverride,
-    );
+    // Read all cell events
+    const events = await readCellEventsDrizzle(swarmDb, {
+      projectKey: options.projectKey,
+      afterSequence: options.fromSequence,
+    });
 
     // Replay each event through projections
     for (const event of events) {
       // Cast to any to match projections' loose event type
-      await updateProjections(db, event as any);
+      await updateProjectionsDrizzle(swarmDb, event as any);
     }
 
     return {

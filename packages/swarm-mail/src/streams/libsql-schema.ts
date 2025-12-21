@@ -224,14 +224,27 @@ export async function createLibSQLStreamsSchema(db: DatabaseAdapter): Promise<vo
   `);
 
   // ========================================================================
-  // Cursors Table (stream positions)
+  // Cursors Table (stream positions) - matches Effect DurableCursor schema
   // ========================================================================
   await db.exec(`
     CREATE TABLE IF NOT EXISTS cursors (
-      stream_id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stream TEXT NOT NULL,
+      checkpoint TEXT NOT NULL,
       position INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      UNIQUE(stream, checkpoint)
     )
+  `);
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_cursors_stream 
+    ON cursors(stream)
+  `);
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_cursors_checkpoint 
+    ON cursors(checkpoint)
   `);
 
   await db.exec(`

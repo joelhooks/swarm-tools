@@ -63,276 +63,26 @@ async function isLibSQL(db: DatabaseAdapter): Promise<boolean> {
  *
  * This is called by the event store after appending an event.
  * Routes to specific handlers based on event type.
+ * 
+ * Uses Drizzle for write operations.
  */
 export async function updateProjections(
   db: DatabaseAdapter,
   event: CellEvent,
 ): Promise<void> {
-
-
-  switch (event.type) {
-    case "cell_created":
-      await handleBeadCreated(db, event);
-      break;
-    case "cell_updated":
-      await handleBeadUpdated(db, event);
-      break;
-    case "cell_status_changed":
-      await handleCellStatusChanged(db, event);
-      break;
-    case "cell_closed":
-      await handleBeadClosed(db, event);
-      break;
-    case "cell_reopened":
-      await handleBeadReopened(db, event);
-      break;
-    case "cell_deleted":
-      await handleBeadDeleted(db, event);
-      break;
-    case "cell_dependency_added":
-      await handleDependencyAdded(db, event);
-      break;
-    case "cell_dependency_removed":
-      await handleDependencyRemoved(db, event);
-      break;
-    case "cell_label_added":
-      await handleLabelAdded(db, event);
-      break;
-    case "cell_label_removed":
-      await handleLabelRemoved(db, event);
-      break;
-    case "cell_comment_added":
-      await handleCommentAdded(db, event);
-      break;
-    case "cell_comment_updated":
-      await handleCommentUpdated(db, event);
-      break;
-    case "cell_comment_deleted":
-      await handleCommentDeleted(db, event);
-      break;
-    case "cell_epic_child_added":
-      await handleEpicChildAdded(db, event);
-      break;
-    case "cell_epic_child_removed":
-      await handleEpicChildRemoved(db, event);
-      break;
-    case "cell_assigned":
-      await handleBeadAssigned(db, event);
-      break;
-    case "cell_work_started":
-      await handleWorkStarted(db, event);
-      break;
-    default:
-      console.warn(`[beads/projections] Unknown event type: ${event.type}`);
-  }
-
-  // Mark bead as dirty for JSONL export
-  await markBeadDirty(db, event.project_key, event.cell_id);
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  const { updateProjectionsDrizzle } = await import("./projections-drizzle.js");
+  
+  const swarmDb = toDrizzleDb(db);
+  await updateProjectionsDrizzle(swarmDb, event);
 }
 
 // ============================================================================
-// Event Handlers - Individual handlers for each event type
+// Event Handlers - Migrated to Drizzle
 // ============================================================================
 
-async function handleBeadCreated(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `INSERT INTO beads (
-      id, project_key, type, status, title, description, priority,
-      parent_id, assignee, created_at, updated_at, created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-    [
-      event.cell_id,
-      event.project_key,
-      event.issue_type,
-      "open",
-      event.title,
-      event.description || null,
-      event.priority ?? 2,
-      event.parent_id || null,
-      null, // assignee (set later via bead_assigned)
-      event.timestamp,
-      event.timestamp,
-      event.created_by || null,
-    ],
-  );
-}
-
-async function handleBeadUpdated(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  const changes = event.changes as Record<string, { old: unknown; new: unknown }>;
-  const updates: string[] = [];
-  const params: unknown[] = [];
-  let paramIndex = 1;
-
-  if (changes.title) {
-    updates.push(`title = $${paramIndex++}`);
-    params.push(changes.title.new);
-  }
-  if (changes.description) {
-    updates.push(`description = $${paramIndex++}`);
-    params.push(changes.description.new);
-  }
-  if (changes.priority) {
-    updates.push(`priority = $${paramIndex++}`);
-    params.push(changes.priority.new);
-  }
-  if (changes.assignee) {
-    updates.push(`assignee = $${paramIndex++}`);
-    params.push(changes.assignee.new);
-  }
-
-  if (updates.length > 0) {
-    updates.push(`updated_at = $${paramIndex++}`);
-    params.push(event.timestamp);
-    params.push(event.cell_id);
-
-    await db.query(
-      `UPDATE beads SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
-      params,
-    );
-  }
-}
-
-async function handleCellStatusChanged(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE beads SET status = $1, updated_at = $2 WHERE id = $3`,
-    [event.to_status, event.timestamp, event.cell_id],
-  );
-}
-
-async function handleBeadClosed(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE beads SET 
-      status = 'closed', 
-      closed_at = $1, 
-      closed_reason = $2, 
-      updated_at = $3 
-    WHERE id = $4`,
-    [event.timestamp, event.reason, event.timestamp, event.cell_id],
-  );
-
-  // Invalidate blocked cache for dependents (beads that were blocked by this one)
-  const { invalidateBlockedCache } = await import("./dependencies.js");
-  await invalidateBlockedCache(db, event.project_key, event.cell_id);
-}
-
-async function handleBeadReopened(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE beads SET 
-      status = 'open', 
-      closed_at = NULL, 
-      closed_reason = NULL, 
-      updated_at = $1 
-    WHERE id = $2`,
-    [event.timestamp, event.cell_id],
-  );
-}
-
-async function handleBeadDeleted(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE beads SET 
-      deleted_at = $1, 
-      deleted_by = $2, 
-      delete_reason = $3, 
-      updated_at = $4 
-    WHERE id = $5`,
-    [event.timestamp, event.deleted_by || null, event.reason || null, event.timestamp, event.cell_id],
-  );
-}
-
-async function handleDependencyAdded(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  const dep = event.dependency as { target: string; type: string };
-  await db.query(
-    `INSERT INTO bead_dependencies (cell_id, depends_on_id, relationship, created_at, created_by)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (cell_id, depends_on_id, relationship) DO NOTHING`,
-    [event.cell_id, dep.target, dep.type, event.timestamp, event.added_by || null],
-  );
-
-  // Invalidate blocked cache (import at runtime)
-  const { invalidateBlockedCache: invalidate } = await import("./dependencies.js");
-  await invalidate(db, event.project_key, event.cell_id);
-}
-
-async function handleDependencyRemoved(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  const dep = event.dependency as { target: string; type: string };
-  await db.query(
-    `DELETE FROM bead_dependencies 
-     WHERE cell_id = $1 AND depends_on_id = $2 AND relationship = $3`,
-    [event.cell_id, dep.target, dep.type],
-  );
-
-  // Invalidate blocked cache (import at runtime)
-  const { invalidateBlockedCache: invalidate } = await import("./dependencies.js");
-  await invalidate(db, event.project_key, event.cell_id);
-}
-
-async function handleLabelAdded(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `INSERT INTO bead_labels (cell_id, label, created_at)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (cell_id, label) DO NOTHING`,
-    [event.cell_id, event.label, event.timestamp],
-  );
-}
-
-async function handleLabelRemoved(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `DELETE FROM bead_labels WHERE cell_id = $1 AND label = $2`,
-    [event.cell_id, event.label],
-  );
-}
-
-async function handleCommentAdded(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `INSERT INTO bead_comments (cell_id, author, body, parent_id, created_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [event.cell_id, event.author, event.body, event.parent_comment_id || null, event.timestamp],
-  );
-}
-
-async function handleCommentUpdated(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE bead_comments SET body = $1, updated_at = $2 WHERE id = $3`,
-    [event.new_body, event.timestamp, event.comment_id],
-  );
-}
-
-async function handleCommentDeleted(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `DELETE FROM bead_comments WHERE id = $1`,
-    [event.comment_id],
-  );
-}
-
-async function handleEpicChildAdded(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  // Update parent_id on child bead
-  await db.query(
-    `UPDATE beads SET parent_id = $1, updated_at = $2 WHERE id = $3`,
-    [event.cell_id, event.timestamp, event.child_id],
-  );
-}
-
-async function handleEpicChildRemoved(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  // Clear parent_id on child bead
-  await db.query(
-    `UPDATE beads SET parent_id = NULL, updated_at = $1 WHERE id = $2`,
-    [event.timestamp, event.child_id],
-  );
-}
-
-async function handleBeadAssigned(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE beads SET assignee = $1, updated_at = $2 WHERE id = $3`,
-    [event.assignee, event.timestamp, event.cell_id],
-  );
-}
-
-async function handleWorkStarted(db: DatabaseAdapter, event: CellEvent): Promise<void> {
-  await db.query(
-    `UPDATE beads SET status = 'in_progress', updated_at = $1 WHERE id = $2`,
-    [event.timestamp, event.cell_id],
-  );
-}
+// Event handlers have been moved to projections-drizzle.ts
+// This file now delegates to the Drizzle implementation via updateProjectionsDrizzle()
 
 // ============================================================================
 // Query Functions - Read from projections
@@ -593,18 +343,19 @@ export async function getBlockedCells(
 
 /**
  * Mark bead as dirty for JSONL export
+ * 
+ * Uses Drizzle for write operations.
  */
 export async function markBeadDirty(
   db: DatabaseAdapter,
   projectKey: string,
   cellId: string,
 ): Promise<void> {
-  await db.query(
-    `INSERT INTO dirty_beads (cell_id, marked_at)
-     VALUES ($1, $2)
-     ON CONFLICT (cell_id) DO UPDATE SET marked_at = $2`,
-    [cellId, Date.now()],
-  );
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  const { markBeadDirtyDrizzle } = await import("./projections-drizzle.js");
+  
+  const swarmDb = toDrizzleDb(db);
+  await markBeadDirtyDrizzle(swarmDb, projectKey, cellId);
 }
 
 /**
@@ -626,29 +377,33 @@ export async function getDirtyCells(
 
 /**
  * Clear dirty flag after export
+ * 
+ * Uses Drizzle for write operations.
  */
 export async function clearDirtyBead(
   db: DatabaseAdapter,
   projectKey: string,
   cellId: string,
 ): Promise<void> {
-  await db.query(
-    `DELETE FROM dirty_beads WHERE cell_id = $1`,
-    [cellId],
-  );
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  const { clearDirtyBeadDrizzle } = await import("./projections-drizzle.js");
+  
+  const swarmDb = toDrizzleDb(db);
+  await clearDirtyBeadDrizzle(swarmDb, projectKey, cellId);
 }
 
 /**
  * Clear all dirty flags
+ * 
+ * Uses Drizzle for write operations.
  */
 export async function clearAllDirtyBeads(
   db: DatabaseAdapter,
   projectKey: string,
 ): Promise<void> {
-  await db.query(
-    `DELETE FROM dirty_beads WHERE cell_id IN (
-       SELECT id FROM beads WHERE project_key = $1
-     )`,
-    [projectKey],
-  );
+  const { toDrizzleDb } = await import("../libsql.convenience.js");
+  const { clearAllDirtyBeadsDrizzle } = await import("./projections-drizzle.js");
+  
+  const swarmDb = toDrizzleDb(db);
+  await clearAllDirtyBeadsDrizzle(swarmDb, projectKey);
 }

@@ -99,17 +99,17 @@ export type {
   SubtaskOutcomeEvent,
 } from "./streams/events";
 
-// Event store primitives (from store.ts)
-export { appendEvent, readEvents } from "./streams/store";
+// Event store primitives (now using Drizzle via wrapper functions)
+export { appendEvent, readEvents } from "./streams/index";
 
-// Projections (from projections.ts)
+// Projections (now using Drizzle via wrapper functions)
 export {
   getAgent,
   getActiveReservations,
   getEvalRecords,
   getEvalStats,
-} from "./streams/projections";
-export type { EvalRecord } from "./streams/projections";
+} from "./streams/index";
+export type { EvalRecord } from "./streams/projections-drizzle";
 
 // Database management - LAZY LOADED via dynamic import to avoid WASM loading
 // Users should call these functions, not import PGlite directly
@@ -210,4 +210,16 @@ export { createTestMemoryDb } from "./memory/test-utils";
 export { getDb, createInMemoryDb, closeDb } from "./db";
 export { createDrizzleClient } from "./db/drizzle";
 export type { SwarmDb } from "./db";
-export { toSwarmDb } from "./libsql.convenience";
+export { toSwarmDb, toDrizzleDb } from "./libsql.convenience";
+
+
+// ============================================================================
+// PGlite → libSQL Migration
+// ============================================================================
+
+export {
+  migratePGliteToLibSQL,
+  pgliteExists,
+  type MigrationOptions as PGliteMigrationOptions,
+  type MigrationResult as PGliteMigrationResult,
+} from "./migrate-pglite-to-libsql";

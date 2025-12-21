@@ -4,7 +4,10 @@
  * These tests define the expected behavior for debug/inspection tools.
  * Run these first to see them fail, then implement to make them pass.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resetDatabase } from "./index";
 import { initAgent, sendAgentMessage, reserveAgentFiles } from "./agent-mail";
 import {
@@ -17,7 +20,21 @@ import {
 } from "./debug";
 
 describe("Debug Tools", () => {
-  const projectPath = "/test/debug-project";
+  // Use temp directory instead of hardcoded /test path
+  const testDir = join(tmpdir(), `debug-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const projectPath = testDir;
+
+  beforeAll(() => {
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterAll(() => {
+    try {
+      rmSync(testDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
 
   beforeEach(async () => {
     await resetDatabase(projectPath);

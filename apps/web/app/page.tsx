@@ -1,76 +1,136 @@
-import type { Metadata } from 'next';
-import { BookOpen, Github, Terminal, Code, CheckCircle2 } from 'lucide-react';
+import {
+	BookOpen,
+	Brain,
+	CheckCircle2,
+	GitBranch,
+	Github,
+	MessageSquare,
+	Terminal,
+	Zap,
+} from "lucide-react";
+import type { Metadata } from "next";
 
 /**
  * Quickstart landing page for Swarm Tools.
- * 
+ *
  * Structure:
  * - Hero with ASCII art
- * - Install
- * - Basic usage
- * - What happens
- * - Key commands
+ * - Install + Setup (one command)
+ * - First swarm
+ * - What happens under the hood
+ * - Key tools reference
+ * - Session workflow
  * - Links to docs
  */
 
 export const metadata: Metadata = {
-	title: 'Swarm Tools - Quickstart',
-	description: 'Install, run /swarm "your task", watch agents parallelize the work. Git-backed work tracking, multi-agent coordination, persistent learning.',
+	title: "Swarm Tools - Multi-Agent Coordination for AI Coding",
+	description:
+		"Break big tasks into small ones. Spawn agents to work in parallel. Learn from what works. Install with npm, run /swarm, watch it go.",
 	alternates: {
-		canonical: 'https://swarmtools.ai',
+		canonical: "https://swarmtools.ai",
 	},
 };
 
 const jsonLd = {
-	'@context': 'https://schema.org',
-	'@type': 'SoftwareApplication',
-	name: 'Swarm Tools',
-	alternateName: 'opencode-swarm-plugin',
-	description: 'Multi-agent coordination for AI coding. Break tasks into pieces, spawn parallel workers, learn from outcomes.',
-	applicationCategory: 'DeveloperApplication',
-	applicationSubCategory: 'AI Development Tools',
-	operatingSystem: 'Any',
+	"@context": "https://schema.org",
+	"@type": "SoftwareApplication",
+	name: "Swarm Tools",
+	alternateName: "opencode-swarm-plugin",
+	description:
+		"Multi-agent coordination for AI coding. Break tasks into pieces, spawn parallel workers, learn from outcomes.",
+	applicationCategory: "DeveloperApplication",
+	applicationSubCategory: "AI Development Tools",
+	operatingSystem: "Any",
 	offers: {
-		'@type': 'Offer',
-		price: '0',
-		priceCurrency: 'USD',
-		availability: 'https://schema.org/InStock',
+		"@type": "Offer",
+		price: "0",
+		priceCurrency: "USD",
+		availability: "https://schema.org/InStock",
 	},
 	author: {
-		'@type': 'Person',
-		name: 'Joel Hooks',
-		url: 'https://github.com/joelhooks',
+		"@type": "Person",
+		name: "Joel Hooks",
+		url: "https://github.com/joelhooks",
 	},
-	url: 'https://swarmtools.ai',
-	downloadUrl: 'https://github.com/joelhooks/opencode-swarm-plugin',
-	installUrl: 'https://www.npmjs.com/package/opencode-swarm-plugin',
-	codeRepository: 'https://github.com/joelhooks/opencode-swarm-plugin',
-	programmingLanguage: 'TypeScript',
-	license: 'https://opensource.org/licenses/MIT',
+	url: "https://swarmtools.ai",
+	downloadUrl: "https://github.com/joelhooks/opencode-swarm-plugin",
+	installUrl: "https://www.npmjs.com/package/opencode-swarm-plugin",
+	codeRepository: "https://github.com/joelhooks/opencode-swarm-plugin",
+	programmingLanguage: "TypeScript",
+	license: "https://opensource.org/licenses/MIT",
 };
 
-type Command = {
-	command: string;
+type Feature = {
+	icon: React.ReactNode;
+	title: string;
 	description: string;
 };
 
-const commands: Command[] = [
-	{ command: '/swarm "task"', description: 'Decompose and parallelize' },
-	{ command: 'hive_query()', description: 'See open work' },
-	{ command: 'hive_ready()', description: 'Get next unblocked task' },
-	{ command: 'hive_sync()', description: 'Sync to git (mandatory before ending session)' },
+const features: Feature[] = [
+	{
+		icon: <Zap className="h-6 w-6" />,
+		title: "Parallel Execution",
+		description:
+			"Break tasks into subtasks, spawn workers that run simultaneously",
+	},
+	{
+		icon: <GitBranch className="h-6 w-6" />,
+		title: "Git-Backed Tracking",
+		description:
+			"Work items stored in .hive/, synced with git, survives sessions",
+	},
+	{
+		icon: <MessageSquare className="h-6 w-6" />,
+		title: "Agent Coordination",
+		description:
+			"File reservations prevent conflicts, agents communicate via Swarm Mail",
+	},
+	{
+		icon: <Brain className="h-6 w-6" />,
+		title: "Learning System",
+		description:
+			"Patterns that work get promoted, failures become anti-patterns",
+	},
 ];
 
-type DocLink = {
-	title: string;
-	href: string;
-	description: string;
+type Tool = {
+	name: string;
+	purpose: string;
+	category: string;
 };
 
-const docLinks: DocLink[] = [
-	{ title: 'Hive', href: '/docs/packages/opencode-plugin/hive', description: 'Work item tracking' },
-	{ title: 'Swarm', href: '/docs/packages/opencode-plugin/swarm', description: 'Parallel coordination' },
-	{ title: 'Skills', href: '/docs/packages/opencode-plugin/skills', description: 'Knowledge injection' },
+const essentialTools: Tool[] = [
+	{
+		name: '/swarm "task"',
+		purpose: "Decompose and parallelize a task",
+		category: "command",
+	},
+	{
+		name: "hive_ready()",
+		purpose: "Get next unblocked work item",
+		category: "hive",
+	},
+	{
+		name: "hive_sync()",
+		purpose: "Sync to git (MANDATORY before ending)",
+		category: "hive",
+	},
+	{
+		name: "swarmmail_reserve()",
+		purpose: "Reserve files before editing",
+		category: "mail",
+	},
+	{
+		name: "skills_use()",
+		purpose: "Load domain expertise into context",
+		category: "skills",
+	},
+	{
+		name: "semantic-memory_store()",
+		purpose: "Save learnings for future sessions",
+		category: "memory",
+	},
 ];
 
 export default function Home() {
@@ -81,214 +141,346 @@ export default function Home() {
 				type="application/ld+json"
 				dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
 			/>
-			
+
 			<main className="min-h-screen bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950">
 				{/* Hero Section */}
-				<section className="relative overflow-hidden px-4 py-16 md:py-24">
+				<section className="relative overflow-hidden px-4 py-12 md:py-20">
 					{/* Background glow */}
-					<div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-yellow-500/10 blur-3xl" aria-hidden="true" />
-					
+					<div
+						className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-yellow-500/10 blur-3xl"
+						aria-hidden="true"
+					/>
+
 					<div className="relative mx-auto max-w-6xl">
 						{/* ASCII Art Hero */}
-						<div className="mb-8 overflow-x-auto">
-							<pre 
-								className="font-mono text-[0.4rem] leading-tight text-amber-500/90 sm:text-[0.5rem] md:text-xs lg:text-sm select-none"
+						<div className="mb-6 overflow-x-auto">
+							<pre
+								className="font-mono text-[0.35rem] leading-tight text-amber-500/90 sm:text-[0.45rem] md:text-xs select-none"
 								aria-hidden="true"
 							>
-{`
+								{`
  ███████╗██╗    ██╗ █████╗ ██████╗ ███╗   ███╗
  ██╔════╝██║    ██║██╔══██╗██╔══██╗████╗ ████║
  ███████╗██║ █╗ ██║███████║██████╔╝██╔████╔██║
  ╚════██║██║███╗██║██╔══██║██╔══██╗██║╚██╔╝██║
  ███████║╚███╔███╔╝██║  ██║██║  ██║██║ ╚═╝ ██║
  ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝
-
-    \\\` - ' /
-   - .(o o). -
-    (  &gt;.&lt;  )        Break big tasks into small ones.
-     /|   |\\\\         Spawn agents to work in parallel.
-    (_|   |_)        Learn from what works.
-      bzzzz...
 `}
 							</pre>
 						</div>
 
-						<h1 className="text-4xl font-bold text-neutral-100 md:text-5xl lg:text-6xl">
+						<h1 className="text-3xl font-bold text-neutral-100 md:text-4xl lg:text-5xl">
 							Multi-agent coordination for AI coding
 						</h1>
-						
-						<p className="mt-6 text-lg text-neutral-400 md:text-xl max-w-3xl">
-							Break big tasks into small ones. Spawn agents to work in parallel. 
+
+						<p className="mt-4 text-lg text-neutral-400 md:text-xl max-w-3xl">
+							Break big tasks into small ones. Spawn agents to work in parallel.
 							Learn from what works.
 						</p>
 
 						{/* CTA Buttons */}
-						<div className="mt-10 flex flex-wrap gap-4">
+						<div className="mt-8 flex flex-wrap gap-4">
+							<a
+								href="#install"
+								className="group relative inline-flex items-center gap-2 overflow-hidden rounded-lg bg-amber-500 px-6 py-3 font-semibold text-neutral-950 transition-all hover:bg-amber-400 hover:scale-105"
+							>
+								<Terminal className="relative z-10 h-5 w-5" />
+								<span className="relative z-10">Get Started</span>
+							</a>
 							<a
 								href="/docs"
-								className="group relative inline-flex items-center gap-2 overflow-hidden rounded-lg bg-amber-500 px-8 py-3 font-semibold text-neutral-950 transition-all hover:bg-amber-400 hover:scale-105"
+								className="group relative inline-flex items-center gap-2 overflow-hidden rounded-lg border-2 border-amber-500/30 bg-neutral-800 px-6 py-3 font-semibold text-amber-500 transition-all hover:border-amber-500 hover:scale-105"
 							>
 								<BookOpen className="relative z-10 h-5 w-5" />
-								<span className="relative z-10">Read the Docs</span>
-								<div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-orange-500 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+								<span className="relative z-10">Documentation</span>
 							</a>
 							<a
 								href="https://github.com/joelhooks/opencode-swarm-plugin"
 								target="_blank"
 								rel="noopener noreferrer"
-								className="group relative inline-flex items-center gap-2 overflow-hidden rounded-lg border-2 border-amber-500/30 bg-neutral-800 px-8 py-3 font-semibold text-amber-500 transition-all hover:border-amber-500 hover:scale-105"
+								className="group relative inline-flex items-center gap-2 overflow-hidden rounded-lg border-2 border-neutral-700 bg-neutral-800 px-6 py-3 font-semibold text-neutral-300 transition-all hover:border-neutral-500 hover:scale-105"
 							>
 								<Github className="relative z-10 h-5 w-5" />
-								<span className="relative z-10">View on GitHub</span>
-								<div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-orange-500/10 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+								<span className="relative z-10">GitHub</span>
 							</a>
 						</div>
 					</div>
 				</section>
 
-				{/* Quickstart: Install */}
-				<section className="px-4 py-16 md:py-24">
+				{/* The Problem / Solution Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
+					<div className="mx-auto max-w-4xl">
+						<div className="grid gap-8 md:grid-cols-2">
+							{/* The Problem */}
+							<div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8">
+								<h2 className="text-xl font-bold text-red-400 mb-4">
+									The Problem
+								</h2>
+								<p className="text-neutral-300 leading-relaxed">
+									You ask your AI agent to "add OAuth authentication." Five
+									minutes later, it's going down the wrong path. Or touching
+									files it shouldn't. Or making changes that conflict with your
+									other session.
+								</p>
+								<p className="mt-4 text-neutral-400 text-sm">
+									AI agents are{" "}
+									<span className="text-red-400 font-medium">
+										single-threaded
+									</span>
+									,{" "}
+									<span className="text-red-400 font-medium">
+										context-limited
+									</span>
+									, and have{" "}
+									<span className="text-red-400 font-medium">
+										no memory of what worked before
+									</span>
+									.
+								</p>
+							</div>
+
+							{/* The Solution */}
+							<div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8">
+								<h2 className="text-xl font-bold text-amber-400 mb-4">
+									The Solution
+								</h2>
+								<p className="text-neutral-300 leading-relaxed mb-4">
+									What if the agent could:
+								</p>
+								<ul className="space-y-2 text-neutral-300">
+									<li className="flex items-start gap-2">
+										<span className="text-amber-500 mt-1">→</span>
+										<span>
+											<strong className="text-amber-400">
+												Break tasks into pieces
+											</strong>{" "}
+											that can be worked on simultaneously
+										</span>
+									</li>
+									<li className="flex items-start gap-2">
+										<span className="text-amber-500 mt-1">→</span>
+										<span>
+											<strong className="text-amber-400">
+												Spawn parallel workers
+											</strong>{" "}
+											that don't step on each other
+										</span>
+									</li>
+									<li className="flex items-start gap-2">
+										<span className="text-amber-500 mt-1">→</span>
+										<span>
+											<strong className="text-amber-400">
+												Remember what worked
+											</strong>{" "}
+											and avoid patterns that failed
+										</span>
+									</li>
+									<li className="flex items-start gap-2">
+										<span className="text-amber-500 mt-1">→</span>
+										<span>
+											<strong className="text-amber-400">
+												Survive context death
+											</strong>{" "}
+											without losing progress
+										</span>
+									</li>
+								</ul>
+								<p className="mt-4 text-amber-400 font-semibold">
+									That's what Swarm does.
+								</p>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				{/* Features Grid */}
+				<section className="px-4 py-12 border-t border-neutral-800">
+					<div className="mx-auto max-w-6xl">
+						<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+							{features.map((feature) => (
+								<div
+									key={feature.title}
+									className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6"
+								>
+									<div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+										{feature.icon}
+									</div>
+									<h3 className="text-lg font-semibold text-neutral-100">
+										{feature.title}
+									</h3>
+									<p className="mt-2 text-sm text-neutral-400">
+										{feature.description}
+									</p>
+								</div>
+							))}
+						</div>
+					</div>
+				</section>
+
+				{/* Install Section */}
+				<section
+					id="install"
+					className="px-4 py-16 md:py-20 border-t border-neutral-800"
+				>
 					<div className="mx-auto max-w-4xl">
 						<div className="flex items-center gap-3 mb-6">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-								<Terminal className="h-5 w-5 text-amber-500" />
+							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-neutral-950 font-bold">
+								1
 							</div>
-							<h2 className="text-3xl font-bold text-neutral-100">
-								1. Install
+							<h2 className="text-2xl font-bold text-neutral-100 md:text-3xl">
+								Install & Setup
 							</h2>
 						</div>
-						
-						<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-8">
+
+						<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6 md:p-8">
 							<pre className="overflow-x-auto">
 								<code className="text-sm text-amber-500 md:text-base">
-{`npm install -g opencode-swarm-plugin@latest
+									{`npm install -g opencode-swarm-plugin@latest
 swarm setup`}
+								</code>
+							</pre>
+							<p className="mt-4 text-sm text-neutral-500">
+								Setup configures OpenCode, checks dependencies, and migrates any
+								existing data automatically.
+							</p>
+						</div>
+
+						<div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-900/30 p-6">
+							<h3 className="text-lg font-semibold text-neutral-200 mb-3">
+								Optional: Semantic Memory
+							</h3>
+							<p className="text-sm text-neutral-400 mb-4">
+								For persistent learning across sessions, install Ollama:
+							</p>
+							<pre className="overflow-x-auto rounded-lg bg-neutral-950 p-4">
+								<code className="text-sm text-neutral-300">
+									{`brew install ollama
+ollama serve &
+ollama pull mxbai-embed-large`}
 								</code>
 							</pre>
 						</div>
 					</div>
 				</section>
 
-				{/* Quickstart: Basic Usage */}
-				<section className="px-4 py-16">
+				{/* First Swarm Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
 					<div className="mx-auto max-w-4xl">
 						<div className="flex items-center gap-3 mb-6">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-								<Code className="h-5 w-5 text-amber-500" />
+							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-neutral-950 font-bold">
+								2
 							</div>
-							<h2 className="text-3xl font-bold text-neutral-100">
-								2. Basic Usage
+							<h2 className="text-2xl font-bold text-neutral-100 md:text-3xl">
+								Run Your First Swarm
 							</h2>
 						</div>
 
 						<p className="text-lg text-neutral-300 mb-6">
-							From any OpenCode session:
+							In any OpenCode session, use the{" "}
+							<code className="text-amber-500 bg-neutral-800 px-2 py-0.5 rounded">
+								/swarm
+							</code>{" "}
+							command:
 						</p>
-						
-						<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-8">
+
+						<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6 md:p-8">
 							<pre className="overflow-x-auto">
-								<code className="text-sm text-amber-500 md:text-base">
-{`/swarm "add OAuth authentication"`}
+								<code className="text-lg text-amber-500 md:text-xl">
+									{`/swarm "add user authentication with OAuth"`}
 								</code>
 							</pre>
 						</div>
 
 						<p className="mt-6 text-neutral-400">
-							That's it. You're swarming.
+							That's it. The coordinator analyzes the task, breaks it into
+							subtasks, spawns parallel workers, and tracks everything in
+							git-backed work items.
 						</p>
 					</div>
 				</section>
 
-				{/* Quickstart: What Happens */}
-				<section className="px-4 py-16">
+				{/* What Happens Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
 					<div className="mx-auto max-w-4xl">
 						<div className="flex items-center gap-3 mb-6">
-							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
-								<CheckCircle2 className="h-5 w-5 text-amber-500" />
+							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-neutral-950 font-bold">
+								3
 							</div>
-							<h2 className="text-3xl font-bold text-neutral-100">
-								3. What Happens
+							<h2 className="text-2xl font-bold text-neutral-100 md:text-3xl">
+								What Happens Under the Hood
 							</h2>
 						</div>
 
-						<div className="space-y-6">
-							<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
-								<div className="flex items-start gap-4">
-									<span className="mt-1 text-2xl text-amber-500">→</span>
+						<div className="space-y-4">
+							{[
+								{
+									step: "Task Analyzed",
+									detail:
+										"Coordinator queries past solutions (CASS), picks a strategy (file-based, feature-based, or risk-based)",
+								},
+								{
+									step: "Work Items Created",
+									detail:
+										"Epic + subtasks created atomically in .hive/, tracked in git",
+								},
+								{
+									step: "Workers Spawn",
+									detail:
+										"Parallel agents start, each gets a subtask + shared context",
+								},
+								{
+									step: "Files Reserved",
+									detail:
+										"Workers reserve files before editing, preventing conflicts",
+								},
+								{
+									step: "Work Completed",
+									detail:
+										"Workers finish, auto-release reservations, run bug scans (UBS)",
+								},
+								{
+									step: "Learning Recorded",
+									detail:
+										"Outcome tracked: fast + success = proven pattern, slow + errors = anti-pattern",
+								},
+							].map((item) => (
+								<div
+									key={item.step}
+									className="flex gap-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-5"
+								>
+									<div className="flex-shrink-0">
+										<CheckCircle2 className="h-6 w-6 text-amber-500" />
+									</div>
 									<div>
-										<h3 className="text-lg font-semibold text-neutral-100">Task decomposed</h3>
-										<p className="mt-2 text-neutral-400">
-											Coordinator queries past solutions (CASS), picks a strategy (file/feature/risk-based), 
-											breaks into subtasks
-										</p>
+										<h3 className="text-lg font-semibold text-neutral-100">
+											{item.step}
+										</h3>
+										<p className="mt-1 text-neutral-400">{item.detail}</p>
 									</div>
 								</div>
-							</div>
-
-							<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
-								<div className="flex items-start gap-4">
-									<span className="mt-1 text-2xl text-amber-500">→</span>
-									<div>
-										<h3 className="text-lg font-semibold text-neutral-100">Workers spawn</h3>
-										<p className="mt-2 text-neutral-400">
-											Parallel agents start, each gets a subtask + shared context
-										</p>
-									</div>
-								</div>
-							</div>
-
-							<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
-								<div className="flex items-start gap-4">
-									<span className="mt-1 text-2xl text-amber-500">→</span>
-									<div>
-										<h3 className="text-lg font-semibold text-neutral-100">Files reserved</h3>
-										<p className="mt-2 text-neutral-400">
-											Workers reserve files before editing, preventing conflicts
-										</p>
-									</div>
-								</div>
-							</div>
-
-							<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
-								<div className="flex items-start gap-4">
-									<span className="mt-1 text-2xl text-amber-500">→</span>
-									<div>
-										<h3 className="text-lg font-semibold text-neutral-100">Work done</h3>
-										<p className="mt-2 text-neutral-400">
-											Workers complete, auto-release reservations, run bug scans
-										</p>
-									</div>
-								</div>
-							</div>
-
-							<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6">
-								<div className="flex items-start gap-4">
-									<span className="mt-1 text-2xl text-amber-500">→</span>
-									<div>
-										<h3 className="text-lg font-semibold text-neutral-100">Learning recorded</h3>
-										<p className="mt-2 text-neutral-400">
-											Outcome tracked: fast + success = proven pattern, slow + errors = anti-pattern
-										</p>
-									</div>
-								</div>
-							</div>
+							))}
 						</div>
 					</div>
 				</section>
 
-				{/* Quickstart: Key Commands */}
-				<section className="px-4 py-16 md:py-24">
+				{/* Essential Tools Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
 					<div className="mx-auto max-w-4xl">
-						<h2 className="text-3xl font-bold text-neutral-100 mb-8">
-							4. Key Commands
-						</h2>
+						<div className="flex items-center gap-3 mb-6">
+							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-neutral-950 font-bold">
+								4
+							</div>
+							<h2 className="text-2xl font-bold text-neutral-100 md:text-3xl">
+								Essential Tools
+							</h2>
+						</div>
 
 						<div className="overflow-x-auto rounded-2xl border border-neutral-800 bg-neutral-900/50">
 							<table className="w-full">
 								<thead className="border-b border-neutral-800">
 									<tr>
 										<th className="px-6 py-4 text-left text-sm font-semibold text-amber-500">
-											Command
+											Tool
 										</th>
 										<th className="px-6 py-4 text-left text-sm font-semibold text-amber-500">
 											Purpose
@@ -296,56 +488,163 @@ swarm setup`}
 									</tr>
 								</thead>
 								<tbody>
-									{commands.map((cmd, idx) => (
-										<tr 
-											key={cmd.command}
-											className={idx !== commands.length - 1 ? 'border-b border-neutral-800' : ''}
+									{essentialTools.map((tool, idx) => (
+										<tr
+											key={tool.name}
+											className={
+												idx !== essentialTools.length - 1
+													? "border-b border-neutral-800"
+													: ""
+											}
 										>
 											<td className="px-6 py-4">
 												<code className="text-sm text-amber-500 bg-neutral-950/50 px-2 py-1 rounded">
-													{cmd.command}
+													{tool.name}
 												</code>
 											</td>
 											<td className="px-6 py-4 text-neutral-300">
-												{cmd.description}
+												{tool.purpose}
 											</td>
 										</tr>
 									))}
 								</tbody>
 							</table>
 						</div>
+
+						<p className="mt-4 text-sm text-neutral-500">
+							40+ tools available. See{" "}
+							<a
+								href="/docs/packages/opencode-plugin"
+								className="text-amber-500 hover:underline"
+							>
+								full reference
+							</a>
+							.
+						</p>
 					</div>
 				</section>
 
-				{/* Quickstart: Links to Docs */}
-				<section className="px-4 py-16">
+				{/* Session Workflow Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
 					<div className="mx-auto max-w-4xl">
-						<h2 className="text-3xl font-bold text-neutral-100 mb-8">
-							5. Deeper Dives
+						<div className="flex items-center gap-3 mb-6">
+							<div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-neutral-950 font-bold">
+								5
+							</div>
+							<h2 className="text-2xl font-bold text-neutral-100 md:text-3xl">
+								Session Workflow
+							</h2>
+						</div>
+
+						<div className="grid gap-6 md:grid-cols-3">
+							<div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
+								<div className="text-2xl mb-3">🚀</div>
+								<h3 className="text-lg font-semibold text-neutral-100 mb-2">
+									Start
+								</h3>
+								<code className="text-sm text-amber-500 bg-neutral-950/50 px-2 py-1 rounded block">
+									hive_ready()
+								</code>
+								<p className="mt-3 text-sm text-neutral-400">
+									What's next? Get the highest priority unblocked task.
+								</p>
+							</div>
+
+							<div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
+								<div className="text-2xl mb-3">⚡</div>
+								<h3 className="text-lg font-semibold text-neutral-100 mb-2">
+									Work
+								</h3>
+								<code className="text-sm text-amber-500 bg-neutral-950/50 px-2 py-1 rounded block">
+									/swarm "task"
+								</code>
+								<p className="mt-3 text-sm text-neutral-400">
+									Use tools, reserve files, coordinate with other agents.
+								</p>
+							</div>
+
+							<div className="rounded-xl border border-amber-500/50 bg-amber-500/5 p-6">
+								<div className="text-2xl mb-3">✅</div>
+								<h3 className="text-lg font-semibold text-amber-500 mb-2">
+									End (MANDATORY)
+								</h3>
+								<code className="text-sm text-amber-500 bg-neutral-950/50 px-2 py-1 rounded block">
+									hive_sync() + git push
+								</code>
+								<p className="mt-3 text-sm text-neutral-400">
+									The plane is not landed until git push succeeds.
+								</p>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				{/* CLI Commands Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
+					<div className="mx-auto max-w-4xl">
+						<h2 className="text-2xl font-bold text-neutral-100 mb-6 md:text-3xl">
+							CLI Commands
+						</h2>
+
+						<div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6 md:p-8">
+							<pre className="overflow-x-auto">
+								<code className="text-sm text-neutral-300">
+									{`swarm setup     # Install and configure (run once)
+swarm doctor    # Check dependencies and health
+swarm init      # Initialize hive in current project
+swarm config    # Show config file paths
+swarm migrate   # Migrate legacy databases`}
+								</code>
+							</pre>
+						</div>
+					</div>
+				</section>
+
+				{/* Deeper Dives Section */}
+				<section className="px-4 py-16 border-t border-neutral-800">
+					<div className="mx-auto max-w-4xl">
+						<h2 className="text-2xl font-bold text-neutral-100 mb-8 md:text-3xl">
+							Deeper Dives
 						</h2>
 
 						<div className="grid gap-6 md:grid-cols-3">
-							{docLinks.map((link) => (
+							{[
+								{
+									title: "Hive",
+									href: "/docs/packages/opencode-plugin/hive",
+									description: "Git-backed work item tracking",
+								},
+								{
+									title: "Swarm",
+									href: "/docs/packages/opencode-plugin/swarm",
+									description: "Parallel task coordination",
+								},
+								{
+									title: "Skills",
+									href: "/docs/packages/opencode-plugin/skills",
+									description: "Knowledge injection system",
+								},
+							].map((link) => (
 								<a
 									key={link.href}
 									href={link.href}
-									className="group rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6 transition-all hover:border-amber-500/50 hover:shadow-lg hover:shadow-amber-500/10"
+									className="group rounded-xl border border-neutral-800 bg-neutral-900/50 p-6 transition-all hover:border-amber-500/50 hover:shadow-lg hover:shadow-amber-500/10"
 								>
 									<h3 className="text-xl font-bold text-neutral-100 group-hover:text-amber-500 transition-colors">
 										{link.title}
 									</h3>
-									<p className="mt-3 text-neutral-400">
-										{link.description}
-									</p>
+									<p className="mt-3 text-neutral-400">{link.description}</p>
 								</a>
 							))}
 						</div>
 
-						<div className="mt-12 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-8">
-							<p className="text-center text-lg text-neutral-300">
-								<span className="font-semibold text-amber-500">Full documentation:</span>{' '}
-								<a 
-									href="/docs" 
+						<div className="mt-10 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-8 text-center">
+							<p className="text-lg text-neutral-300">
+								<span className="font-semibold text-amber-500">
+									Full documentation:
+								</span>{" "}
+								<a
+									href="/docs"
 									className="text-amber-500 hover:text-amber-400 underline underline-offset-4"
 								>
 									swarmtools.ai/docs
@@ -359,28 +658,32 @@ swarm setup`}
 				<footer className="border-t border-neutral-800 px-4 py-8">
 					<div className="mx-auto max-w-6xl text-center">
 						<p className="text-sm text-neutral-600">
-							Built by{' '}
-							<a 
-								href="https://github.com/joelhooks" 
-								target="_blank" 
+							Built by{" "}
+							<a
+								href="https://github.com/joelhooks"
+								target="_blank"
 								rel="noopener noreferrer author"
 								className="text-neutral-500 hover:text-amber-500 transition-colors"
 							>
 								Joel Hooks
-							</a>
-							{' '}• Open source under MIT License
+							</a>{" "}
+							• Open source under MIT License
 						</p>
 					</div>
 				</footer>
 
 				{/* Decorative bees */}
-				<div className="pointer-events-none fixed top-20 left-10 text-4xl animate-bounce opacity-20" aria-hidden="true">
+				<div
+					className="pointer-events-none fixed top-20 left-10 text-4xl animate-bounce opacity-20"
+					aria-hidden="true"
+				>
 					🐝
 				</div>
-				<div className="pointer-events-none fixed bottom-32 right-16 text-3xl animate-bounce opacity-20" aria-hidden="true" style={{ animationDelay: '500ms' }}>
-					🐝
-				</div>
-				<div className="pointer-events-none fixed top-40 right-24 text-2xl animate-bounce opacity-10" aria-hidden="true" style={{ animationDelay: '1000ms' }}>
+				<div
+					className="pointer-events-none fixed bottom-32 right-16 text-3xl animate-bounce opacity-20"
+					aria-hidden="true"
+					style={{ animationDelay: "500ms" }}
+				>
 					🐝
 				</div>
 			</main>

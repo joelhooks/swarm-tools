@@ -11,12 +11,17 @@
  * - OPENCODE_SESSION_ID: Passed to CLI for session state persistence
  * - OPENCODE_MESSAGE_ID: Passed to CLI for context
  * - OPENCODE_AGENT: Passed to CLI for context
+ * - SWARM_PROJECT_DIR: Project directory (critical for database path)
  */
 import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import { spawn } from "child_process";
 
 const SWARM_CLI = "swarm";
+
+// Module-level project directory - set during plugin initialization
+// This is CRITICAL: without it, the CLI uses process.cwd() which may be wrong
+let projectDirectory: string = process.cwd();
 
 // =============================================================================
 // CLI Execution Helper
@@ -27,6 +32,8 @@ const SWARM_CLI = "swarm";
  *
  * Spawns `swarm tool <name> --json '<args>'` and returns the result.
  * Passes session context via environment variables.
+ * 
+ * IMPORTANT: Runs in projectDirectory (set by OpenCode) not process.cwd()
  */
 async function execTool(
   name: string,
@@ -40,12 +47,14 @@ async function execTool(
       : ["tool", name];
 
     const proc = spawn(SWARM_CLI, cliArgs, {
+      cwd: projectDirectory, // Run in project directory, not plugin directory
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
         OPENCODE_SESSION_ID: ctx.sessionID,
         OPENCODE_MESSAGE_ID: ctx.messageID,
         OPENCODE_AGENT: ctx.agent,
+        SWARM_PROJECT_DIR: projectDirectory, // Also pass as env var
       },
     });
 
@@ -1122,8 +1131,12 @@ type ExtendedHooks = Hooks & {
 };
 
 export const SwarmPlugin: Plugin = async (
-  _input: PluginInput,
+  input: PluginInput,
 ): Promise<ExtendedHooks> => {
+  // CRITICAL: Set project directory from OpenCode input
+  // Without this, CLI uses wrong database path
+  projectDirectory = input.directory;
+  
   return {
     tool: {
       // Beads

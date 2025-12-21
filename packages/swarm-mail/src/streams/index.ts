@@ -132,12 +132,14 @@ export function getDatabasePath(projectPath?: string): string {
   // Try project-local first
   if (projectPath) {
     const localDir = join(projectPath, ".opencode");
-    if (existsSync(localDir) || existsSync(projectPath)) {
-      if (!existsSync(localDir)) {
-        mkdirSync(localDir, { recursive: true });
-      }
-      return join(localDir, "streams");
+    // Create project directory if it doesn't exist
+    if (!existsSync(projectPath)) {
+      mkdirSync(projectPath, { recursive: true });
     }
+    if (!existsSync(localDir)) {
+      mkdirSync(localDir, { recursive: true });
+    }
+    return join(localDir, "streams");
   }
 
   // Fall back to global
@@ -482,6 +484,75 @@ async function initializeSchema(db: PGlite): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_locks_expires ON locks(expires_at);
     CREATE INDEX IF NOT EXISTS idx_locks_holder ON locks(holder);
+    
+    -- Cursors table for stream position tracking (Effect DurableCursor)
+    CREATE TABLE IF NOT EXISTS cursors (
+      id SERIAL PRIMARY KEY,
+      stream TEXT NOT NULL,
+      checkpoint TEXT NOT NULL,
+      position BIGINT NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL,
+      UNIQUE(stream, checkpoint)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_cursors_stream ON cursors(stream);
+    CREATE INDEX IF NOT EXISTS idx_cursors_checkpoint ON cursors(checkpoint);
+    CREATE INDEX IF NOT EXISTS idx_cursors_updated ON cursors(updated_at);
+    
+    -- Swarm Contexts table for checkpoint/recovery
+    CREATE TABLE IF NOT EXISTS swarm_contexts (
+      id TEXT PRIMARY KEY,
+      project_key TEXT NOT NULL,
+      epic_id TEXT NOT NULL,
+      bead_id TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      files TEXT NOT NULL,
+      dependencies TEXT NOT NULL,
+      directives TEXT NOT NULL,
+      recovery TEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      checkpointed_at BIGINT,
+      recovered_at BIGINT,
+      recovered_from_checkpoint BIGINT,
+      updated_at BIGINT NOT NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_swarm_contexts_project ON swarm_contexts(project_key);
+    CREATE INDEX IF NOT EXISTS idx_swarm_contexts_epic ON swarm_contexts(epic_id);
+    
+    -- Eval Records tables for decomposition tracking
+    CREATE TABLE IF NOT EXISTS eval_decompositions (
+      id SERIAL PRIMARY KEY,
+      project_key TEXT NOT NULL,
+      epic_id TEXT NOT NULL,
+      task_description TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      generated_at BIGINT NOT NULL,
+      subtask_count INTEGER NOT NULL,
+      criteria TEXT NOT NULL,
+      cell_tree TEXT NOT NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_eval_decomp_project ON eval_decompositions(project_key);
+    CREATE INDEX IF NOT EXISTS idx_eval_decomp_epic ON eval_decompositions(epic_id);
+    
+    CREATE TABLE IF NOT EXISTS eval_outcomes (
+      id SERIAL PRIMARY KEY,
+      project_key TEXT NOT NULL,
+      decomposition_id INTEGER REFERENCES eval_decompositions(id),
+      bead_id TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      duration_ms BIGINT NOT NULL,
+      success BOOLEAN NOT NULL,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      files_touched TEXT NOT NULL,
+      criteria TEXT NOT NULL,
+      recorded_at BIGINT NOT NULL
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_eval_outcome_decomp ON eval_outcomes(decomposition_id);
+    CREATE INDEX IF NOT EXISTS idx_eval_outcome_bead ON eval_outcomes(bead_id);
   `);
 
   // NOTE: PGlite schema is self-contained above. 
@@ -595,6 +666,35 @@ export * from "./agent-mail";
 export * from "./debug";
 export * from "./events";
 export * from "./migrations";
-export * from "./projections";
-export * from "./store";
+
+// Export Drizzle wrapper functions (they match old signatures)
+export {
+  appendEvent,
+  readEvents,
+  getLatestSequence,
+} from "./store-drizzle";
+
+export {
+  getAgents,
+  getAgent,
+  getInbox,
+  getMessage,
+  getThreadMessages,
+  getActiveReservations,
+  checkConflicts,
+  getEvalRecords,
+  getEvalStats,
+} from "./projections-drizzle";
+
+export type {
+  Agent,
+  Message,
+  Reservation,
+  Conflict,
+  InboxOptions,
+  EvalRecord,
+  EvalStats,
+} from "./projections-drizzle";
+
+// Legacy exports for backward compatibility (still used by some high-level functions)
 export * from "./swarm-mail";

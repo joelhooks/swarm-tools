@@ -34,10 +34,23 @@ swarm setup
 ```
 
 This will:
-1. Check for required dependencies
-2. Configure OpenCode to load the plugin
-3. Initialize the hive in your project (if not already)
-4. Verify everything works
+1. Migrate any existing data from previous versions (automatic)
+2. Check for required dependencies
+3. Configure OpenCode to load the plugin
+4. Initialize the hive in your project (if not already)
+5. Verify everything works
+
+## Optional: Semantic Memory
+
+For persistent learning across sessions, install Ollama:
+
+```bash
+brew install ollama
+ollama serve &
+ollama pull mxbai-embed-large
+```
+
+Without Ollama, the plugin still works but falls back to full-text search instead of vector similarity.
 
 ## Verify Installation
 

@@ -78,7 +78,7 @@ const features: Feature[] = [
 		icon: <GitBranch className="h-6 w-6" />,
 		title: "Git-Backed Tracking",
 		description:
-			"Work items stored in .hive/, synced with git, survives sessions",
+			"Cells stored in .hive/, synced with git, survives sessions",
 	},
 	{
 		icon: <MessageSquare className="h-6 w-6" />,
@@ -108,7 +108,7 @@ const essentialTools: Tool[] = [
 	},
 	{
 		name: "hive_ready()",
-		purpose: "Get next unblocked work item",
+		purpose: "Get next unblocked cell",
 		category: "hive",
 	},
 	{
@@ -207,6 +207,24 @@ export default function Home() {
 					</div>
 				</section>
 
+				{/* Epigraph Section */}
+				<section className="px-4 py-12 border-t border-neutral-800">
+					<div className="mx-auto max-w-4xl">
+						<blockquote className="border-l-4 border-amber-500/50 pl-6 py-2">
+							<p className="text-neutral-400 italic text-lg">
+								"With event sourcing, you can design an event such that it is a
+								self-contained description of a user action."
+							</p>
+							<footer className="mt-2 text-sm text-neutral-500">
+								— Martin Kleppmann,{" "}
+								<cite className="font-normal">
+									Designing Data-Intensive Applications
+								</cite>
+							</footer>
+						</blockquote>
+					</div>
+				</section>
+
 				{/* The Problem / Solution Section */}
 				<section className="px-4 py-16 border-t border-neutral-800">
 					<div className="mx-auto max-w-4xl">
@@ -244,9 +262,6 @@ export default function Home() {
 								<h2 className="text-xl font-bold text-amber-400 mb-4">
 									The Solution
 								</h2>
-								<p className="text-neutral-300 leading-relaxed mb-4">
-									What if the agent could:
-								</p>
 								<ul className="space-y-2 text-neutral-300">
 									<li className="flex items-start gap-2">
 										<span className="text-amber-500 mt-1">→</span>
@@ -285,7 +300,7 @@ export default function Home() {
 										</span>
 									</li>
 								</ul>
-								<p className="mt-4 text-amber-400 font-semibold">
+								<p className="mt-6 text-amber-400 font-semibold">
 									That's what Swarm does.
 								</p>
 							</div>
@@ -296,6 +311,24 @@ export default function Home() {
 				{/* Features Grid */}
 				<section className="px-4 py-12 border-t border-neutral-800">
 					<div className="mx-auto max-w-6xl">
+						{/* Honeycomb ASCII Art */}
+						<div className="mb-8 overflow-x-auto">
+							<pre
+								className="font-mono text-[0.5rem] leading-tight text-amber-500/40 sm:text-xs text-center select-none"
+								aria-hidden="true"
+							>
+								{`    ___       ___       ___       ___   
+   /   \\     /   \\     /   \\     /   \\  
+  /  🐝 \\___/  ⚡ \\___/  💬 \\___/  🧠 \\
+  \\     /   \\     /   \\     /   \\     /
+   \\___/     \\___/     \\___/     \\___/ 
+   /   \\     /   \\     /   \\     /   \\  
+  / PAR \\___/ GIT \\___/ MSG \\___/ LRN \\
+  \\ ALL /   \\ BCK /   \\ ING /   \\ ING /
+   \\___/     \\___/     \\___/     \\___/`}
+							</pre>
+						</div>
+
 						<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
 							{features.map((feature) => (
 								<div
@@ -350,7 +383,8 @@ swarm setup`}
 								Optional: Semantic Memory
 							</h3>
 							<p className="text-sm text-neutral-400 mb-4">
-								For persistent learning across sessions, install Ollama:
+								For persistent learning across sessions, install Ollama (uses
+								libSQL for embedded storage):
 							</p>
 							<pre className="overflow-x-auto rounded-lg bg-neutral-950 p-4">
 								<code className="text-sm text-neutral-300">
@@ -411,6 +445,43 @@ ollama pull mxbai-embed-large`}
 							</h2>
 						</div>
 
+						{/* Flow Diagram */}
+						<div className="mb-8 rounded-2xl border border-neutral-800 bg-neutral-900/50 p-6 overflow-x-auto">
+							<pre
+								className="font-mono text-[0.6rem] leading-tight text-amber-500/80 sm:text-xs"
+								aria-hidden="true"
+							>
+								{`
+┌─────────────────────────────────────────────────────────────────┐
+│                     /swarm "add auth"                           │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                    ┌────────▼─────────┐
+                    │  COORDINATOR 👑  │
+                    │  - Query CASS    │
+                    │  - Pick strategy │
+                    │  - Decompose     │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+       ┌──────▼─────┐ ┌─────▼──────┐ ┌────▼──────┐
+       │ WORKER 🐝  │ │ WORKER 🐝  │ │ WORKER 🐝 │
+       │ auth.ts    │ │ schema.ts  │ │ tests     │
+       │ [RESERVED] │ │ [RESERVED] │ │ [RESERVED]│
+       └──────┬─────┘ └─────┬──────┘ └────┬──────┘
+              │              │              │
+              └──────────────┼──────────────┘
+                             │
+                    ┌────────▼─────────┐
+                    │   HIVE (.git)    │
+                    │  📝 Event Log    │
+                    │  🧠 Learnings    │
+                    └──────────────────┘
+`}
+							</pre>
+						</div>
+
 						<div className="space-y-4">
 							{[
 								{
@@ -419,9 +490,9 @@ ollama pull mxbai-embed-large`}
 										"Coordinator queries past solutions (CASS), picks a strategy (file-based, feature-based, or risk-based)",
 								},
 								{
-									step: "Work Items Created",
+									step: "Cells Created",
 									detail:
-										"Epic + subtasks created atomically in .hive/, tracked in git",
+										"Epic + subtask cells created atomically in .hive/, tracked in git",
 								},
 								{
 									step: "Workers Spawn",
@@ -436,7 +507,7 @@ ollama pull mxbai-embed-large`}
 								{
 									step: "Work Completed",
 									detail:
-										"Workers finish, auto-release reservations, run bug scans (UBS)",
+										"Workers finish, auto-release reservations, store learnings",
 								},
 								{
 									step: "Learning Recorded",
@@ -546,7 +617,7 @@ ollama pull mxbai-embed-large`}
 									hive_ready()
 								</code>
 								<p className="mt-3 text-sm text-neutral-400">
-									What's next? Get the highest priority unblocked task.
+									What's next? Get the highest priority unblocked cell.
 								</p>
 							</div>
 

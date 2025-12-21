@@ -229,14 +229,14 @@ Add metadata linking cell to Agent Mail thread.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Cell ID |
+| `cell_id` | string | ✅ | Cell ID |
 | `thread_id` | string | ✅ | Thread ID from Agent Mail |
 
 **Example:**
 
 ```typescript
 hive_link_thread({
-  bead_id: "bd-123",
+  cell_id: "bd-123",
   thread_id: "msg-thread-42"
 })
 ```

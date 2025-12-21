@@ -20,6 +20,8 @@
       bzzzz...
 ```
 
+> _"With event sourcing, you can design an event such that it is a self-contained description of a user action."_ — Martin Kleppmann, Designing Data-Intensive Applications
+
 > **[🐝 swarmtools.ai](https://swarmtools.ai)** | **[📚 Documentation](https://swarmtools.ai/docs)**
 >
 > **Swarm Tools** - Multi-agent coordination for AI coding. This monorepo contains the core packages that power parallel task decomposition, actor-model messaging, and learning systems.
@@ -104,13 +106,13 @@ That's what Swarm does.
    - **Risk-based**: "Tests first, then implementation" (good for bug fixes)
    - **Research-based**: "Explore before committing" (good for unknowns)
 
-4. **It breaks the work into beads** (git-backed issues):
+4. **It breaks the work into cells** (git-backed work items in the hive):
 
    ```
    Epic: Add OAuth
-   ├─ Bead 1: OAuth provider integration (src/auth/oauth.ts)
-   ├─ Bead 2: Session management (src/auth/session.ts)
-   └─ Bead 3: Integration tests (tests/auth/)
+   ├─ Cell 1: OAuth provider integration (src/auth/oauth.ts)
+   ├─ Cell 2: Session management (src/auth/session.ts)
+   └─ Cell 3: Integration tests (tests/auth/)
    ```
 
 5. **It spawns parallel workers**:
@@ -154,7 +156,7 @@ OpenCode compacts context when it gets too long. Swarms used to die when this ha
 - File locks (prevents conflicts)
 - Worker context (what they were doing)
 
-All stored in PGLite (embedded Postgres) - no external servers, survives across sessions.
+All stored in libSQL (embedded SQLite) - no external servers, survives across sessions.
 
 ### It Learns From Outcomes
 
@@ -206,7 +208,7 @@ Workers don't just run in parallel - they coordinate via **Swarm Mail**, an even
 **What makes Swarm Mail different from traditional agent messaging:**
 
 - **Actor model over durable streams** - DurableMailbox, DurableLock, DurableDeferred (inspired by Electric SQL patterns)
-- **Local-first with PGlite** - embedded Postgres, no external servers, survives across sessions
+- **Local-first with libSQL** - embedded SQLite, no external servers, survives across sessions
 - **Event-sourced coordination** - append-only log, materialized views, full audit trail
 - **Context-safe by design** - hard caps on inbox (max 5 messages), thread summarization, body-on-demand
 
@@ -271,7 +273,7 @@ Swarm Mail is built on **Durable Streams primitives** (inspired by Kyle Matthews
 │                          │                                  │
 │  STORAGE                 ▼                                  │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │      PGLite (Embedded Postgres) + Migrations          │  │
+│  │      libSQL (Embedded SQLite) + Migrations            │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -314,7 +316,7 @@ Agent A                    Event Stream                Agent B
 
 **Why this matters:**
 
-- No external servers (Redis, Kafka, NATS) - just PGlite
+- No external servers (Redis, Kafka, NATS) - just libSQL
 - Full audit trail - every message is an event
 - Resumable - cursors checkpoint position, survive crashes
 - Type-safe - Effect-TS with full inference
@@ -372,7 +374,7 @@ opencode-swarm-plugin/
 
 Standalone event sourcing package for multi-agent coordination:
 
-- `EventStore` - append-only event log with PGLite
+- `EventStore` - append-only event log with libSQL
 - `Projections` - materialized views (agents, messages, reservations)
 - Effect-TS durable primitives (DurableMailbox, DurableCursor, DurableLock, DurableDeferred)
 - `DatabaseAdapter` interface for dependency injection
@@ -381,7 +383,7 @@ Standalone event sourcing package for multi-agent coordination:
 
 OpenCode plugin providing:
 
-- Beads integration (git-backed issue tracking)
+- Hive integration (git-backed work item tracking)
 - Swarm coordination (task decomposition, parallel agents)
 - Agent Mail (inter-agent messaging)
 - Learning system (pattern maturity, anti-pattern detection)
@@ -404,7 +406,7 @@ The coordinator will:
 
 1. Query CASS for similar past tasks
 2. Select decomposition strategy
-3. Break into subtasks (beads)
+3. Break into subtasks (cells in the hive)
 4. Spawn parallel workers
 5. Track progress with checkpoints
 6. Record outcome for learning
@@ -426,19 +428,19 @@ Everything runs in-process. No external servers.
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  BEADS                 git-backed issues for each subtask       │
-│                        (atomic epic + subtasks creation)        │
+│  HIVE                  git-backed work items for each subtask   │
+│                        (atomic epic + cell creation)            │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  SWARM MAIL            actor-model coordination (local-first)   │
-│                        (DurableMailbox, DurableLock, PGlite)    │
+│                        (DurableMailbox, DurableLock, libSQL)    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  PGLITE                embedded postgres, event-sourced state   │
+│  LIBSQL                embedded SQLite, event-sourced state     │
 │                        (append-only log, materialized views)    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
@@ -454,7 +456,7 @@ Everything runs in-process. No external servers.
 All state is stored as an append-only event log:
 
 ```
-Event Log (PGLite)
+Event Log (libSQL)
 ├─ agent_registered      → Agent joins swarm
 ├─ message_sent          → Agent-to-agent communication
 ├─ file_reserved         → Exclusive file lock acquired
@@ -496,7 +498,7 @@ Run `swarm doctor` to check status.
 ```bash
 swarm setup     # Install and configure
 swarm doctor    # Check dependencies
-swarm init      # Initialize beads in project
+swarm init      # Initialize hive in project
 swarm config    # Show config file paths
 ```
 
@@ -529,7 +531,7 @@ See [AGENTS.md](./AGENTS.md) for detailed monorepo guidance.
 
 **Inspiration & Core Ideas:**
 
-- [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail) - **THE INSPIRATION** for multi-agent coordination. Swarm Mail is our implementation built on actor-model primitives (DurableMailbox, DurableLock) with local-first PGlite and event sourcing.
+- [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail) - **THE INSPIRATION** for multi-agent coordination. Swarm Mail is our implementation built on actor-model primitives (DurableMailbox, DurableLock) with local-first libSQL and event sourcing.
 - [Superpowers](https://github.com/obra/superpowers) - verification patterns, Socratic planning, skill architecture
 - [Electric SQL](https://electric-sql.com) - durable streams and event sourcing patterns that power Swarm Mail
 - [Evalite](https://evalite.dev) - outcome-based evaluation framework for learning systems

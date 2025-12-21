@@ -298,7 +298,7 @@ Generate worker agent prompt with cell context and Agent Mail instructions.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `agent_name` | string | ✅ | Worker agent name |
-| `bead_id` | string | ✅ | Subtask cell ID |
+| `cell_id` | string | ✅ | Subtask cell ID |
 | `epic_id` | string | ✅ | Epic cell ID |
 | `subtask_title` | string | ✅ | Subtask title |
 | `subtask_description` | string | ❌ | Subtask description |
@@ -310,7 +310,7 @@ Generate worker agent prompt with cell context and Agent Mail instructions.
 ```typescript
 swarm_subtask_prompt({
   agent_name: "BlueLake",
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   epic_id: "bd-123",
   subtask_title: "Implement OAuth flow",
   files: ["src/auth/oauth.ts", "src/auth/tokens.ts"],
@@ -329,7 +329,7 @@ Prepare subtask for spawning with Task tool.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Subtask cell ID |
+| `cell_id` | string | ✅ | Subtask cell ID |
 | `epic_id` | string | ✅ | Epic cell ID |
 | `subtask_title` | string | ✅ | Subtask title |
 | `subtask_description` | string | ❌ | Subtask description |
@@ -340,7 +340,7 @@ Prepare subtask for spawning with Task tool.
 
 ```typescript
 swarm_spawn_subtask({
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   epic_id: "bd-123",
   subtask_title: "Implement OAuth flow",
   files: ["src/auth/oauth.ts"]
@@ -383,7 +383,7 @@ Report progress on a subtask to coordinator.
 |-----------|------|----------|-------------|
 | `project_key` | string | ✅ | Project path |
 | `agent_name` | string | ✅ | Worker agent name |
-| `bead_id` | string | ✅ | Subtask cell ID |
+| `cell_id` | string | ✅ | Subtask cell ID |
 | `status` | `"in_progress" \| "blocked" \| "completed" \| "failed"` | ✅ | Status |
 | `message` | string | ❌ | Status message |
 | `progress_percent` | number | ❌ | Progress 0-100 |
@@ -395,7 +395,7 @@ Report progress on a subtask to coordinator.
 swarm_progress({
   project_key: "/Users/joel/projects/my-app",
   agent_name: "BlueLake",
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   status: "in_progress",
   message: "Schema defined, starting service layer",
   progress_percent: 40,
@@ -407,7 +407,7 @@ swarm_progress({
 
 ### swarm_complete
 
-Complete subtask with automatic release, UBS scan, and learning signals.
+Complete subtask with automatic release and learning signals.
 
 **Parameters:**
 
@@ -415,11 +415,10 @@ Complete subtask with automatic release, UBS scan, and learning signals.
 |-----------|------|----------|-------------|
 | `project_key` | string | ✅ | Project path (finds cells via minimatch) |
 | `agent_name` | string | ✅ | Worker agent name |
-| `bead_id` | string | ✅ | Subtask cell ID |
+| `cell_id` | string | ✅ | Subtask cell ID |
 | `summary` | string | ✅ | Completion summary |
 | `files_touched` | string[] | ❌ | Files modified |
 | `evaluation` | string | ❌ | Self-evaluation |
-| `skip_ubs_scan` | boolean | ❌ | Skip UBS scan |
 
 **Example:**
 
@@ -427,12 +426,12 @@ Complete subtask with automatic release, UBS scan, and learning signals.
 swarm_complete({
   project_key: "/Users/joel/projects/my-app",
   agent_name: "BlueLake",
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   summary: "OAuth flow implemented with JWT strategy",
   files_touched: ["src/auth/oauth.ts", "src/auth/tokens.ts"],
   evaluation: "Completed successfully, added unit tests"
 })
-// Auto-releases reservations, runs UBS scan, records learning signals
+// Auto-releases reservations, records learning signals
 ```
 
 **Critical:** Workers MUST use this (not `hive_close` directly). Handles cleanup and learning.
@@ -444,16 +443,14 @@ Workers complete tasks using `swarm_complete`, which orchestrates the full compl
 **What It Does:**
 
 1. **Finds cells** - Uses path-based `project_key` with minimatch pattern matching
-2. **Runs UBS scan** - Scans `files_touched` for bugs (null safety, XSS, async/await issues)
-3. **Releases reservations** - Auto-releases all file locks held by the worker
-4. **Records learning signals** - Tracks duration, errors, retries for pattern learning
-5. **Closes the cell** - Updates cell status to closed with completion reason
+2. **Releases reservations** - Auto-releases all file locks held by the worker
+3. **Records learning signals** - Tracks duration, errors, retries for pattern learning
+4. **Closes the cell** - Updates cell status to closed with completion reason
 
 **Why Not `hive_close` Directly?**
 
 Direct `hive_close` skips critical cleanup:
 - Reservations stay locked (blocks other agents)
-- No bug scanning (security/quality issues slip through)
 - No learning signals (decomposition patterns don't improve)
 
 **TDD Mandate (v0.31+)**
@@ -481,7 +478,7 @@ Record subtask outcome for learning (duration, errors, retries).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Subtask cell ID |
+| `cell_id` | string | ✅ | Subtask cell ID |
 | `duration_ms` | number | ✅ | Duration in milliseconds |
 | `success` | boolean | ✅ | Whether subtask succeeded |
 | `error_count` | number | ❌ | Number of errors |
@@ -494,7 +491,7 @@ Record subtask outcome for learning (duration, errors, retries).
 
 ```typescript
 swarm_record_outcome({
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   duration_ms: 1200000, // 20 minutes
   success: true,
   error_count: 0,
@@ -514,7 +511,7 @@ Generate self-evaluation prompt for a completed subtask.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `bead_id` | string | ✅ | Subtask cell ID |
+| `cell_id` | string | ✅ | Subtask cell ID |
 | `subtask_title` | string | ✅ | Subtask title |
 | `files_touched` | string[] | ✅ | Files modified |
 
@@ -522,7 +519,7 @@ Generate self-evaluation prompt for a completed subtask.
 
 ```typescript
 swarm_evaluation_prompt({
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   subtask_title: "Implement OAuth flow",
   files_touched: ["src/auth/oauth.ts"]
 })
@@ -567,7 +564,7 @@ swarmmail_reserve({
 swarm_complete({
   project_key: "/my/project",
   agent_name: "BlueLake",
-  bead_id: "bd-123.2",
+  cell_id: "bd-123.2",
   summary: "OAuth flow implemented",
   files_touched: ["src/auth/oauth.ts"]
 })

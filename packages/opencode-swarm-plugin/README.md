@@ -27,6 +27,9 @@ ollama serve &
 ollama pull mxbai-embed-large
 ```
 
+> *"High-variability sequencing of whole-task problems."*  
+> — 4C/ID Instructional Design Model
+
 ## Features
 
 - **Swarm Coordination** - Break tasks into parallel subtasks, spawn worker agents
@@ -85,7 +88,7 @@ ollama pull mxbai-embed-large
 | `swarm_init`                   | Initialize swarm session                        |
 | `swarm_status`                 | Get swarm progress by epic ID                   |
 | `swarm_progress`               | Report subtask progress to coordinator          |
-| `swarm_complete`               | Complete subtask (runs UBS scan, releases)      |
+| `swarm_complete`               | Complete subtask (releases reservations)        |
 | `swarm_record_outcome`         | Record outcome for learning                     |
 | `swarm_checkpoint`             | Save progress snapshot (auto at 25/50/75%)      |
 | `swarm_recover`                | Resume from checkpoint (returns full context)   |
@@ -111,10 +114,10 @@ Ensures work survives context compaction or crashes. Proven by 9 integration tes
 
 ### Auto-Checkpoint Milestones
 
-When `swarm_progress` reports 25%, 50%, or 75% completion, a checkpoint is automatically saved to PGLite:
+When `swarm_progress` reports 25%, 50%, or 75% completion, a checkpoint is automatically saved to libSQL:
 
 ```typescript
-// Stored in .swarm-mail/ directory (no external database needed)
+// Stored in system temp directory (no external database needed)
 {
   epic_id: "hv-123",
   cell_id: "hv-123.1",
@@ -247,7 +250,7 @@ pip install -e .
 **Why install these?**
 
 - **CASS** - When you run `/swarm "Add OAuth"`, the coordinator queries CASS for similar past tasks. Without it, decomposition is based only on the current task description.
-- **UBS** - Every `swarm_complete` runs UBS to scan for bugs. Without it, you lose automatic bug detection.
+- **UBS** - Run manually on code to catch bugs before commit. Not integrated into swarm workflow but recommended for pre-commit validation.
 - **Ollama** - Enables vector similarity search for semantic memory. Without it, memory falls back to full-text search (still functional, less semantic).
 
 Run `swarm doctor` to check which dependencies are installed.

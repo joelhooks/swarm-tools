@@ -45,7 +45,7 @@ When multiple AI agents work on the same codebase in parallel, they need to:
 - **Resume after crashes** - positioned consumption with checkpointing
 - **Audit all actions** - full event history for debugging and learning
 
-Traditional solutions require external servers (Redis, Kafka, NATS). Swarm Mail is **embedded** - just PGLite (embedded Postgres) + Effect-TS.
+Traditional solutions require external servers (Redis, Kafka, NATS). Swarm Mail is **embedded** - just libSQL (embedded SQLite) + Effect-TS.
 
 ## Key Features
 
@@ -92,7 +92,7 @@ Swarm Mail is built in **3 tiers** - primitives, patterns, and coordination laye
 │                                      │                                      │
 │   STORAGE                            ▼                                      │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │              PGLite (Embedded Postgres) + Migrations                │   │
+│   │              libSQL (Embedded SQLite) + Migrations                  │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -243,8 +243,8 @@ Swarm Mail is **inspired by** [Agent Mail](https://github.com/sst/opencode) (SST
 
 | Aspect                   | Agent Mail (SST)              | Swarm Mail (This Plugin)               |
 | ------------------------ | ----------------------------- | -------------------------------------- |
-| **Architecture**         | MCP server (external process) | Embedded (PGLite in-process)           |
-| **Storage**              | SQLite file                   | PGLite (WASM Postgres)                 |
+| **Architecture**         | MCP server (external process) | Embedded (libSQL in-process)           |
+| **Storage**              | SQLite file                   | libSQL (SQLite-compatible)             |
 | **Dependencies**         | Requires MCP server running   | Zero external deps, just npm install   |
 | **Effect-TS**            | No                            | Yes (full Effect integration)          |
 | **Event Sourcing**       | No (CRUD operations)          | Yes (append-only event log)            |
@@ -272,7 +272,7 @@ Swarm Mail is **inspired by** [Agent Mail](https://github.com/sst/opencode) (SST
 
 ## Database Schema
 
-Swarm Mail uses **PGLite** (embedded Postgres compiled to WASM). Schema is managed via migrations.
+Swarm Mail uses **libSQL** (SQLite-compatible embedded database). Schema is managed via migrations.
 
 ### Core Tables
 
@@ -389,8 +389,7 @@ Swarm Mail is **production-ready** but has room for optimization:
 
 ### Performance Improvements
 
-- [ ] **LISTEN/NOTIFY** - replace deferred polling with Postgres LISTEN/NOTIFY for instant wakeup
-- [ ] **Connection pooling** - reuse PGLite connections instead of opening new ones
+- [ ] **Connection pooling** - reuse libSQL connections instead of opening new ones
 - [ ] **Batch inserts** - batch multiple events into one transaction
 - [ ] **Index tuning** - add covering indexes for hot queries
 

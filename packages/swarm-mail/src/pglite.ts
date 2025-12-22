@@ -7,7 +7,6 @@
  * @deprecated Use libSQL adapter instead. This file will be removed.
  */
 
-import type { PGlite } from "@electric-sql/pglite";
 import type { DatabaseAdapter, QueryResult } from "./types/database.js";
 
 /**
@@ -15,7 +14,7 @@ import type { DatabaseAdapter, QueryResult } from "./types/database.js";
  *
  * @deprecated Use createLibSQLAdapter instead
  */
-export function wrapPGlite(pglite: PGlite): DatabaseAdapter {
+export function wrapPGlite(pglite: any): DatabaseAdapter {
   return {
     async query<T = unknown>(
       sql: string,
@@ -32,7 +31,7 @@ export function wrapPGlite(pglite: PGlite): DatabaseAdapter {
     },
 
     async transaction<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T> {
-      return await pglite.transaction(async (tx) => {
+      return await pglite.transaction(async (tx: any) => {
         const txAdapter: DatabaseAdapter = {
           async query<U = unknown>(
             sql: string,

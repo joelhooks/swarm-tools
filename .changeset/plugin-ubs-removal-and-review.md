@@ -4,8 +4,8 @@
 
 ## 🔍 Coordinator Review Gate + UBS Removal
 
-> *"Code review is not about catching bugs. It's about sharing knowledge."*  
-> — Someone who clearly never reviewed my PRs
+> *"This asynchronous back and forth between submitter and reviewer can add days to the process of getting changes made. Do Code Reviews Promptly!"*  
+> — Sam Newman, *Building Microservices*
 
 Two changes that make swarm coordination tighter:
 

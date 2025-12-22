@@ -4,8 +4,8 @@
 
 ## 🐝 The Great Drizzle Migration
 
-> *"The database is a detail."*  
-> — Uncle Bob, *Clean Architecture*
+> *"In most cases, a change to an application's features also requires a change to data that it stores: perhaps a new field or record type needs to be captured, or perhaps existing data needs to be presented in a new way."*  
+> — Martin Kleppmann, *Designing Data-Intensive Applications*
 
 The hive's data layer got a complete overhaul. PGlite is out, libSQL is in, and Drizzle ORM now handles all the heavy lifting.
 

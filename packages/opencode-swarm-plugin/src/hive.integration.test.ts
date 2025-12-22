@@ -7,6 +7,8 @@
  * Run with: bun test src/hive.integration.test.ts
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   hive_create,
   hive_create_epic,
@@ -56,7 +58,7 @@ const createdBeadIds: string[] = [];
 /**
  * Test project key - use temp directory to isolate tests
  */
-const TEST_PROJECT_KEY = `/tmp/beads-integration-test-${Date.now()}`;
+const TEST_PROJECT_KEY = join(tmpdir(), `beads-integration-test-${Date.now()}`);
 
 /**
  * Adapter instance for verification

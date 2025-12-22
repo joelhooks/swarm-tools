@@ -73,7 +73,7 @@ describe("swarm_review integration", () => {
 		rmSync(testProjectPath, { recursive: true, force: true });
 	});
 
-	test.skip("review approved flow", async () => {
+	test("review approved flow", async () => {
 		// Setup: create epic + subtask via hive tools
 		const epicResult = await hive_create.execute(
 			{
@@ -131,11 +131,11 @@ describe("swarm_review integration", () => {
 		expect(feedbackParsed.task_id).toBe(subtask.id);
 
 		// Verify message was sent to worker
-		const messages = await swarmMail.messages.fetchInbox({
-			projectPath: testProjectPath,
-			agentName: "TestWorker",
-			limit: 10,
-		});
+		const messages = await swarmMail.getInbox(
+			testProjectPath,
+			"TestWorker",
+			{ limit: 10 }
+		);
 		expect(messages.length).toBeGreaterThan(0);
 
 		const approvalMessage = messages.find((m) =>
@@ -145,7 +145,7 @@ describe("swarm_review integration", () => {
 		expect(approvalMessage?.subject).toContain(subtask.id);
 	});
 
-	test.skip("review needs_changes flow", async () => {
+	test("review needs_changes flow", async () => {
 		// Setup: create epic + subtask
 		const epicResult = await hive_create.execute(
 			{
@@ -199,11 +199,11 @@ describe("swarm_review integration", () => {
 		expect(feedbackParsed.attempt).toBe(1);
 
 		// Verify message was sent with issues
-		const messages = await swarmMail.messages.fetchInbox({
-			projectPath: testProjectPath,
-			agentName: "TestWorker",
-			limit: 10,
-		});
+		const messages = await swarmMail.getInbox(
+			testProjectPath,
+			"TestWorker",
+			{ limit: 10 }
+		);
 		expect(messages.length).toBeGreaterThan(0);
 
 		const needsChangesMessage = messages.find((m) =>
@@ -214,7 +214,7 @@ describe("swarm_review integration", () => {
 		expect(needsChangesMessage?.subject).toContain("attempt 1/3");
 	});
 
-	test.skip("3-strike rule: task marked blocked after 3 rejections", async () => {
+	test("3-strike rule: task marked blocked after 3 rejections", async () => {
 		// Setup: create epic + subtask
 		const epicResult = await hive_create.execute(
 			{
@@ -276,11 +276,11 @@ describe("swarm_review integration", () => {
 		expect(updatedCell?.status).toBe("blocked");
 
 		// Verify final failure message was sent
-		const messages = await swarmMail.messages.fetchInbox({
-			projectPath: testProjectPath,
-			agentName: "TestWorker",
-			limit: 10,
-		});
+		const messages = await swarmMail.getInbox(
+			testProjectPath,
+			"TestWorker",
+			{ limit: 10 }
+		);
 
 		const failedMessage = messages.find((m) => m.subject.includes("FAILED"));
 		expect(failedMessage).toBeDefined();

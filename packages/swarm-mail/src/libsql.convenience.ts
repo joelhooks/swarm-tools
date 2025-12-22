@@ -139,12 +139,13 @@ export async function getSwarmMailLibSQL(
     return instances.get(key)!;
   }
 
-  // Create new instance
-  const dbPath = getDatabasePath(projectPath);
-  const db = await createLibSQLAdapter({ url: dbPath });
+  // CRITICAL: Use the shared adapter cache from store.ts to ensure
+  // all callers (sendSwarmMessage, getInbox, appendEvent) use the SAME adapter.
+  // Fixes bug where sendSwarmMessage created a different adapter, causing empty inbox.
+  const { getOrCreateAdapter } = await import("./streams/store.js");
+  const db = await getOrCreateAdapter(undefined, projectPath);
 
-  // Initialize schemas
-  await createLibSQLStreamsSchema(db);
+  // Initialize memory schema (streams schema already initialized by getOrCreateAdapter)
   // Cast to access getClient() - we know this is a LibSQLAdapter
   await createLibSQLMemorySchema((db as any).getClient());
 
@@ -202,6 +203,11 @@ export async function closeSwarmMailLibSQL(
   if (instance) {
     await instance.close();
     instances.delete(key);
+    
+    // CRITICAL: Also clear from the shared adapter cache in store.ts
+    // to prevent returning closed adapters on next getSwarmMailLibSQL call
+    const { clearAdapterCache } = await import("./streams/store.js");
+    clearAdapterCache();
   }
 }
 
@@ -217,6 +223,10 @@ export async function closeAllSwarmMailLibSQL(): Promise<void> {
 
   await Promise.all(closePromises);
   instances.clear();
+  
+  // CRITICAL: Also clear from the shared adapter cache in store.ts
+  const { clearAdapterCache } = await import("./streams/store.js");
+  clearAdapterCache();
 }
 
 /**

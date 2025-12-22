@@ -8,6 +8,7 @@
 import { describe, test, expect, beforeEach, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createTestLibSQLDb } from "../test-libsql.js";
 import type { DatabaseAdapter } from "../types/database.js";
 import {
@@ -23,7 +24,7 @@ import {
 // Test Setup
 // ============================================================================
 
-const TEST_DIR = join(import.meta.dir, ".test-memory-sync");
+const TEST_DIR = join(tmpdir(), `test-memory-sync-${Date.now()}`);
 const HIVE_DIR = join(TEST_DIR, ".hive");
 
 describe("Memory Sync", () => {

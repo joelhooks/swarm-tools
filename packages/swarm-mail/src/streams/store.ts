@@ -38,8 +38,10 @@ export function clearAdapterCache(): void {
  * @param dbOverride - Optional explicit adapter (for dependency injection)
  * @param projectPath - Optional project path (uses global DB if not provided)
  * @returns DatabaseAdapter instance
+ * 
+ * @internal Exported for use by store-drizzle.ts to ensure adapter consistency
  */
-async function getOrCreateAdapter(
+export async function getOrCreateAdapter(
   dbOverride?: DatabaseAdapter,
   projectPath?: string,
 ): Promise<DatabaseAdapter> {

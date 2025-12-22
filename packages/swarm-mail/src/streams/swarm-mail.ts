@@ -290,13 +290,14 @@ export async function sendSwarmMessage(
   await appendEvent(messageEvent, projectPath, dbOverride);
 
   // Get the message ID from the messages table (not the event ID)
-  const { getDatabasePath } = await import("./index");
-  const { createLibSQLAdapter } = await import("../libsql");
+  // CRITICAL: Use same adapter as appendEvent above to avoid empty inbox bug
   const { toDrizzleDb } = await import("../libsql.convenience");
   const { messagesTable } = await import("../db/schema/streams");
   const { eq, desc, and } = await import("drizzle-orm");
   
-  const adapter = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
+  // Use getOrCreateAdapter from store-drizzle to get the same cached adapter
+  const { getOrCreateAdapter } = await import("./store-drizzle");
+  const adapter = await getOrCreateAdapter(projectPath, dbOverride);
   const swarmDb = toDrizzleDb(adapter);
   const result = await swarmDb
     .select({ id: messagesTable.id })

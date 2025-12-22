@@ -550,21 +550,22 @@ async function handleSwarmRecoveredDrizzle(
 /**
  * Utility: Get or create database adapter with schema initialization
  * 
- * CRITICAL: All convenience wrappers MUST call this to ensure schema exists.
- * Fixes bug where raw adapters (dbOverride) or auto-created adapters
- * would throw "no such table" errors.
+ * CRITICAL: Uses the cached adapter from store.ts to ensure all callers
+ * (appendEvent, sendSwarmMessage, getInbox) use the SAME database instance.
+ * 
+ * Fixes bug where sendSwarmMessage created a different adapter than the test,
+ * causing empty inbox (messages written to adapter A, read from adapter B).
+ * 
+ * NOTE: Parameter order matches store-drizzle.ts convention (projectPath, dbOverride)
+ * but delegates to store.ts which uses (dbOverride, projectPath). We swap them here.
+ * 
+ * @internal Exported for use by swarm-mail.ts to ensure adapter consistency
  */
-async function getOrCreateAdapter(projectPath?: string, dbOverride?: any): Promise<any> {
-  const { getDatabasePath } = await import("./index.js");
-  const { createLibSQLAdapter } = await import("../libsql.js");
-  const { createLibSQLStreamsSchema } = await import("./libsql-schema.js");
+export async function getOrCreateAdapter(projectPath?: string, dbOverride?: any): Promise<any> {
+  const { getOrCreateAdapter: getCachedAdapter } = await import("./store.js");
   
-  const db = dbOverride ?? (await createLibSQLAdapter({ url: getDatabasePath(projectPath) }));
-  
-  // CRITICAL: Ensure schema exists (idempotent - safe to call multiple times)
-  await createLibSQLStreamsSchema(db);
-  
-  return db;
+  // CRITICAL: store.ts expects (dbOverride, projectPath) - swap parameter order!
+  return getCachedAdapter(dbOverride, projectPath);
 }
 
 /**

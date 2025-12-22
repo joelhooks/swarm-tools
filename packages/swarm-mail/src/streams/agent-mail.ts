@@ -500,14 +500,32 @@ export async function reserveAgentFiles(
     const { Effect } = await import("effect");
     const { acquireLock, DurableLockLive } = await import("./effect/lock");
     
-    for (const path of paths) {
-      const program = Effect.gen(function* (_) {
-        const lock = yield* _(acquireLock(path, { db, ttlSeconds }));
-        return lock.holder;
-      });
+    try {
+      for (const path of paths) {
+        const program = Effect.gen(function* (_) {
+          const lock = yield* _(acquireLock(path, { db, ttlSeconds }));
+          return lock.holder;
+        });
+        
+        const holder = await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
+        lockHolderIds.push(holder);
+      }
+    } catch (error) {
+      // Close database connection if we created it
+      if (!dbOverride) {
+        await db.close?.();
+      }
       
-      const holder = await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
-      lockHolderIds.push(holder);
+      // Re-throw with meaningful context
+      if (error && typeof error === 'object' && '_tag' in error) {
+        // Effect-TS LockError types
+        const lockError = error as { _tag: string; resource?: string; holder?: string };
+        throw new Error(`Failed to acquire lock for file reservation: ${lockError._tag}${lockError.resource ? ` (resource: ${lockError.resource})` : ''}`);
+      }
+      
+      // Database or other errors
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to acquire locks for file reservation: ${message}`);
     }
   }
 

@@ -404,6 +404,7 @@ describe("Beads Adapter", () => {
       expect(updated.status).toBe("closed");
       expect(updated.closed_at).toBeGreaterThan(0);
       expect(updated.closed_at).not.toBeNull();
+      expect(updated.closed_reason).toBe("Done via status change");
     });
 
     test("RED: changeCellStatus from 'closed' to 'open' clears closed_at", async () => {

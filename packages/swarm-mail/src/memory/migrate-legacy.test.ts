@@ -43,8 +43,29 @@ import {
   legacyDatabaseExists,
   targetHasMemories,
 } from "./migrate-legacy.js";
-import { wrapPGlite } from "../pglite.js";
 import { runMigrations } from "../streams/migrations.js";
+import type { DatabaseAdapter } from "../types/database.js";
+
+/**
+ * Wrap a PGlite instance as a DatabaseAdapter (inlined for test use only)
+ */
+function wrapPGlite(pglite: any): DatabaseAdapter {
+  return {
+    async query<T = unknown>(sql: string, params?: unknown[]) {
+      const result = await pglite.query(sql, params);
+      return { rows: result.rows as T[] };
+    },
+    async exec(sql: string) {
+      await pglite.exec(sql);
+    },
+    async transaction<T>(fn: (tx: DatabaseAdapter) => Promise<T>): Promise<T> {
+      return await fn(this);
+    },
+    async close() {
+      await pglite.close();
+    },
+  };
+}
 
 describeIf("Legacy Memory Migration", () => {
   let legacyDb: PGlite;

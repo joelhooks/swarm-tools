@@ -183,7 +183,7 @@ describe("swarm-mail", () => {
 
       expect(result).toBeDefined();
       expect(result.healthy).toBe(true);
-      expect(result.database).toBe("libsql");
+      expect(result.database).toBe("connected");
     });
 
     test("should work without projectPath (global DB)", async () => {

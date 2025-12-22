@@ -20,6 +20,7 @@ import { createEvent } from "./events";
 // Note: isDatabaseHealthy and getDatabaseStats have been removed (PGlite infrastructure cleanup)
 // Use Drizzle-based implementations that auto-create adapters when dbOverride is not provided
 import {
+  type Conflict,
   checkConflicts,
   getActiveReservations,
   getInbox,
@@ -471,7 +472,7 @@ export async function reserveSwarmFiles(
 
   return {
     granted,
-    conflicts: conflicts.map((c) => ({
+    conflicts: conflicts.map((c: Conflict) => ({
       path: c.path,
       holder: c.holder,
       pattern: c.pattern,
@@ -585,6 +586,6 @@ export async function checkSwarmHealth(
   
   return {
     healthy: isHealthy,
-    database: "libsql",
+    database: isHealthy ? "connected" : "disconnected",
   };
 }

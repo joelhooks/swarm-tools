@@ -13,16 +13,16 @@
  *
  * ## Usage
  * ```typescript
- * import { wrapPGlite } from '@opencode/swarm-mail/pglite';
- * import { createHiveAdapter } from '@opencode/swarm-mail/beads';
+ * import { createInMemorySwarmMailLibSQL } from 'swarm-mail';
+ * import { createHiveAdapter } from 'swarm-mail';
  *
- * const pglite = new PGlite('./streams.db');
- * const db = wrapPGlite(pglite);
- * const beads = createHiveAdapter(db, '/path/to/project');
+ * const swarmMail = await createInMemorySwarmMailLibSQL('my-project');
+ * const db = await swarmMail.getDatabase();
+ * const hive = createHiveAdapter(db, '/path/to/project');
  *
  * // Use the adapter
- * await beads.createCell(projectKey, { title: "Task", type: "task", priority: 2 });
- * const bead = await beads.getCell(projectKey, "bd-123");
+ * await hive.createCell(projectKey, { title: "Task", type: "task", priority: 2 });
+ * const cell = await hive.getCell(projectKey, "cell-123");
  * ```
  */
 
@@ -61,7 +61,7 @@ import type { CellEvent } from "./events.js";
 /**
  * Create a HiveAdapter instance
  *
- * @param db - DatabaseAdapter instance (PGLite, SQLite, PostgreSQL, etc.)
+ * @param db - DatabaseAdapter instance (libSQL, SQLite, etc.)
  * @param projectKey - Project identifier (typically the project path)
  * @returns HiveAdapter interface
  */

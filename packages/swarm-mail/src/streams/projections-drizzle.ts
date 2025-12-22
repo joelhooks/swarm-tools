@@ -658,7 +658,7 @@ export async function checkConflicts(
   paths: string[],
   projectPath?: string,
   dbOverride?: any,
-): Promise<ConflictResult> {
+): Promise<Conflict[]> {
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
   const db = await getOrCreateAdapter(projectPath, dbOverride);

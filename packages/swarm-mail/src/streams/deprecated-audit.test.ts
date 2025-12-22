@@ -20,7 +20,7 @@ describe("Deprecated Code Audit - All Issues Resolved", () => {
       const result = await checkSwarmHealth();
       
       expect(result.healthy).toBe(true);
-      expect(result.database).toBe("libsql");
+      expect(result.database).toBe("connected");
     });
 
     test("checkHealth() in agent-mail should work (was deprecated, now delegates)", async () => {
@@ -29,7 +29,7 @@ describe("Deprecated Code Audit - All Issues Resolved", () => {
       const result = await checkHealth();
       
       expect(result.healthy).toBe(true);
-      expect(result.database).toBe("libsql");
+      expect(result.database).toBe("connected");
     });
   });
 

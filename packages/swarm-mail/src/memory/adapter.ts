@@ -14,11 +14,10 @@
  * ## Usage
  * ```typescript
  * import { createMemoryAdapter } from './adapter.js';
- * import { wrapPGlite } from '../pglite.js';
- * import { PGlite } from '@electric-sql/pglite';
+ * import { createInMemorySwarmMailLibSQL } from 'swarm-mail';
  *
- * const pglite = await PGlite.create({ dataDir: './db' });
- * const db = wrapPGlite(pglite);
+ * const swarmMail = await createInMemorySwarmMailLibSQL('my-project');
+ * const db = swarmMail.getDrizzle();
  * const config = {
  *   ollamaHost: 'http://localhost:11434',
  *   ollamaModel: 'mxbai-embed-large',

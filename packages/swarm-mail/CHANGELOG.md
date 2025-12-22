@@ -1,5 +1,208 @@
 # swarm-mail
 
+## 1.3.0
+
+### Minor Changes
+
+- [#54](https://github.com/joelhooks/swarm-tools/pull/54) [`358e18f`](https://github.com/joelhooks/swarm-tools/commit/358e18f0f7f18d03492ef16c2c1d3edd85c00101) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 The Great Drizzle Migration
+
+  > _"In most cases, a change to an application's features also requires a change to data that it stores: perhaps a new field or record type needs to be captured, or perhaps existing data needs to be presented in a new way."_
+  > — Martin Kleppmann, _Designing Data-Intensive Applications_
+
+  The hive's data layer got a complete overhaul. PGlite is out, libSQL is in, and Drizzle ORM now handles all the heavy lifting.
+
+  ```
+  ┌─────────────────────────────────────────────────────┐
+  │                  BEFORE → AFTER                     │
+  ├─────────────────────────────────────────────────────┤
+  │  PGlite (WASM Postgres)  →  libSQL (SQLite fork)   │
+  │  Raw SQL strings         →  Drizzle ORM            │
+  │  Implicit connections    →  Explicit adapters      │
+  │  Test flakiness          →  Deterministic tests    │
+  └─────────────────────────────────────────────────────┘
+  ```
+
+  ### What Changed
+
+  **Database Layer:**
+
+  - Migrated from PGlite to libSQL for all persistence
+  - Introduced `DatabaseAdapter` interface for dependency injection
+  - All Effect primitives now accept explicit database connections
+  - Added `getSwarmMailLibSQL()` factory for clean initialization
+
+  **Effect Primitives Refactored:**
+
+  - `DurableDeferred` - now takes adapter, cleaner resolve/reject
+  - `DurableLock` - explicit connection, better timeout handling
+  - `DurableCursor` - adapter-based, no global state
+  - `DurableMailbox` - consistent with other primitives
+
+  **Test Infrastructure:**
+
+  - 32 failing tests fixed through schema alignment
+  - `createInMemorySwarmMail()` for fast, isolated tests
+  - No more WASM initialization flakiness
+  - Tests run in <100ms instead of 5s+
+
+  **Schema Alignment:**
+
+  - Unified schema between memory and streams
+  - Fixed PostgreSQL → SQLite syntax (ANY() → IN())
+  - Vector search now uses proper `vector_top_k` with index
+
+  ### Migration Notes
+
+  If you were using internal APIs:
+
+  ```typescript
+  // BEFORE (implicit global state)
+  import { getDatabase } from "swarm-mail";
+  const db = await getDatabase();
+
+  // AFTER (explicit adapter)
+  import { getSwarmMailLibSQL } from "swarm-mail";
+  const adapter = await getSwarmMailLibSQL({ path: "./data.db" });
+  ```
+
+  **PGlite is deprecated.** It remains only for migrating legacy databases. New code should use libSQL exclusively.
+
+  ### Why This Matters
+
+  - **Faster tests** - No WASM cold start, in-memory SQLite is instant
+  - **Cleaner architecture** - No hidden global state, explicit dependencies
+  - **Better debugging** - Drizzle's query logging beats raw SQL
+  - **Future-proof** - libSQL's Turso integration for edge deployment
+
+### Patch Changes
+
+- [#54](https://github.com/joelhooks/swarm-tools/pull/54) [`358e18f`](https://github.com/joelhooks/swarm-tools/commit/358e18f0f7f18d03492ef16c2c1d3edd85c00101) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🧪 Integration Test Coverage: 0% → 95%
+
+  > _"Many characterization tests look like 'sunny day' tests. They don't test many special conditions; they just verify that particular behaviors are present. From their presence, we can infer that refactoring hasn't broken anything."_
+  > — Michael Feathers, _Working Effectively with Legacy Code_
+
+  We had a bug that broke ALL swarm tools:
+
+  ```
+  Error: [streams/store] dbOverride parameter is required for this function.
+  PGlite getDatabase() has been removed.
+  ```
+
+  **Why didn't tests catch it?** No integration tests exercised the full tool → store → DB path.
+
+  **Now they do.**
+
+  ```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │              tool-adapter.integration.test.ts                   │
+  ├─────────────────────────────────────────────────────────────────┤
+  │  20 tests | 75 assertions | 1.3s                                │
+  │                                                                 │
+  │  ✅ swarmmail_* tools (6 tests)                                 │
+  │  ✅ hive_* tools (7 tests)                                      │
+  │  ✅ swarm_progress, swarm_status (2 tests)                      │
+  │  ✅ swarm_broadcast, swarm_checkpoint (2 tests)                 │
+  │  ✅ semantic_memory_store, semantic_memory_find (2 tests)       │
+  │  ✅ Smoke test - 9 tools in sequence (1 test)                   │
+  └─────────────────────────────────────────────────────────────────┘
+  ```
+
+  ### What's Tested
+
+  Each test calls `tool.execute()` and verifies:
+
+  1. No "dbOverride required" error (the bug symptom)
+  2. Tool returns expected structure
+  3. Full path works: tool → store → DB → response
+
+  ### The Smoke Test
+
+  Runs 9 tools in sequence to catch interaction bugs:
+
+  ```
+  swarmmail_init → hive_create → swarmmail_reserve → swarm_progress
+  → semantic_memory_store → semantic_memory_find → swarmmail_send
+  → hive_close → swarmmail_release
+  ```
+
+  If ANY step throws "dbOverride required", the test fails.
+
+  ### Also Fixed
+
+  - **Auto-adapter creation** in store.ts - functions now auto-create adapters when not provided
+  - **Exported `clearAdapterCache()`** for test isolation
+  - **Migrated test files** from old `getDatabase()` to adapter pattern
+
+  ### Mandatory Coordinator Review Loop
+
+  Added `COORDINATOR_POST_WORKER_CHECKLIST` constant and `post_completion_instructions` field to `swarm_spawn_subtask`. Coordinators now get explicit instructions to review worker output before spawning the next worker.
+
+  The "dbOverride required" bug **cannot recur undetected**.
+
+- [#54](https://github.com/joelhooks/swarm-tools/pull/54) [`358e18f`](https://github.com/joelhooks/swarm-tools/commit/358e18f0f7f18d03492ef16c2c1d3edd85c00101) Thanks [@joelhooks](https://github.com/joelhooks)! - ## Fix: Bare Filesystem Paths Now Work with libSQL
+
+  ```
+  ┌─────────────────────────────────────────────────────────────┐
+  │  BEFORE: URL_INVALID error on bare paths                    │
+  │  AFTER:  Automatic normalization to file: URLs              │
+  └─────────────────────────────────────────────────────────────┘
+  ```
+
+  **The Bug:**
+
+  ```
+  Error: URL_INVALID: The URL '/Users/joel/.config/swarm-tools/swarm.db'
+  is not in a valid format
+  ```
+
+  libSQL's `createClient()` requires URL-formatted paths (`file:/path/to/db.db`),
+  but `getDatabasePath()` returns bare filesystem paths (`/path/to/db.db`).
+
+  **The Fix:**
+  `createLibSQLAdapter()` now normalizes bare paths automatically:
+
+  ```typescript
+  // These all work now:
+  createLibSQLAdapter({ url: "/path/to/db.db" }); // → file:/path/to/db.db
+  createLibSQLAdapter({ url: "./relative/db.db" }); // → file:./relative/db.db
+  createLibSQLAdapter({ url: ":memory:" }); // → :memory: (unchanged)
+  createLibSQLAdapter({ url: "file:/path/db.db" }); // → file:/path/db.db (unchanged)
+  createLibSQLAdapter({ url: "libsql://host/db" }); // → libsql://host/db (unchanged)
+  ```
+
+  **Affected Users:**
+  Anyone using `swarmmail_init` or other tools that create file-based databases
+  was hitting this error. Now it just works.
+
+- [#54](https://github.com/joelhooks/swarm-tools/pull/54) [`358e18f`](https://github.com/joelhooks/swarm-tools/commit/358e18f0f7f18d03492ef16c2c1d3edd85c00101) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🧹 PGLite Exorcism Complete
+
+  The last vestiges of PGLite runtime code have been swept away. What remains is only the migration machinery—kept for users upgrading from the old world.
+
+  **Removed:**
+
+  - `pglite.ts` - The `wrapPGlite()` shim that nobody was importing
+  - `leader-election.ts` - PGLite-specific file locking (libSQL handles this natively)
+  - Associated test files
+
+  **Added:**
+
+  - `pglite-remnants.regression.test.ts` - 9 tests ensuring array parameter handling works correctly in libSQL (the `IN()` vs `ANY()` saga)
+
+  **Updated:**
+
+  - JSDoc examples now show libSQL patterns instead of PGLite
+  - Migration test inlines the `wrapPGlite` helper it needs
+
+  **What's left of PGLite:**
+
+  - `migrate-pglite-to-libsql.ts` - Dynamic import, only loads when migrating
+  - `memory/migrate-legacy.ts` - Same pattern, migration-only
+  - Comments explaining the differences (documentation, not code)
+
+  > "The best code is no code at all." — Jeff Atwood
+
+  The swarm flies lighter now. 🐝
+
 ## 1.2.2
 
 ### Patch Changes

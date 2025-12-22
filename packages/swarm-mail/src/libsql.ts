@@ -282,8 +282,22 @@ class LibSQLAdapter implements DatabaseAdapter {
 export async function createLibSQLAdapter(
 	config: LibSQLConfig,
 ): Promise<DatabaseAdapter> {
+	// Normalize bare filesystem paths to file: URLs
+	// libSQL requires URL format - bare paths like "/path/to/db.db" fail with URL_INVALID
+	// Valid formats: ":memory:", "file:/path", "file:./path", "libsql://", "http://", "https://"
+	let url = config.url;
+	if (
+		url !== ":memory:" &&
+		!url.startsWith("file:") &&
+		!url.startsWith("libsql:") &&
+		!url.startsWith("http:") &&
+		!url.startsWith("https:")
+	) {
+		url = `file:${url}`;
+	}
+
 	const clientConfig: Config = {
-		url: config.url,
+		url,
 		...(config.authToken && { authToken: config.authToken }),
 	};
 

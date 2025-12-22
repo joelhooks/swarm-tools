@@ -1,6 +1,55 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createLibSQLAdapter } from "./libsql.js";
 import type { DatabaseAdapter } from "./types/database.js";
+
+describe("createLibSQLAdapter URL normalization", () => {
+	const testDbPath = join(tmpdir(), `libsql-url-test-${Date.now()}.db`);
+
+	afterEach(() => {
+		// Clean up test database file
+		if (existsSync(testDbPath)) {
+			unlinkSync(testDbPath);
+		}
+		// Also clean up WAL/SHM files if they exist
+		if (existsSync(`${testDbPath}-wal`)) {
+			unlinkSync(`${testDbPath}-wal`);
+		}
+		if (existsSync(`${testDbPath}-shm`)) {
+			unlinkSync(`${testDbPath}-shm`);
+		}
+	});
+
+	test("normalizes bare filesystem paths to file: URLs", async () => {
+		// This is the bug: bare paths like "/path/to/db.db" should work
+		// libSQL requires "file:/path/to/db.db" format
+		const db = await createLibSQLAdapter({ url: testDbPath });
+		await db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY)");
+		await db.exec("INSERT INTO test (id) VALUES (1)");
+		const result = await db.query<{ id: number }>("SELECT id FROM test");
+		expect(result.rows).toHaveLength(1);
+		expect(result.rows[0]?.id).toBe(1);
+		await db.close?.();
+	});
+
+	test("preserves file: URLs that already have the prefix", async () => {
+		const db = await createLibSQLAdapter({ url: `file:${testDbPath}` });
+		await db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY)");
+		const result = await db.query("SELECT 1 as n");
+		expect(result.rows).toHaveLength(1);
+		await db.close?.();
+	});
+
+	test("preserves :memory: special URL", async () => {
+		const db = await createLibSQLAdapter({ url: ":memory:" });
+		await db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY)");
+		const result = await db.query("SELECT 1 as n");
+		expect(result.rows).toHaveLength(1);
+		await db.close?.();
+	});
+});
 
 describe("LibSQLAdapter", () => {
 	let db: DatabaseAdapter;

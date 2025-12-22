@@ -560,7 +560,7 @@ export async function appendEvent(
   const { createLibSQLAdapter } = await import("../libsql.js");
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
-  const db = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
+  const db = dbOverride ?? (await createLibSQLAdapter({ url: getDatabasePath(projectPath) }));
   const swarmDb = toDrizzleDb(db);
   
   return appendEventDrizzle(swarmDb, event);
@@ -586,7 +586,7 @@ export async function readEvents(
   const { createLibSQLAdapter } = await import("../libsql.js");
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
-  const db = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
+  const db = dbOverride ?? (await createLibSQLAdapter({ url: getDatabasePath(projectPath) }));
   const swarmDb = toDrizzleDb(db);
   
   return readEventsDrizzle(swarmDb, options);
@@ -604,7 +604,7 @@ export async function getLatestSequence(
   const { createLibSQLAdapter } = await import("../libsql.js");
   const { toDrizzleDb } = await import("../libsql.convenience.js");
   
-  const db = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
+  const db = dbOverride ?? (await createLibSQLAdapter({ url: getDatabasePath(projectPath) }));
   const swarmDb = toDrizzleDb(db);
   
   return getLatestSequenceDrizzle(swarmDb, projectKey);

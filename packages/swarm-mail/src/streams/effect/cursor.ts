@@ -131,11 +131,12 @@ async function loadCursorPosition(
 
   if (result.rows.length === 0) {
     // Initialize cursor at position 0
-    await db.exec(`
-      INSERT INTO cursors (stream, checkpoint, position, updated_at)
-      VALUES ('${stream}', '${checkpoint}', 0, ${Date.now()})
-      ON CONFLICT (stream, checkpoint) DO NOTHING
-    `);
+    await db.query(
+      `INSERT INTO cursors (stream, checkpoint, position, updated_at)
+       VALUES (?, ?, 0, ?)
+       ON CONFLICT (stream, checkpoint) DO NOTHING`,
+      [stream, checkpoint, Date.now()],
+    );
     return 0;
   }
 
@@ -151,12 +152,13 @@ async function saveCursorPosition(
   position: number,
   db: DatabaseAdapter,
 ): Promise<void> {
-  await db.exec(`
-    INSERT INTO cursors (stream, checkpoint, position, updated_at)
-    VALUES ('${stream}', '${checkpoint}', ${position}, ${Date.now()})
-    ON CONFLICT (stream, checkpoint)
-    DO UPDATE SET position = EXCLUDED.position, updated_at = EXCLUDED.updated_at
-  `);
+  await db.query(
+    `INSERT INTO cursors (stream, checkpoint, position, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (stream, checkpoint)
+     DO UPDATE SET position = EXCLUDED.position, updated_at = EXCLUDED.updated_at`,
+    [stream, checkpoint, position, Date.now()],
+  );
 }
 
 /**

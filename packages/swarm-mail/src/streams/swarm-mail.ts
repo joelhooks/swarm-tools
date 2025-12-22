@@ -93,6 +93,7 @@ export interface InitSwarmAgentOptions {
   program?: string;
   model?: string;
   taskDescription?: string;
+  dbOverride?: any;
 }
 
 export interface SendSwarmMessageOptions {
@@ -104,6 +105,7 @@ export interface SendSwarmMessageOptions {
   threadId?: string;
   importance?: "low" | "normal" | "high" | "urgent";
   ackRequired?: boolean;
+  dbOverride?: any;
 }
 
 export interface SendSwarmMessageResult {
@@ -120,6 +122,7 @@ export interface GetSwarmInboxOptions {
   urgentOnly?: boolean;
   unreadOnly?: boolean;
   includeBodies?: boolean;
+  dbOverride?: any;
 }
 
 export interface SwarmInboxMessage {
@@ -142,6 +145,7 @@ export interface ReadSwarmMessageOptions {
   messageId: number;
   agentName?: string;
   markAsRead?: boolean;
+  dbOverride?: any;
 }
 
 export interface ReserveSwarmFilesOptions {
@@ -152,6 +156,7 @@ export interface ReserveSwarmFilesOptions {
   exclusive?: boolean;
   ttlSeconds?: number;
   force?: boolean;
+  dbOverride?: any;
 }
 
 export interface GrantedSwarmReservation {
@@ -177,6 +182,7 @@ export interface ReleaseSwarmFilesOptions {
   agentName: string;
   paths?: string[];
   reservationIds?: number[];
+  dbOverride?: any;
 }
 
 export interface ReleaseSwarmFilesResult {
@@ -188,6 +194,7 @@ export interface AcknowledgeSwarmOptions {
   projectPath: string;
   messageId: number;
   agentName: string;
+  dbOverride?: any;
 }
 
 export interface AcknowledgeSwarmResult {
@@ -224,6 +231,7 @@ export async function initSwarmAgent(
     program = "opencode",
     model = "unknown",
     taskDescription,
+    dbOverride,
   } = options;
 
   // Register the agent (creates event + updates view)
@@ -235,7 +243,7 @@ export async function initSwarmAgent(
     model,
     task_description: taskDescription,
   });
-  await appendEvent(event, projectPath);
+  await appendEvent(event, projectPath, dbOverride);
 
   return {
     projectKey: projectPath,
@@ -264,6 +272,7 @@ export async function sendSwarmMessage(
     threadId,
     importance = "normal",
     ackRequired = false,
+    dbOverride,
   } = options;
 
   // Inline the sendMessage logic using appendEvent + createEvent
@@ -277,7 +286,7 @@ export async function sendSwarmMessage(
     importance,
     ack_required: ackRequired,
   });
-  await appendEvent(messageEvent, projectPath);
+  await appendEvent(messageEvent, projectPath, dbOverride);
 
   // Get the message ID from the messages table (not the event ID)
   const { getDatabasePath } = await import("./index");
@@ -286,8 +295,7 @@ export async function sendSwarmMessage(
   const { messagesTable } = await import("../db/schema/streams");
   const { eq, desc, and } = await import("drizzle-orm");
   
-  const dbPath = getDatabasePath(projectPath);
-  const adapter = await createLibSQLAdapter({ url: `file:${dbPath}` });
+  const adapter = dbOverride ?? (await createLibSQLAdapter({ url: `file:${getDatabasePath(projectPath)}` }));
   const swarmDb = toDrizzleDb(adapter);
   const result = await swarmDb
     .select({ id: messagesTable.id })
@@ -325,6 +333,7 @@ export async function getSwarmInbox(
     urgentOnly = false,
     unreadOnly = false,
     includeBodies = false,
+    dbOverride,
   } = options;
 
   // Enforce max limit
@@ -340,6 +349,7 @@ export async function getSwarmInbox(
       includeBodies,
     },
     projectPath,
+    dbOverride,
   );
 
   return {
@@ -362,9 +372,9 @@ export async function getSwarmInbox(
 export async function readSwarmMessage(
   options: ReadSwarmMessageOptions,
 ): Promise<SwarmInboxMessage | null> {
-  const { projectPath, messageId, agentName, markAsRead = false } = options;
+  const { projectPath, messageId, agentName, markAsRead = false, dbOverride } = options;
 
-  const message = await getMessage(projectPath, messageId, projectPath);
+  const message = await getMessage(projectPath, messageId, projectPath, dbOverride);
 
   if (!message) {
     return null;
@@ -379,6 +389,7 @@ export async function readSwarmMessage(
         agent_name: agentName,
       }),
       projectPath,
+      dbOverride,
     );
   }
 
@@ -415,6 +426,7 @@ export async function reserveSwarmFiles(
     reason,
     exclusive = true,
     ttlSeconds = DEFAULT_TTL_SECONDS,
+    dbOverride,
   } = options;
 
   // Check for conflicts first
@@ -423,6 +435,7 @@ export async function reserveSwarmFiles(
     agentName,
     paths,
     projectPath,
+    dbOverride,
   );
 
   // Always create reservations - conflicts are warnings, not blockers
@@ -436,13 +449,14 @@ export async function reserveSwarmFiles(
     ttl_seconds: ttlSeconds,
     expires_at: Date.now() + ttlSeconds * 1000,
   });
-  await appendEvent(reserveEvent, projectPath);
+  await appendEvent(reserveEvent, projectPath, dbOverride);
 
   // Query the actual reservation IDs from the database
   const reservations = await getActiveReservations(
     projectPath,
     projectPath,
     agentName,
+    dbOverride,
   );
 
   // Filter to just the paths we reserved (most recent ones)
@@ -473,13 +487,14 @@ export async function reserveSwarmFiles(
 export async function releaseSwarmFiles(
   options: ReleaseSwarmFilesOptions,
 ): Promise<ReleaseSwarmFilesResult> {
-  const { projectPath, agentName, paths, reservationIds } = options;
+  const { projectPath, agentName, paths, reservationIds, dbOverride } = options;
 
   // Get current reservations to count what we're releasing
   const currentReservations = await getActiveReservations(
     projectPath,
     projectPath,
     agentName,
+    dbOverride,
   );
 
   let releaseCount = 0;
@@ -508,6 +523,7 @@ export async function releaseSwarmFiles(
       reservation_ids: reservationIds,
     }),
     projectPath,
+    dbOverride,
   );
 
   return {
@@ -526,7 +542,7 @@ export async function releaseSwarmFiles(
 export async function acknowledgeSwarmMessage(
   options: AcknowledgeSwarmOptions,
 ): Promise<AcknowledgeSwarmResult> {
-  const { projectPath, messageId, agentName } = options;
+  const { projectPath, messageId, agentName, dbOverride } = options;
 
   const timestamp = Date.now();
 
@@ -537,6 +553,7 @@ export async function acknowledgeSwarmMessage(
       agent_name: agentName,
     }),
     projectPath,
+    dbOverride,
   );
 
   return {

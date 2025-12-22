@@ -19,15 +19,14 @@ import {
   acknowledgeSwarmMessage,
 } from "./swarm-mail";
 
-// TODO: These tests fail in CI because auto-adapter creation uses file-based databases.
-// Need to refactor tests to use explicit in-memory adapters via dbOverride parameter
-// instead of relying on auto-creation behavior.
-describe.skip("swarm-mail", () => {
+describe("swarm-mail", () => {
   let swarmMail: SwarmMailAdapter;
+  let db: any; // LibSQLAdapter
   const TEST_PROJECT = "/test/swarm-mail-test";
 
   beforeAll(async () => {
     swarmMail = await createInMemorySwarmMailLibSQL("swarm-mail-test");
+    db = await swarmMail.getDatabase();
   });
 
   afterAll(async () => {
@@ -35,14 +34,14 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("initSwarmAgent", () => {
-    test("should initialize agent without throwing dbOverride error", async () => {
-      // This should NOT throw "dbOverride parameter is required"
+    test("should initialize agent using in-memory adapter", async () => {
       const result = await initSwarmAgent({
         projectPath: TEST_PROJECT,
         agentName: "TestAgent",
         program: "test",
         model: "test-model",
         taskDescription: "Testing swarm-mail",
+        dbOverride: db,
       });
 
       expect(result.projectKey).toBe(TEST_PROJECT);
@@ -51,20 +50,21 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("sendSwarmMessage", () => {
-    test("should send message without throwing dbOverride error", async () => {
+    test("should send message using in-memory adapter", async () => {
       // First init an agent
       await initSwarmAgent({
         projectPath: TEST_PROJECT,
         agentName: "Sender",
+        dbOverride: db,
       });
 
-      // This should NOT throw "dbOverride parameter is required"
       const result = await sendSwarmMessage({
         projectPath: TEST_PROJECT,
         fromAgent: "Sender",
         toAgents: ["Receiver"],
         subject: "Test Subject",
         body: "Test Body",
+        dbOverride: db,
       });
 
       expect(result.success).toBe(true);
@@ -73,17 +73,18 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("getSwarmInbox", () => {
-    test("should get inbox without throwing dbOverride error", async () => {
+    test("should get inbox using in-memory adapter", async () => {
       // Init receiver agent
       await initSwarmAgent({
         projectPath: TEST_PROJECT,
         agentName: "Receiver",
+        dbOverride: db,
       });
 
-      // This should NOT throw "dbOverride parameter is required"
       const result = await getSwarmInbox({
         projectPath: TEST_PROJECT,
         agentName: "Receiver",
+        dbOverride: db,
       });
 
       expect(result.messages).toBeDefined();
@@ -92,7 +93,7 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("readSwarmMessage", () => {
-    test("should read message without throwing dbOverride error", async () => {
+    test("should read message using in-memory adapter", async () => {
       // Send a message first
       const sendResult = await sendSwarmMessage({
         projectPath: TEST_PROJECT,
@@ -100,15 +101,16 @@ describe.skip("swarm-mail", () => {
         toAgents: ["Reader"],
         subject: "Read Test",
         body: "Read Test Body",
+        dbOverride: db,
       });
 
-      // This should NOT throw "dbOverride parameter is required"
       const message = await readSwarmMessage({
         projectPath: TEST_PROJECT,
         messageId: sendResult.messageId,
+        dbOverride: db,
       });
 
-      // Message may or may not exist depending on timing, but should not throw
+      // Message should exist in in-memory db
       if (message) {
         expect(message.subject).toBe("Read Test");
       }
@@ -116,18 +118,19 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("reserveSwarmFiles", () => {
-    test("should reserve files without throwing dbOverride error", async () => {
+    test("should reserve files using in-memory adapter", async () => {
       await initSwarmAgent({
         projectPath: TEST_PROJECT,
         agentName: "FileAgent",
+        dbOverride: db,
       });
 
-      // This should NOT throw "dbOverride parameter is required"
       const result = await reserveSwarmFiles({
         projectPath: TEST_PROJECT,
         agentName: "FileAgent",
         paths: ["src/test.ts"],
         reason: "Testing",
+        dbOverride: db,
       });
 
       expect(result.granted).toBeDefined();
@@ -136,12 +139,12 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("releaseSwarmFiles", () => {
-    test("should release files without throwing dbOverride error", async () => {
-      // This should NOT throw "dbOverride parameter is required"
+    test("should release files using in-memory adapter", async () => {
       const result = await releaseSwarmFiles({
         projectPath: TEST_PROJECT,
         agentName: "FileAgent",
         paths: ["src/test.ts"],
+        dbOverride: db,
       });
 
       expect(result.released).toBeDefined();
@@ -150,7 +153,7 @@ describe.skip("swarm-mail", () => {
   });
 
   describe("acknowledgeSwarmMessage", () => {
-    test("should acknowledge message without throwing dbOverride error", async () => {
+    test("should acknowledge message using in-memory adapter", async () => {
       // Send a message first
       const sendResult = await sendSwarmMessage({
         projectPath: TEST_PROJECT,
@@ -159,13 +162,14 @@ describe.skip("swarm-mail", () => {
         subject: "Ack Test",
         body: "Ack Test Body",
         ackRequired: true,
+        dbOverride: db,
       });
 
-      // This should NOT throw "dbOverride parameter is required"
       const result = await acknowledgeSwarmMessage({
         projectPath: TEST_PROJECT,
         messageId: sendResult.messageId,
         agentName: "AckAgent",
+        dbOverride: db,
       });
 
       expect(result.acknowledged).toBe(true);

@@ -398,4 +398,57 @@ describe("DurableLock", () => {
       await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
     });
   });
+
+  describe("SQL Injection Prevention", () => {
+    it("should handle malicious resource names safely", async () => {
+      const program = Effect.gen(function* (_) {
+        // Try resource name with SQL injection attempt
+        const maliciousResource = "test'; DROP TABLE locks; --";
+        const lock = yield* _(acquireLock(maliciousResource, config()));
+
+        expect(lock.resource).toBe(maliciousResource);
+        expect(lock.seq).toBe(0);
+
+        // Should be able to release with same malicious name
+        yield* _(lock.release());
+
+        // Verify locks table still exists by acquiring another lock
+        const lock2 = yield* _(acquireLock("normal-resource", config()));
+        expect(lock2.seq).toBe(0);
+        yield* _(lock2.release());
+      });
+
+      await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
+    });
+
+    it("should handle malicious holder IDs safely", async () => {
+      const program = Effect.gen(function* (_) {
+        const maliciousHolder = "holder' OR '1'='1";
+        const lock = yield* _(
+          acquireLock("test-resource", config({ holderId: maliciousHolder })),
+        );
+
+        expect(lock.holder).toBe(maliciousHolder);
+
+        // Should only release with exact holder match
+        yield* _(lock.release());
+      });
+
+      await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
+    });
+
+    it("should handle resource names with special characters", async () => {
+      const program = Effect.gen(function* (_) {
+        const specialChars = ["test'resource", 'test"resource', "test\\resource", "test\nresource"];
+
+        for (const resource of specialChars) {
+          const lock = yield* _(acquireLock(resource, config()));
+          expect(lock.resource).toBe(resource);
+          yield* _(lock.release());
+        }
+      });
+
+      await Effect.runPromise(program.pipe(Effect.provide(DurableLockLive)));
+    });
+  });
 });

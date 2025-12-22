@@ -118,7 +118,6 @@ export function getOldProjectDbPaths(projectPath: string): {
 // ============================================================================
 
 export * from "./agent-mail";
-export * from "./debug";
 export * from "./events";
 export * from "./migrations";
 export type {

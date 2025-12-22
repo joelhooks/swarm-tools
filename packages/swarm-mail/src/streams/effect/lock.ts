@@ -197,10 +197,11 @@ async function tryAcquire(
 
   if (!existing) {
     // No existing lock - INSERT new one
-    await db.exec(`
-      INSERT INTO locks (resource, holder, seq, acquired_at, expires_at)
-      VALUES ('${resource}', '${holder}', 0, ${now}, ${expiresAt})
-    `);
+    await db.query(
+      `INSERT INTO locks (resource, holder, seq, acquired_at, expires_at)
+       VALUES (?, ?, 0, ?, ?)`,
+      [resource, holder, now, expiresAt]
+    );
     return { seq: 0, acquiredAt: now };
   }
 
@@ -211,11 +212,12 @@ async function tryAcquire(
   if (isExpired || isSameHolder) {
     // We can take over - UPDATE with incremented seq
     const newSeq = existing.seq + 1;
-    await db.exec(`
-      UPDATE locks
-      SET holder = '${holder}', seq = ${newSeq}, acquired_at = ${now}, expires_at = ${expiresAt}
-      WHERE resource = '${resource}'
-    `);
+    await db.query(
+      `UPDATE locks
+       SET holder = ?, seq = ?, acquired_at = ?, expires_at = ?
+       WHERE resource = ?`,
+      [holder, newSeq, now, expiresAt, resource]
+    );
     return { seq: newSeq, acquiredAt: now };
   }
 
@@ -243,7 +245,10 @@ async function tryRelease(
     return false;
   }
 
-  await db.exec(`DELETE FROM locks WHERE resource = '${resource}' AND holder = '${holder}'`);
+  await db.query(
+    `DELETE FROM locks WHERE resource = ? AND holder = ?`,
+    [resource, holder]
+  );
   return true;
 }
 

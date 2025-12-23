@@ -1,5 +1,265 @@
 # opencode-swarm-plugin
 
+## 0.33.0
+
+### Minor Changes
+
+- [`c41abcf`](https://github.com/joelhooks/swarm-tools/commit/c41abcfa37292b72fe41e0cf9d25c6612ae75fa2) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🎓 Skills Grow Up: Discovery Moves to OpenCode
+
+  > _"The best code is no code at all. Every new line of code you willingly bring into the world is code that has to be debugged, code that has to be read and understood, code that has to be supported."_
+  > — Jeff Atwood
+
+  Skills outgrew the nest. OpenCode is shipping native skills support following the [Agent Skills spec](https://spec.agentskills.com/), and our discovery tools are now redundant. Time to deprecate the scaffolding and let the platform handle what it does best.
+
+  ### What Changed
+
+  **Deprecated Tools** (soft deprecation with console warnings):
+
+  - `skills_list` - OpenCode will handle discovery natively
+  - `skills_use` - OpenCode will handle loading via `use skill <name>` syntax
+  - `skills_read` - OpenCode will handle resource access transparently
+  - `skills_execute` - OpenCode will handle script execution in skill context
+
+  **Authoring Tools Kept** (fully functional, no changes):
+
+  - `skills_create` - Create new skills with SKILL.md template
+  - `skills_update` - Update existing skill content
+  - `skills_init` - Initialize skills directory in projects
+  - `skills_add_script` - Add executable scripts to skills
+  - `skills_delete` - Remove project skills
+
+  **Bundled Skills** - All 6 global skills remain intact and spec-compliant:
+
+  - `testing-patterns` - Feathers seams + Beck's 4 rules
+  - `swarm-coordination` - Multi-agent task orchestration
+  - `cli-builder` - Command-line interface patterns
+  - `learning-systems` - Confidence decay, pattern maturity
+  - `skill-creator` - Meta-skill for authoring new skills
+  - `system-design` - Architecture decision frameworks
+
+  ### Why It Matters
+
+  **Before:** Two overlapping skill systems causing confusion. Agents could use plugin tools OR OpenCode's native syntax, with different behavior and semantics.
+
+  **After:** One canonical path. OpenCode owns discovery and loading. Plugin owns authoring and validation. Clean separation of concerns.
+
+  **Benefits:**
+
+  - No tool conflicts between plugin and platform
+  - Native OpenCode syntax (`use skill testing-patterns`) works seamlessly
+  - Simpler mental model for users
+  - Authoring tools remain for creating spec-compliant skills
+
+  ### Migration Path
+
+  **For Discovery/Loading:**
+
+  ```typescript
+  // OLD (deprecated, still works but warns)
+  skills_list()
+  skills_use(name="testing-patterns")
+
+  // NEW (OpenCode native syntax)
+  use skill testing-patterns
+  use skill cli-builder with "building argument parser"
+  ```
+
+  **For Authoring (no change needed):**
+
+  ```typescript
+  // Still fully supported
+  skills_create((name = "my-skill"), (description = "Domain expertise"));
+  skills_update((name = "my-skill"), (content = "Updated SKILL.md"));
+  skills_add_script(
+    (skill_name = "my-skill"),
+    (script_name = "validate.ts"),
+    (content = "...")
+  );
+  ```
+
+  ### Backward Compatibility
+
+  **Yes, with warnings.** Deprecated tools continue to function but emit console warnings directing users to OpenCode's native syntax. No breaking changes in this release.
+
+  Future major version (v1.0) will remove deprecated discovery tools entirely. Authoring tools remain permanent.
+
+  ### What This Means for Bundled Skills
+
+  Nothing changes. All 6 global skills ship with the plugin and are accessible via OpenCode's native `use skill <name>` syntax. They follow the Agent Skills spec and work identically whether loaded via deprecated plugin tools or native OpenCode.
+
+  The `global-skills/` directory remains the canonical source for our curated skill library.
+
+- [`4feebaf`](https://github.com/joelhooks/swarm-tools/commit/4feebafed61caa8e2e8729b44bd415d71afd6834) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 LLM-Powered Compaction: The Swarm Remembers
+
+  > "The best way to predict the future is to invent it." — Alan Kay
+
+  Compaction just got smarter. Instead of static "here's what to preserve" instructions, the swarm now **generates dynamic continuation prompts** with actual state data.
+
+  **What changed:**
+
+  The `experimental.session.compacting` hook now uses a three-level fallback chain:
+
+  1. **LLM-Generated Prompt** (NEW) - Queries actual swarm state (cells, epics, subtasks), shells out to `opencode run -m <liteModel>` to generate a structured continuation prompt with real IDs, real status, real next actions
+  2. **Static Context** - Falls back to `SWARM_COMPACTION_CONTEXT` if LLM fails
+  3. **Detection Fallback** - For low-confidence swarm detection, injects `SWARM_DETECTION_FALLBACK`
+  4. **None** - No injection if no swarm evidence
+
+  **Progressive Enhancement:**
+
+  Uses OpenCode PR #5907's new `output.prompt` API when available:
+
+  ```typescript
+  if ("prompt" in output) {
+    output.prompt = llmGeneratedPrompt; // Replaces entire compaction prompt
+  } else {
+    output.context.push(llmGeneratedPrompt); // Old API fallback
+  }
+  ```
+
+  **New interfaces:**
+
+  - `SwarmStateSnapshot` - Structured state for LLM input
+  - `querySwarmState()` - Queries cells via swarm CLI
+  - `generateCompactionPrompt()` - Shells out to lite model (30s timeout)
+
+  **Why it matters:**
+
+  Before: "Hey, you should preserve swarm state" (agent has to figure out what that means)
+  After: "Here's epic bd-xyz with 3/5 subtasks done, bd-xyz.2 is blocked on auth, spawn bd-xyz.4 next"
+
+  The coordinator wakes up from compaction with **concrete data**, not instructions to go find data.
+
+  **Backward compatible:** Falls back gracefully on older OpenCode versions or LLM failures.
+
+- [`652fd16`](https://github.com/joelhooks/swarm-tools/commit/652fd16ff424eff92ebb3f5da0599caf676de2ce) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🔭 Observability Stack MVP: See What Your Swarm Is Doing
+
+  > "You can't improve what you can't measure." — Peter Drucker
+
+  The swarm just got eyes. This release adds comprehensive observability for multi-agent coordination, answering the eternal question: "Why did my epic fail?"
+
+  ### What's New
+
+  **Structured Error Classes** (swarm-mail)
+
+  - `BaseSwarmError` with rich context: agent, bead_id, epic_id, timestamp, recent events
+  - Specialized errors: `ReservationError`, `CheckpointError`, `ValidationError`, `DecompositionError`
+  - Every error includes actionable suggestions for resolution
+  - Full `toJSON()` serialization for logging and debugging
+
+  **DEBUG Logging** (swarm-mail)
+
+  - `DEBUG=swarm:*` environment variable filtering
+  - 4 subsystems: `swarm:events`, `swarm:reservations`, `swarm:messages`, `swarm:checkpoints`
+  - Zero overhead when disabled
+
+  **swarm-db CLI** (swarm-mail)
+
+  ```bash
+  # Raw SQL queries (SELECT only, max 1000 rows)
+  swarm-db query "SELECT type, COUNT(*) FROM events GROUP BY type"
+
+  # Pre-built analytics
+  swarm-db analytics failed-decompositions --since 7d --format json
+
+  # List available analytics
+  swarm-db list
+  ```
+
+  **10 Pre-built Analytics Queries** (Four Golden Signals mapped)
+  | Query | What It Answers |
+  |-------|-----------------|
+  | `failed-decompositions` | Which strategies are failing? |
+  | `strategy-success-rates` | What's working? |
+  | `lock-contention` | Where are agents fighting over files? |
+  | `agent-activity` | Who's doing what? |
+  | `message-latency` | How fast is coordination? |
+  | `scope-violations` | Who's touching files they shouldn't? |
+  | `task-duration` | How long do tasks take? |
+  | `checkpoint-frequency` | Are agents checkpointing enough? |
+  | `recovery-success` | Do checkpoints actually help? |
+  | `human-feedback` | What are reviewers rejecting? |
+
+  **Agent-Facing Tools** (opencode-swarm-plugin)
+
+  ```typescript
+  // Query analytics programmatically
+  swarm_analytics({
+    query: "failed-decompositions",
+    since: "7d",
+    format: "summary",
+  });
+
+  // Raw SQL for power users (max 50 rows, context-safe)
+  swarm_query({ sql: "SELECT * FROM events WHERE type = 'task_blocked'" });
+
+  // Auto-diagnosis for debugging
+  swarm_diagnose({
+    epic_id: "bd-123",
+    include: ["blockers", "errors", "timeline"],
+  });
+
+  // Learning insights for feedback loops
+  swarm_insights({ scope: "epic", metrics: ["success_rate", "avg_duration"] });
+  ```
+
+  ### Why This Matters
+
+  Before: "The swarm failed. No idea why."
+  After: "Strategy X failed 80% of the time due to file conflicts. Switching to Y."
+
+  Event sourcing was already 80% of the solution. This release adds the diagnostic views to make that data actionable.
+
+  ### Test Coverage
+
+  - 588 tests passing
+  - 1214 assertions
+  - Full TDD: every feature started with a failing test
+
+- [`ca9936d`](https://github.com/joelhooks/swarm-tools/commit/ca9936d09b749449ef3c88fd3ec8b937f6ed7c29) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🔬 Research Phase: Docs Before Decomposition
+
+  Swarm coordinators now gather documentation BEFORE breaking down tasks. No more workers fumbling through outdated API assumptions.
+
+  **What's New:**
+
+  - **swarm/researcher agent** - READ-ONLY doc gatherer that discovers tools, reads lockfiles, fetches version-specific docs, and stores findings in semantic-memory
+  - **Pre-decomposition research** - Coordinator analyzes task → identifies tech stack → spawns researchers → injects findings into shared_context
+  - **On-demand research for workers** - Workers can spawn researchers when hitting unknowns mid-task
+  - **`--check-upgrades` flag** - Compare installed vs latest versions from npm registry
+
+  **New Tools:**
+
+  | Tool                     | Purpose                                                     |
+  | ------------------------ | ----------------------------------------------------------- |
+  | `swarm_discover_tools`   | Runtime discovery of available doc tools (MCP, CLI, skills) |
+  | `swarm_get_versions`     | Parse lockfiles (npm/pnpm/yarn/bun) for installed versions  |
+  | `swarm_spawn_researcher` | Generate researcher prompt for Task tool                    |
+  | `swarm_research_phase`   | Manual trigger for research orchestration                   |
+
+  **Architecture:**
+
+  ```
+  Coordinator receives task
+      ↓
+  runResearchPhase(task, projectPath)
+      ↓
+    extractTechStack() → identify technologies
+    discoverDocTools() → find available tools
+    getInstalledVersions() → read lockfiles
+    Spawn researchers (parallel)
+    Collect summaries → shared_context
+      ↓
+  Normal decomposition with enriched context
+  ```
+
+  **Why This Matters:**
+
+  Workers now start with version-specific documentation instead of hallucinating APIs. Researchers store detailed findings in semantic-memory, so future agents don't repeat the research.
+
+### Patch Changes
+
+- Updated dependencies [[`652fd16`](https://github.com/joelhooks/swarm-tools/commit/652fd16ff424eff92ebb3f5da0599caf676de2ce)]:
+  - swarm-mail@1.4.0
+
 ## 0.32.0
 
 ### Minor Changes

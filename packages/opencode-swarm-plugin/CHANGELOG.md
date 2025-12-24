@@ -1,5 +1,133 @@
 # opencode-swarm-plugin
 
+## 0.38.0
+
+### Minor Changes
+
+- [`41a1965`](https://github.com/joelhooks/swarm-tools/commit/41a19657b252eb1c7a7dc82bc59ab13589e8758f) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 Coordinators Now Delegate Research to Workers
+
+  Coordinators finally know their place. They orchestrate, they don't fetch.
+
+  **The Problem:**
+  Coordinators were calling `repo-crawl_file`, `webfetch`, `context7_*` directly, burning expensive Sonnet context on raw file contents instead of spawning researcher workers.
+
+  **The Fix:**
+
+  ### Forbidden Tools Section
+
+  COORDINATOR_PROMPT now explicitly lists tools coordinators must NEVER call:
+
+  - `repo-crawl_*`, `repo-autopsy_*` - repository fetching
+  - `webfetch`, `fetch_fetch` - web fetching
+  - `context7_*` - library documentation
+  - `pdf-brain_search`, `pdf-brain_read` - knowledge base
+
+  ### Phase 1.5: Research Phase
+
+  New workflow phase between Initialize and Knowledge Gathering:
+
+  ```
+  swarm_spawn_researcher(
+    research_id="research-nextjs-cache",
+    tech_stack=["Next.js 16 Cache Components"],
+    project_path="/path/to/project"
+  )
+  ```
+
+  ### Strong Coordinator Identity Post-Compaction
+
+  When context compacts, the resuming agent now sees:
+
+  ```
+  ┌─────────────────────────────────────────────────────────────┐
+  │             🐝  YOU ARE THE COORDINATOR  🐝                 │
+  │             NOT A WORKER. NOT AN IMPLEMENTER.               │
+  │                  YOU ORCHESTRATE.                           │
+  └─────────────────────────────────────────────────────────────┘
+  ```
+
+  ### runResearchPhase Returns Spawn Instructions
+
+  ```typescript
+  const result = await runResearchPhase(task, projectPath);
+  // result.spawn_instructions = [
+  //   { research_id, tech, prompt, subagent_type: "swarm/researcher" }
+  // ]
+  ```
+
+  **32+ new tests, all 425 passing.**
+
+- [`b06f69b`](https://github.com/joelhooks/swarm-tools/commit/b06f69bc3db099c14f712585d88b42c801123d01) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🔬 Eval Capture Pipeline: Complete
+
+  > "The purpose of computing is insight, not numbers." — Richard Hamming
+
+  Wire all eval-capture functions into the swarm execution path, enabling ground-truth collection from real swarm executions.
+
+  **What changed:**
+
+  | Function                  | Wired Into                     | Purpose                            |
+  | ------------------------- | ------------------------------ | ---------------------------------- |
+  | `captureDecomposition()`  | `swarm_validate_decomposition` | Records task → subtasks mapping    |
+  | `captureSubtaskOutcome()` | `swarm_complete`               | Records per-subtask execution data |
+  | `finalizeEvalRecord()`    | `swarm_record_outcome`         | Computes aggregate metrics         |
+
+  **New npm scripts:**
+
+  ```bash
+  bun run eval:run           # Run all evals
+  bun run eval:decomposition # Decomposition quality
+  bun run eval:coordinator   # Coordinator discipline
+  ```
+
+  **Data flow:**
+
+  ```
+  swarm_decompose → captureDecomposition → .opencode/eval-data.jsonl
+         ↓
+  swarm_complete → captureSubtaskOutcome → updates record with outcomes
+         ↓
+  swarm_record_outcome → finalizeEvalRecord → computes scope_accuracy, time_balance
+         ↓
+  evalite → reads JSONL → scores decomposition quality
+  ```
+
+  **Why it matters:**
+
+  - Enables data-driven decomposition strategy selection
+  - Tracks which strategies work for which task types
+  - Provides ground truth for Evalite evals
+  - Foundation for learning from swarm outcomes
+
+  **Key discovery:** New cell ID format doesn't follow `epicId.subtaskNum` pattern. Must use `cell.parent_id` to get epic ID for subtasks.
+
+### Patch Changes
+
+- [`56e5d4c`](https://github.com/joelhooks/swarm-tools/commit/56e5d4c5ac96ddd2184d12c63e163bb9c291fb69) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🔬 Eval Capture Pipeline: Phase 1
+
+  > "The first step toward wisdom is getting things right. The second step is getting them wrong in interesting ways." — Marvin Minsky
+
+  Wire `captureDecomposition()` into `swarm_validate_decomposition` to record decomposition inputs/outputs for evaluation.
+
+  **What changed:**
+
+  - `swarm_validate_decomposition` now calls `captureDecomposition()` after successful validation
+  - Captures: epicId, projectPath, task, context, strategy, epicTitle, subtasks
+  - Data persisted to `.opencode/eval-data.jsonl` for Evalite consumption
+
+  **Why it matters:**
+
+  - Enables ground-truth collection from real swarm executions
+  - Foundation for decomposition quality evals
+  - Tracks what strategies work for which task types
+
+  **Tests added:**
+
+  - Verifies `captureDecomposition` called with correct params on success
+  - Verifies NOT called on validation failure
+  - Handles optional context/description fields
+
+  **Next:** Wire `captureSubtaskOutcome()` and `finalizeEvalRecord()` to complete the pipeline.
+
 ## 0.37.0
 
 ### Minor Changes

@@ -162,11 +162,10 @@ export type {
 } from "./analytics/index.js";
 
 // Four Golden Signals analytics (new root-level module)
-export {
-	ANALYTICS_QUERIES,
-	runAnalyticsQuery,
-	type AnalyticsQuery,
-} from "./analytics.js";
+export { ANALYTICS_QUERIES, runAnalyticsQuery } from "./analytics.js";
+
+// AnalyticsQuery type (from query-builder module)
+export type { AnalyticsQuery } from "./analytics/types.js";
 
 // ============================================================================
 // Hive Module Exports (work item tracking)

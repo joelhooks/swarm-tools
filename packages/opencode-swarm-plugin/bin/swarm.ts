@@ -1153,9 +1153,17 @@ const result2 = await Task(subagent_type="swarm/worker", prompt="<from above>")
 4. **SEND FEEDBACK** - Approve or request changes
    \`swarm_review_feedback(project_key, task_id, worker_id, status, issues)\`
    
-   If approved: Close cell, spawn next worker
-   If needs_changes: Worker retries (max 3 attempts)
-   If 3 failures: Mark blocked, escalate to human
+   **If approved:**
+   - Close cell, spawn next worker
+   
+   **If needs_changes:**
+   - \`swarm_review_feedback\` returns \`retry_context\` (NOT sends message - worker is dead)
+   - Generate retry prompt: \`swarm_spawn_retry(retry_context)\`
+   - Spawn NEW worker with Task() using retry prompt
+   - Max 3 attempts before marking task blocked
+   
+   **If 3 failures:**
+   - Mark task blocked, escalate to human
 
 5. **ONLY THEN** - Spawn next worker or complete
 

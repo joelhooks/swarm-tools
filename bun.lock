@@ -45,7 +45,7 @@
     },
     "packages/opencode-swarm-plugin": {
       "name": "opencode-swarm-plugin",
-      "version": "0.35.0",
+      "version": "0.36.0",
       "bin": {
         "swarm": "./bin/swarm.ts",
       },

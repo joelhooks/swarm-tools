@@ -1,5 +1,67 @@
 # opencode-swarm-plugin
 
+## 0.36.0
+
+### Minor Changes
+
+- [`ae213aa`](https://github.com/joelhooks/swarm-tools/commit/ae213aa49be977e425e0a767b5b2db16e462f76b) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🔬 Compaction Hook: Now With X-Ray Vision
+
+  The compaction hook was logging to `console.log` like a caveman. Now it writes structured JSON logs to `~/.config/swarm-tools/logs/compaction.log` - visible via `swarm log compaction`.
+
+  **The Problem:**
+
+  - Plugin wrapper used `console.log` → stdout → invisible
+  - npm package had pino logging → but wrapper didn't use it
+  - Running `/compact` gave zero visibility into what happened
+
+  **The Fix:**
+  Added comprehensive file-based logging throughout the compaction flow:
+
+  ```
+  ┌─────────────────────────────────────────────────────────────┐
+  │                    COMPACTION LOGGING                       │
+  ├─────────────────────────────────────────────────────────────┤
+  │  compaction_hook_invoked     │ Full input/output objects    │
+  │  detect_swarm_*              │ CLI calls, cells, confidence │
+  │  query_swarm_state_*         │ Epic/subtask extraction      │
+  │  generate_compaction_prompt_*│ LLM timing, success/failure  │
+  │  context_injected_via_*      │ Which API used               │
+  │  compaction_complete_*       │ Final result + timing        │
+  └─────────────────────────────────────────────────────────────┘
+  ```
+
+  **Also Enhanced:**
+
+  - SDK message scanning for precise swarm state extraction
+  - Merged scanned state (ground truth) with hive detection (heuristic)
+  - 9 new tests for `scanSessionMessages()` (32 total passing)
+
+  **To See It Work:**
+
+  ```bash
+  swarm setup --reinstall  # Regenerate plugin wrapper
+  # Run /compact in OpenCode
+  swarm log compaction     # See what happened
+  ```
+
+### Patch Changes
+
+- [`5cfc42e`](https://github.com/joelhooks/swarm-tools/commit/5cfc42e93d3e5424e308857a40af4fd9fbda0ba3) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 Swarm Workers Unchained
+
+  Removed the vestigial `max_subtasks` parameter from decomposition tools. It was dead code - the prompts already say "as many as needed" and the replacement was doing nothing.
+
+  **What changed:**
+
+  - Removed `max_subtasks` arg from `swarm_decompose`, `swarm_plan_prompt`, `swarm_delegate_planning`
+  - Removed from `DecomposeArgsSchema`
+  - Renamed `max_subtasks` → `subtask_count` in eval capture (records actual count, not a limit)
+  - Cleaned up tests that were passing the unused parameter
+
+  **Why it matters:**
+  The LLM decides how many subtasks based on task complexity, not an arbitrary cap. "Plan aggressively" means spawn as many workers as the task needs.
+
+  **No functional change** - the parameter wasn't being used anyway.
+
 ## 0.35.0
 
 ### Minor Changes

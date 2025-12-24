@@ -218,7 +218,8 @@ describe("swarm_spawn_subtask tool", () => {
     expect(instructions).toContain("Step 3: Evaluate Against Criteria");
     expect(instructions).toContain("Step 4: Send Feedback");
     expect(instructions).toContain("swarm_review_feedback");
-    expect(instructions).toContain("Step 5: ONLY THEN Continue");
+    expect(instructions).toContain("Step 5: Take Action Based on Review");
+    expect(instructions).toContain("swarm_spawn_retry"); // Should include retry flow
   });
 
   test("post_completion_instructions substitutes placeholders", async () => {
@@ -653,5 +654,167 @@ describe("swarm_spawn_researcher tool", () => {
     expect(parsed.tech_stack).toEqual(["Next.js", "React", "TypeScript"]);
     expect(parsed.project_path).toBe("/Users/joel/Code/project");
     expect(parsed.check_upgrades).toBe(true);
+  });
+});
+
+describe("swarm_spawn_retry tool", () => {
+  test("generates valid retry prompt with issues", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task: implement feature X",
+      attempt: 1,
+      issues: JSON.stringify([
+        { file: "src/feature.ts", line: 42, issue: "Missing null check", suggestion: "Add null check" }
+      ]),
+      files: ["src/feature.ts"],
+      project_path: "/Users/joel/Code/project",
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed).toHaveProperty("prompt");
+    expect(typeof parsed.prompt).toBe("string");
+    expect(parsed.prompt).toContain("RETRY ATTEMPT");
+    expect(parsed.prompt).toContain("Missing null check");
+  });
+
+  test("includes attempt number in prompt header", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task",
+      attempt: 2,
+      issues: "[]",
+      files: ["src/test.ts"],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.prompt).toContain("RETRY ATTEMPT 2/3");
+    expect(parsed.attempt).toBe(2);
+  });
+
+  test("includes diff when provided", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const diffContent = `diff --git a/src/test.ts b/src/test.ts
++++ b/src/test.ts
+@@ -1 +1 @@
+-const x = 1;
++const x = null;`;
+
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task",
+      attempt: 1,
+      issues: "[]",
+      diff: diffContent,
+      files: ["src/test.ts"],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.prompt).toContain(diffContent);
+    expect(parsed.prompt).toContain("PREVIOUS ATTEMPT");
+  });
+
+  test("rejects attempt > 3 with error", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    await expect(async () => {
+      await swarm_spawn_retry.execute({
+        bead_id: "test-project-abc123-task1",
+        epic_id: "test-project-abc123-epic1",
+        original_prompt: "Original task",
+        attempt: 4,
+        issues: "[]",
+        files: ["src/test.ts"],
+      });
+    }).toThrow(/attempt.*exceeds.*maximum/i);
+  });
+
+  test("formats issues as readable list", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const issues = [
+      { file: "src/a.ts", line: 10, issue: "Missing error handling", suggestion: "Add try-catch" },
+      { file: "src/b.ts", line: 20, issue: "Type mismatch", suggestion: "Fix types" }
+    ];
+
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task",
+      attempt: 1,
+      issues: JSON.stringify(issues),
+      files: ["src/a.ts", "src/b.ts"],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.prompt).toContain("ISSUES FROM PREVIOUS ATTEMPT");
+    expect(parsed.prompt).toContain("src/a.ts:10");
+    expect(parsed.prompt).toContain("Missing error handling");
+    expect(parsed.prompt).toContain("src/b.ts:20");
+    expect(parsed.prompt).toContain("Type mismatch");
+  });
+
+  test("returns expected response structure", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task",
+      attempt: 1,
+      issues: "[]",
+      files: ["src/test.ts"],
+      project_path: "/Users/joel/Code/project",
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed).toHaveProperty("prompt");
+    expect(parsed).toHaveProperty("bead_id", "test-project-abc123-task1");
+    expect(parsed).toHaveProperty("attempt", 1);
+    expect(parsed).toHaveProperty("max_attempts", 3);
+    expect(parsed).toHaveProperty("files");
+    expect(parsed.files).toEqual(["src/test.ts"]);
+  });
+
+  test("includes standard worker contract (swarmmail_init, reserve, complete)", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task",
+      attempt: 1,
+      issues: "[]",
+      files: ["src/test.ts"],
+      project_path: "/Users/joel/Code/project",
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.prompt).toContain("swarmmail_init");
+    expect(parsed.prompt).toContain("swarmmail_reserve");
+    expect(parsed.prompt).toContain("swarm_complete");
+  });
+
+  test("instructs to preserve working changes", async () => {
+    const { swarm_spawn_retry } = await import("./swarm-prompts");
+    
+    const result = await swarm_spawn_retry.execute({
+      bead_id: "test-project-abc123-task1",
+      epic_id: "test-project-abc123-epic1",
+      original_prompt: "Original task",
+      attempt: 1,
+      issues: JSON.stringify([{ file: "src/test.ts", line: 1, issue: "Bug", suggestion: "Fix" }]),
+      files: ["src/test.ts"],
+    });
+
+    const parsed = JSON.parse(result);
+    expect(parsed.prompt).toMatch(/preserve.*working|fix.*while preserving/i);
   });
 });

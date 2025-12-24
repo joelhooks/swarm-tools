@@ -743,10 +743,32 @@ swarm_review_feedback(
 )
 \`\`\`
 
-### Step 5: ONLY THEN Continue
-- If approved: Close the cell, spawn next worker
-- If needs_changes: Worker gets feedback, retries (max 3 attempts)
-- If 3 failures: Mark blocked, escalate to human
+### Step 5: Take Action Based on Review
+
+**If APPROVED:**
+- Close the cell with hive_close
+- Spawn next worker (if any) using swarm_spawn_subtask
+
+**If NEEDS_CHANGES:**
+- Generate retry prompt:
+  \`\`\`
+  swarm_spawn_retry(
+    bead_id="{task_id}",
+    epic_id="{epic_id}",
+    original_prompt="<original prompt>",
+    attempt=<current_attempt>,
+    issues="<JSON from swarm_review_feedback>",
+    diff="<git diff of previous changes>",
+    files=[{files_touched}],
+    project_path="{project_key}"
+  )
+  \`\`\`
+- Spawn new worker with Task() using the retry prompt
+- Increment attempt counter (max 3 attempts)
+
+**If 3 FAILURES:**
+- Mark task as blocked: \`hive_update(id="{task_id}", status="blocked")\`
+- Escalate to human - likely an architectural problem, not execution issue
 
 **⚠️ DO NOT spawn the next worker until review is complete.**
 `;
@@ -1165,6 +1187,157 @@ export const swarm_spawn_researcher = tool({
 });
 
 /**
+ * Generate retry prompt for a worker that needs to fix issues from review feedback
+ * 
+ * Coordinators use this when swarm_review_feedback returns "needs_changes".
+ * Creates a new worker spawn with context about what went wrong and what to fix.
+ */
+export const swarm_spawn_retry = tool({
+  description:
+    "Generate retry prompt for a worker that failed review. Includes issues from previous attempt, diff if provided, and standard worker contract.",
+  args: {
+    bead_id: tool.schema.string().describe("Original subtask bead ID"),
+    epic_id: tool.schema.string().describe("Parent epic bead ID"),
+    original_prompt: tool.schema.string().describe("The prompt given to failed worker"),
+    attempt: tool.schema.number().int().min(1).max(3).describe("Current attempt number (1, 2, or 3)"),
+    issues: tool.schema.string().describe("JSON array of ReviewIssue objects from swarm_review_feedback"),
+    diff: tool.schema
+      .string()
+      .optional()
+      .describe("Git diff of previous changes"),
+    files: tool.schema
+      .array(tool.schema.string())
+      .describe("Files to modify (from original subtask)"),
+    project_path: tool.schema
+      .string()
+      .optional()
+      .describe("Absolute project path for swarmmail_init"),
+  },
+  async execute(args) {
+    // Validate attempt number
+    if (args.attempt > 3) {
+      throw new Error(
+        `Retry attempt ${args.attempt} exceeds maximum of 3. After 3 failures, task should be marked blocked.`,
+      );
+    }
+
+    // Parse issues
+    let issuesArray: Array<{
+      file: string;
+      line: number;
+      issue: string;
+      suggestion: string;
+    }> = [];
+    try {
+      issuesArray = JSON.parse(args.issues);
+    } catch (e) {
+      // If issues is not valid JSON, treat as empty array
+      issuesArray = [];
+    }
+
+    // Format issues section
+    const issuesSection = issuesArray.length > 0
+      ? `## ISSUES FROM PREVIOUS ATTEMPT
+
+The previous attempt had the following issues that need to be fixed:
+
+${issuesArray
+  .map(
+    (issue, idx) =>
+      `**${idx + 1}. ${issue.file}:${issue.line}**
+   - **Issue**: ${issue.issue}
+   - **Suggestion**: ${issue.suggestion}`,
+  )
+  .join("\n\n")}
+
+**Critical**: Fix these issues while preserving any working changes from the previous attempt.`
+      : "";
+
+    // Format diff section
+    const diffSection = args.diff
+      ? `## PREVIOUS ATTEMPT
+
+Here's what was tried in the previous attempt:
+
+\`\`\`diff
+${args.diff}
+\`\`\`
+
+Review this carefully - some changes may be correct and should be preserved.`
+      : "";
+
+    // Build the retry prompt
+    const retryPrompt = `⚠️ **RETRY ATTEMPT ${args.attempt}/3**
+
+This is a retry of a previously attempted subtask. The coordinator reviewed the previous attempt and found issues that need to be fixed.
+
+${issuesSection}
+
+${diffSection}
+
+## ORIGINAL TASK
+
+${args.original_prompt}
+
+## YOUR MISSION
+
+1. **Understand what went wrong** - Read the issues carefully
+2. **Fix the specific problems** - Address each issue listed above
+3. **Preserve working code** - Don't throw away correct changes from previous attempt
+4. **Follow the standard worker contract** - See below
+
+## MANDATORY WORKER CONTRACT
+
+### Step 1: Initialize (REQUIRED FIRST)
+\`\`\`
+swarmmail_init(project_path="${args.project_path || "$PWD"}", task_description="${args.bead_id}: Retry ${args.attempt}/3")
+\`\`\`
+
+### Step 2: Reserve Files
+\`\`\`
+swarmmail_reserve(
+  paths=${JSON.stringify(args.files)},
+  reason="${args.bead_id}: Retry attempt ${args.attempt}",
+  exclusive=true
+)
+\`\`\`
+
+### Step 3: Fix the Issues
+- Address each issue listed above
+- Run tests to verify fixes
+- Don't introduce new bugs
+
+### Step 4: Complete
+\`\`\`
+swarm_complete(
+  project_key="${args.project_path || "$PWD"}",
+  agent_name="<your-agent-name>",
+  bead_id="${args.bead_id}",
+  summary="Fixed issues from review: <brief summary>",
+  files_touched=[<files you modified>]
+)
+\`\`\`
+
+**Remember**: This is attempt ${args.attempt} of 3. If this fails review again, there may be an architectural problem that needs human intervention.
+
+Begin work now.`;
+
+    return JSON.stringify(
+      {
+        prompt: retryPrompt,
+        bead_id: args.bead_id,
+        attempt: args.attempt,
+        max_attempts: 3,
+        files: args.files,
+        issues_count: issuesArray.length,
+      },
+      null,
+      2,
+    );
+  },
+});
+
+/**
  * Generate self-evaluation prompt
  */
 export const swarm_evaluation_prompt = tool({
@@ -1353,6 +1526,7 @@ export const promptTools = {
   swarm_subtask_prompt,
   swarm_spawn_subtask,
   swarm_spawn_researcher,
+  swarm_spawn_retry,
   swarm_evaluation_prompt,
   swarm_plan_prompt,
 };

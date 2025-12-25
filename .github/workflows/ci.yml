@@ -24,6 +24,8 @@ jobs:
 
       - name: Run unit tests
         run: bun turbo test
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
         # Integration tests skipped in CI - PGLite WASM has issues in GitHub Actions
         # Run locally with: bun run test:integration
 

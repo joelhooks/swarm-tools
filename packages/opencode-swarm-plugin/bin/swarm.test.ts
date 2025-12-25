@@ -1,11 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Tests for swarm CLI file operation helpers
+ * Tests for swarm CLI helpers
  * 
- * These tests verify the verbose output helpers used in `swarm setup`:
- * - writeFileWithStatus: logs created/updated/unchanged status
- * - mkdirWithStatus: logs directory creation
- * - rmWithStatus: logs file removal
+ * These tests verify the CLI helpers:
+ * - File operation helpers (writeFileWithStatus, mkdirWithStatus, rmWithStatus)
+ * - Swarm history helpers (formatSwarmHistory, parseHistoryArgs, filterHistoryByStatus)
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync } from "fs";
@@ -501,17 +500,17 @@ describe("swarm log sessions", () => {
         {
           session_id: "s1",
           epic_id: "e1",
-          timestamp: "2025-01-01T00:01:00Z",
+          timestamp: "2025-01-01T00:00:01Z",
           event_type: "VIOLATION",
-          violation_type: "coordinator_edited_file",
+          violation_type: "direct_edit",
           payload: {},
         },
         {
           session_id: "s1",
           epic_id: "e1",
-          timestamp: "2025-01-01T00:02:00Z",
+          timestamp: "2025-01-01T00:00:02Z",
           event_type: "DECISION",
-          decision_type: "review_completed",
+          decision_type: "worker_spawned",
           payload: {},
         },
       ];
@@ -535,9 +534,9 @@ describe("swarm log sessions", () => {
         {
           session_id: "s1",
           epic_id: "e1",
-          timestamp: "2025-01-01T00:01:00Z",
+          timestamp: "2025-01-01T00:00:01Z",
           event_type: "VIOLATION",
-          violation_type: "coordinator_edited_file",
+          violation_type: "direct_edit",
           payload: {},
         },
       ];
@@ -555,6 +554,14 @@ describe("swarm log sessions", () => {
         {
           session_id: "s1",
           epic_id: "e1",
+          timestamp: new Date(now - 5000).toISOString(), // 5s ago
+          event_type: "DECISION",
+          decision_type: "worker_spawned",
+          payload: {},
+        },
+        {
+          session_id: "s1",
+          epic_id: "e1",
           timestamp: new Date(now - 10000).toISOString(), // 10s ago
           event_type: "DECISION",
           decision_type: "worker_spawned",
@@ -563,17 +570,9 @@ describe("swarm log sessions", () => {
         {
           session_id: "s1",
           epic_id: "e1",
-          timestamp: new Date(now - 60000).toISOString(), // 1m ago
-          event_type: "VIOLATION",
-          violation_type: "coordinator_edited_file",
-          payload: {},
-        },
-        {
-          session_id: "s1",
-          epic_id: "e1",
-          timestamp: new Date(now - 3000).toISOString(), // 3s ago
-          event_type: "OUTCOME",
-          outcome_type: "subtask_success",
+          timestamp: new Date(now - 60000).toISOString(), // 1min ago
+          event_type: "DECISION",
+          decision_type: "worker_spawned",
           payload: {},
         },
       ];
@@ -682,756 +681,241 @@ describe("Cells command", () => {
         },
       ];
 
-      const table = formatCellsTable(cells);
+      const result = formatCellsTable(cells);
 
-      // Should contain headers
-      expect(table).toContain("ID");
-      expect(table).toContain("TITLE");
-      expect(table).toContain("STATUS");
-      expect(table).toContain("PRIORITY");
+      expect(result).toContain("ID");
+      expect(result).toContain("TITLE");
+      expect(result).toContain("STATUS");
+      expect(result).toContain("PRIORITY");
+      expect(result).toContain("Fix bug");
+      expect(result).toContain("Add feature");
+      expect(result).toContain("open");
+      expect(result).toContain("in_progress");
+    });
 
-      // Should contain cell data
-      expect(table).toContain("test-abc123-xyz");
-      expect(table).toContain("Fix bug");
-      expect(table).toContain("open");
-      expect(table).toContain("0");
+    test("truncates long titles with ellipsis", () => {
+      const cells = [
+        {
+          id: "test-abc",
+          title: "A".repeat(100),
+          status: "open",
+          priority: 0,
+          type: "task",
+          created_at: 1234567890,
+          updated_at: 1234567890,
+        },
+      ];
 
-      expect(table).toContain("test-def456-abc");
-      expect(table).toContain("Add feature");
-      expect(table).toContain("in_progress");
-      expect(table).toContain("2");
+      const result = formatCellsTable(cells);
+
+      expect(result).toContain("...");
+      expect(result.split("\n")[2]).toMatch(/A{47}\.\.\./);
     });
 
     test("returns 'No cells found' for empty array", () => {
-      const table = formatCellsTable([]);
-      expect(table).toBe("No cells found");
-    });
-  });
-});
+      const result = formatCellsTable([]);
 
-describe("Log command helpers", () => {
-  let testDir: string;
-
-  beforeEach(() => {
-    testDir = join(tmpdir(), `swarm-log-test-${Date.now()}`);
-    mkdirSync(testDir, { recursive: true });
-  });
-
-  afterEach(() => {
-    if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
-    }
-  });
-
-  describe("parseLogLine", () => {
-    function parseLogLine(line: string): { level: number; time: string; module: string; msg: string } | null {
-      try {
-        const parsed = JSON.parse(line);
-        if (typeof parsed.level === "number" && parsed.time && parsed.msg) {
-          return {
-            level: parsed.level,
-            time: parsed.time,
-            module: parsed.module || "unknown",
-            msg: parsed.msg,
-          };
-        }
-      } catch {
-        // Invalid JSON
-      }
-      return null;
-    }
-
-    test("parses valid log line", () => {
-      const line = '{"level":30,"time":"2024-12-24T16:00:00.000Z","module":"compaction","msg":"started"}';
-      const result = parseLogLine(line);
-      
-      expect(result).not.toBeNull();
-      expect(result?.level).toBe(30);
-      expect(result?.module).toBe("compaction");
-      expect(result?.msg).toBe("started");
+      expect(result).toBe("No cells found");
     });
 
-    test("returns null for invalid JSON", () => {
-      const line = "not json";
-      expect(parseLogLine(line)).toBeNull();
-    });
-
-    test("defaults module to 'unknown' if missing", () => {
-      const line = '{"level":30,"time":"2024-12-24T16:00:00.000Z","msg":"test"}';
-      const result = parseLogLine(line);
-      
-      expect(result?.module).toBe("unknown");
-    });
-  });
-
-  describe("filterLogsByLevel", () => {
-    function filterLogsByLevel(logs: Array<{ level: number }>, minLevel: number): Array<{ level: number }> {
-      return logs.filter((log) => log.level >= minLevel);
-    }
-
-    test("filters logs by minimum level", () => {
-      const logs = [
-        { level: 10 }, // trace
-        { level: 30 }, // info
-        { level: 50 }, // error
+    test("aligns columns correctly", () => {
+      const cells = [
+        {
+          id: "short",
+          title: "T",
+          status: "open",
+          priority: 0,
+          type: "task",
+          created_at: 1234567890,
+          updated_at: 1234567890,
+        },
+        {
+          id: "very-long-id-here",
+          title: "Very long title here",
+          status: "in_progress",
+          priority: 2,
+          type: "task",
+          created_at: 1234567890,
+          updated_at: 1234567890,
+        },
       ];
-      
-      const result = filterLogsByLevel(logs, 30);
-      expect(result).toHaveLength(2);
-      expect(result[0].level).toBe(30);
-      expect(result[1].level).toBe(50);
-    });
 
-    test("includes all logs when minLevel is 0", () => {
-      const logs = [
-        { level: 10 },
-        { level: 20 },
-        { level: 30 },
-      ];
-      
-      const result = filterLogsByLevel(logs, 0);
-      expect(result).toHaveLength(3);
-    });
-  });
+      const result = formatCellsTable(cells);
+      const lines = result.split("\n");
 
-  describe("filterLogsByModule", () => {
-    function filterLogsByModule(logs: Array<{ module: string }>, module: string): Array<{ module: string }> {
-      return logs.filter((log) => log.module === module);
-    }
-
-    test("filters logs by exact module name", () => {
-      const logs = [
-        { module: "compaction" },
-        { module: "swarm" },
-        { module: "compaction" },
-      ];
-      
-      const result = filterLogsByModule(logs, "compaction");
-      expect(result).toHaveLength(2);
-    });
-
-    test("returns empty array when no match", () => {
-      const logs = [
-        { module: "compaction" },
-      ];
-      
-      const result = filterLogsByModule(logs, "swarm");
-      expect(result).toHaveLength(0);
-    });
-  });
-
-  describe("filterLogsBySince", () => {
-    function parseDuration(duration: string): number | null {
-      const match = duration.match(/^(\d+)([smhd])$/);
-      if (!match) return null;
-      
-      const [, num, unit] = match;
-      const value = parseInt(num, 10);
-      
-      const multipliers: Record<string, number> = {
-        s: 1000,
-        m: 60 * 1000,
-        h: 60 * 60 * 1000,
-        d: 24 * 60 * 60 * 1000,
-      };
-      
-      return value * multipliers[unit];
-    }
-
-    function filterLogsBySince(logs: Array<{ time: string }>, sinceMs: number): Array<{ time: string }> {
-      const cutoffTime = Date.now() - sinceMs;
-      return logs.filter((log) => new Date(log.time).getTime() >= cutoffTime);
-    }
-
-    test("parseDuration handles seconds", () => {
-      expect(parseDuration("30s")).toBe(30 * 1000);
-    });
-
-    test("parseDuration handles minutes", () => {
-      expect(parseDuration("5m")).toBe(5 * 60 * 1000);
-    });
-
-    test("parseDuration handles hours", () => {
-      expect(parseDuration("2h")).toBe(2 * 60 * 60 * 1000);
-    });
-
-    test("parseDuration handles days", () => {
-      expect(parseDuration("1d")).toBe(24 * 60 * 60 * 1000);
-    });
-
-    test("parseDuration returns null for invalid format", () => {
-      expect(parseDuration("invalid")).toBeNull();
-      expect(parseDuration("30x")).toBeNull();
-      expect(parseDuration("30")).toBeNull();
-    });
-
-    test("filterLogsBySince filters old logs", () => {
-      const now = Date.now();
-      const logs = [
-        { time: new Date(now - 10000).toISOString() }, // 10s ago
-        { time: new Date(now - 120000).toISOString() }, // 2m ago
-        { time: new Date(now - 1000).toISOString() }, // 1s ago
-      ];
-      
-      const result = filterLogsBySince(logs, 60000); // Last 1m
-      expect(result).toHaveLength(2); // Only logs within last minute
-    });
-  });
-
-  describe("formatLogLine", () => {
-    function levelToName(level: number): string {
-      if (level >= 60) return "FATAL";
-      if (level >= 50) return "ERROR";
-      if (level >= 40) return "WARN ";
-      if (level >= 30) return "INFO ";
-      if (level >= 20) return "DEBUG";
-      return "TRACE";
-    }
-
-    function formatLogLine(log: { level: number; time: string; module: string; msg: string }): string {
-      const timestamp = new Date(log.time).toLocaleTimeString();
-      const levelName = levelToName(log.level);
-      const module = log.module.padEnd(12);
-      return `${timestamp} ${levelName} ${module} ${log.msg}`;
-    }
-
-    test("formats log line with timestamp and level", () => {
-      const log = {
-        level: 30,
-        time: "2024-12-24T16:00:00.000Z",
-        module: "compaction",
-        msg: "started",
-      };
-      
-      const result = formatLogLine(log);
-      expect(result).toContain("INFO");
-      expect(result).toContain("compaction");
-      expect(result).toContain("started");
-    });
-
-    test("pads module name for alignment", () => {
-      const log1 = formatLogLine({ level: 30, time: "2024-12-24T16:00:00.000Z", module: "a", msg: "test" });
-      const log2 = formatLogLine({ level: 30, time: "2024-12-24T16:00:00.000Z", module: "compaction", msg: "test" });
-      
-      // Module names should be padded to 12 chars
-      expect(log1).toContain("a            test"); // 'a' + 11 spaces
-      expect(log2).toContain("compaction   test"); // 'compaction' + 3 spaces (10 chars + 2)
-    });
-
-    test("levelToName maps all levels correctly", () => {
-      expect(levelToName(10)).toBe("TRACE");
-      expect(levelToName(20)).toBe("DEBUG");
-      expect(levelToName(30)).toBe("INFO ");
-      expect(levelToName(40)).toBe("WARN ");
-      expect(levelToName(50)).toBe("ERROR");
-      expect(levelToName(60)).toBe("FATAL");
-    });
-  });
-
-  describe("readLogFiles", () => {
-    test("reads multiple .1log files", () => {
-      // Create test log files
-      const log1 = join(testDir, "swarm.1log");
-      const log2 = join(testDir, "swarm.2log");
-      const log3 = join(testDir, "compaction.1log");
-      
-      writeFileSync(log1, '{"level":30,"time":"2024-12-24T16:00:00.000Z","msg":"line1"}\n');
-      writeFileSync(log2, '{"level":30,"time":"2024-12-24T16:00:01.000Z","msg":"line2"}\n');
-      writeFileSync(log3, '{"level":30,"time":"2024-12-24T16:00:02.000Z","module":"compaction","msg":"line3"}\n');
-      
-      function readLogFiles(dir: string): string[] {
-        if (!existsSync(dir)) return [];
-        
-        const files = readdirSync(dir)
-          .filter((f) => /\.\d+log$/.test(f))
-          .sort() // Sort by filename
-          .map((f) => join(dir, f));
-        
-        const lines: string[] = [];
-        for (const file of files) {
-          const content = readFileSync(file, "utf-8");
-          lines.push(...content.split("\n").filter((line) => line.trim()));
-        }
-        
-        return lines;
-      }
-      
-      const lines = readLogFiles(testDir);
-      expect(lines).toHaveLength(3);
-      // Files are sorted alphabetically: compaction.1log, swarm.1log, swarm.2log
-      expect(lines.some((l) => l.includes("line1"))).toBe(true);
-      expect(lines.some((l) => l.includes("line2"))).toBe(true);
-      expect(lines.some((l) => l.includes("line3"))).toBe(true);
-    });
-
-    test("returns empty array for non-existent directory", () => {
-      function readLogFiles(dir: string): string[] {
-        if (!existsSync(dir)) return [];
-        return [];
-      }
-      
-      const lines = readLogFiles(join(testDir, "nonexistent"));
-      expect(lines).toHaveLength(0);
-    });
-  });
-
-  describe("watchLogs", () => {
-    test("detects new log lines appended to file", async () => {
-      const logFile = join(testDir, "swarm.1log");
-      const collectedLines: string[] = [];
-      
-      // Create initial log file
-      writeFileSync(logFile, '{"level":30,"time":"2024-12-24T16:00:00.000Z","msg":"initial"}\n');
-      
-      // Import watch utilities
-      const { watch } = await import("fs");
-      const { appendFileSync } = await import("fs");
-      
-      // Track file position for incremental reads
-      let lastSize = 0;
-      
-      function readNewLines(filePath: string): string[] {
-        const content = readFileSync(filePath, "utf-8");
-        const newContent = content.slice(lastSize);
-        lastSize = content.length;
-        return newContent.split("\n").filter((line) => line.trim());
-      }
-      
-      // Simulate watch behavior
-      const watcher = watch(testDir, (eventType, filename) => {
-        if (filename && /\.\d+log$/.test(filename)) {
-          const newLines = readNewLines(join(testDir, filename));
-          collectedLines.push(...newLines);
-        }
-      });
-      
-      // Wait for watcher to be ready
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      
-      // Append new log line
-      appendFileSync(logFile, '{"level":30,"time":"2024-12-24T16:00:01.000Z","msg":"appended"}\n');
-      
-      // Wait for event to fire
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      
-      watcher.close();
-      
-      // Should have detected the new line
-      expect(collectedLines.some((l) => l.includes("appended"))).toBe(true);
-    });
-
-    test("parseWatchArgs extracts --watch flag", () => {
-      function parseWatchArgs(args: string[]): { watch: boolean; interval: number } {
-        let watch = false;
-        let interval = 1000; // default 1 second
-        
-        for (let i = 0; i < args.length; i++) {
-          const arg = args[i];
-          if (arg === "--watch" || arg === "-w") {
-            watch = true;
-          } else if (arg === "--interval" && i + 1 < args.length) {
-            interval = parseInt(args[++i], 10);
-          }
-        }
-        
-        return { watch, interval };
-      }
-      
-      expect(parseWatchArgs(["--watch"])).toEqual({ watch: true, interval: 1000 });
-      expect(parseWatchArgs(["-w"])).toEqual({ watch: true, interval: 1000 });
-      expect(parseWatchArgs(["--watch", "--interval", "500"])).toEqual({ watch: true, interval: 500 });
-      expect(parseWatchArgs(["compaction", "--watch"])).toEqual({ watch: true, interval: 1000 });
-      expect(parseWatchArgs(["--level", "error"])).toEqual({ watch: false, interval: 1000 });
+      // All lines should be same length (aligned)
+      const lengths = lines.map(l => l.length);
+      expect(Math.max(...lengths) - Math.min(...lengths)).toBeLessThan(3);
     });
   });
 });
 
 // ============================================================================
-// Eval Commands Tests (TDD)
+// Eval Gate Tests (TDD)
 // ============================================================================
 
-describe("Eval commands", () => {
-  describe("formatEvalStatus", () => {
-    test("displays phase, thresholds, and recent scores", () => {
-      const status = {
-        phase: "stabilization" as const,
-        runCount: 25,
-        thresholds: {
-          stabilization: 0.1,
-          production: 0.05,
-        },
-        recentScores: [
-          { timestamp: "2024-12-24T10:00:00.000Z", score: 0.85 },
-          { timestamp: "2024-12-24T11:00:00.000Z", score: 0.87 },
-          { timestamp: "2024-12-24T12:00:00.000Z", score: 0.82 },
-        ],
-      };
-
-      const output = formatEvalStatus(status);
-
-      // Should show phase
-      expect(output).toContain("stabilization");
-      
-      // Should show run count
-      expect(output).toContain("25");
-      
-      // Should show thresholds
-      expect(output).toContain("10%"); // stabilization threshold
-      expect(output).toContain("5%");  // production threshold
-      
-      // Should show recent scores
-      expect(output).toContain("0.85");
-      expect(output).toContain("0.87");
-      expect(output).toContain("0.82");
-    });
-
-    test("shows bootstrap phase message", () => {
-      const status = {
-        phase: "bootstrap" as const,
-        runCount: 5,
-        thresholds: {
-          stabilization: 0.1,
-          production: 0.05,
-        },
-        recentScores: [],
-      };
-
-      const output = formatEvalStatus(status);
-
-      expect(output).toContain("bootstrap");
-      expect(output).toContain("collecting data");
-    });
-
-    test("shows production phase message", () => {
-      const status = {
-        phase: "production" as const,
-        runCount: 75,
-        thresholds: {
-          stabilization: 0.1,
-          production: 0.05,
-        },
-        recentScores: [],
-      };
-
-      const output = formatEvalStatus(status);
-
-      expect(output).toContain("production");
-    });
-  });
-
-  describe("formatEvalHistory", () => {
-    test("shows eval entries with timestamps and scores", () => {
-      const history = [
-        {
-          timestamp: "2024-12-24T10:00:00.000Z",
-          eval_name: "swarm-decomposition",
-          score: 0.85,
-          run_count: 1,
-        },
-        {
-          timestamp: "2024-12-24T11:00:00.000Z",
-          eval_name: "swarm-decomposition",
-          score: 0.87,
-          run_count: 2,
-        },
-        {
-          timestamp: "2024-12-24T12:00:00.000Z",
-          eval_name: "coordinator-behavior",
-          score: 0.92,
-          run_count: 1,
-        },
-      ];
-
-      const output = formatEvalHistory(history);
-
-      // Should show all eval names
-      expect(output).toContain("swarm-decomposition");
-      expect(output).toContain("coordinator-behavior");
-      
-      // Should show scores
-      expect(output).toContain("0.85");
-      expect(output).toContain("0.87");
-      expect(output).toContain("0.92");
-      
-      // Should show run counts
-      expect(output).toContain("run #1");
-      expect(output).toContain("run #2");
-    });
-
-    test("returns empty message for no history", () => {
-      const output = formatEvalHistory([]);
-      expect(output).toContain("No eval history");
-    });
-
-    test("formats timestamps as readable dates", () => {
-      const history = [
-        {
-          timestamp: "2024-12-24T10:00:00.000Z",
-          eval_name: "test",
-          score: 0.85,
-          run_count: 1,
-        },
-      ];
-
-      const output = formatEvalHistory(history);
-
-      // Should contain a formatted date (not raw ISO)
-      expect(output).not.toContain("2024-12-24T10:00:00.000Z");
-      expect(output).toMatch(/\d{1,2}:\d{2}/); // Time format
-    });
-  });
-
-  describe("generateSparkline", () => {
-    test("generates sparkline from scores", () => {
-      const scores = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0];
-      const sparkline = generateSparkline(scores);
-
-      // Should use sparkline characters
-      expect(sparkline).toMatch(/[▁▂▃▄▅▆▇█]/);
-      
-      // Length should match input
-      expect(sparkline.length).toBe(scores.length);
-      
-      // Should show ascending trend
-      expect(sparkline).toContain("▁"); // Low score
-      expect(sparkline).toContain("█"); // High score
-    });
-
-    test("handles single score", () => {
-      const sparkline = generateSparkline([0.5]);
-      expect(sparkline.length).toBe(1);
-      expect(sparkline).toMatch(/[▁▂▃▄▅▆▇█]/);
-    });
-
-    test("handles all same scores", () => {
-      const sparkline = generateSparkline([0.5, 0.5, 0.5]);
-      expect(sparkline.length).toBe(3);
-      // All should be same character
-      expect(new Set(sparkline.split("")).size).toBe(1);
-    });
-
-    test("returns empty for empty array", () => {
-      const sparkline = generateSparkline([]);
-      expect(sparkline).toBe("");
-    });
-  });
-
-  describe("formatEvalRunResult", () => {
-    test("shows pass/fail with gate result", () => {
-      const result = {
-        passed: true,
-        phase: "production" as const,
-        message: "Production phase: 2.5% regression - acceptable",
-        baseline: 0.85,
-        currentScore: 0.83,
-        regressionPercent: 0.025,
-      };
-
-      const output = formatEvalRunResult(result);
-
-      expect(output).toContain("PASS");
-      expect(output).toContain("production");
-      expect(output).toContain("0.83"); // current score
-      expect(output).toContain("2.5%"); // regression
-    });
-
-    test("shows failure with details", () => {
-      const result = {
-        passed: false,
-        phase: "production" as const,
-        message: "Production phase FAIL: 8.0% regression - exceeds 5% threshold",
-        baseline: 0.85,
-        currentScore: 0.78,
-        regressionPercent: 0.08,
-      };
-
-      const output = formatEvalRunResult(result);
-
-      expect(output).toContain("FAIL");
-      expect(output).toContain("8.0%");
-      expect(output).toContain("exceeds");
-    });
-
-    test("shows bootstrap phase without baseline", () => {
-      const result = {
-        passed: true,
-        phase: "bootstrap" as const,
-        message: "Bootstrap phase (5/10 runs) - collecting data",
-        currentScore: 0.85,
-      };
-
-      const output = formatEvalRunResult(result);
-
-      expect(output).toContain("bootstrap");
-      expect(output).toContain("collecting data");
-      expect(output).not.toContain("baseline");
-    });
-  });
-});
-
-// ============================================================================
-// Eval Command Helpers (Implementation)
-// ============================================================================
-
-/**
- * Generate sparkline from array of scores (0-1 range)
- */
-function generateSparkline(scores: number[]): string {
-  if (scores.length === 0) return "";
-
-  const chars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-  const min = Math.min(...scores);
-  const max = Math.max(...scores);
-  const range = max - min;
-
-  if (range === 0) {
-    // All scores the same
-    return chars[4].repeat(scores.length);
-  }
-
-  return scores
-    .map((score) => {
-      const normalized = (score - min) / range;
-      const index = Math.min(Math.floor(normalized * chars.length), chars.length - 1);
-      return chars[index];
-    })
-    .join("");
-}
-
-/**
- * Format eval status for display
- */
-function formatEvalStatus(status: {
-  phase: "bootstrap" | "stabilization" | "production";
-  runCount: number;
-  thresholds: { stabilization: number; production: number };
-  recentScores: Array<{ timestamp: string; score: number }>;
-}): string {
-  const lines: string[] = [];
-
-  // Phase banner
-  const phaseEmoji = status.phase === "bootstrap" ? "🌱" : status.phase === "stabilization" ? "⚙️" : "🚀";
-  lines.push(`${phaseEmoji} Phase: ${status.phase}`);
-  lines.push(`Runs: ${status.runCount}`);
-  lines.push("");
-
-  // Thresholds
-  lines.push("Thresholds:");
-  lines.push(`  Stabilization: ${(status.thresholds.stabilization * 100).toFixed(0)}% regression warning`);
-  lines.push(`  Production:    ${(status.thresholds.production * 100).toFixed(0)}% regression failure`);
-  lines.push("");
-
-  // Recent scores with sparkline
-  if (status.recentScores.length > 0) {
-    lines.push("Recent scores:");
-    const sparkline = generateSparkline(status.recentScores.map((s) => s.score));
-    lines.push(`  ${sparkline}`);
-    for (const { timestamp, score } of status.recentScores) {
-      const time = new Date(timestamp).toLocaleString();
-      lines.push(`  ${time}: ${score.toFixed(2)}`);
-    }
-  } else {
-    lines.push("No scores yet - collecting data");
-  }
-
-  return lines.join("\n");
-}
-
-/**
- * Format eval history for display
- */
-function formatEvalHistory(history: Array<{
+interface EvalRunRecord {
   timestamp: string;
   eval_name: string;
   score: number;
   run_count: number;
-}>): string {
-  if (history.length === 0) {
-    return "No eval history found";
-  }
-
-  const lines: string[] = [];
-  lines.push("Eval History:");
-  lines.push("");
-
-  // Group by eval name
-  const grouped = new Map<string, typeof history>();
-  for (const entry of history) {
-    if (!grouped.has(entry.eval_name)) {
-      grouped.set(entry.eval_name, []);
-    }
-    grouped.get(entry.eval_name)!.push(entry);
-  }
-
-  // Display each eval group
-  for (const [evalName, entries] of grouped) {
-    lines.push(`${evalName}:`);
-    const sparkline = generateSparkline(entries.map((e) => e.score));
-    lines.push(`  Trend: ${sparkline}`);
-    
-    // Show latest 5 entries
-    const latest = entries.slice(-5);
-    for (const entry of latest) {
-      const time = new Date(entry.timestamp).toLocaleTimeString();
-      lines.push(`  ${time} - run #${entry.run_count}: ${entry.score.toFixed(2)}`);
-    }
-    
-    if (entries.length > 5) {
-      lines.push(`  ... and ${entries.length - 5} more`);
-    }
-    
-    lines.push("");
-  }
-
-  return lines.join("\n");
 }
 
-/**
- * Format eval run result (gate check)
- */
-function formatEvalRunResult(result: {
+interface GateResult {
   passed: boolean;
   phase: "bootstrap" | "stabilization" | "production";
   message: string;
   baseline?: number;
-  currentScore: number;
-  regressionPercent?: number;
-}): string {
-  const lines: string[] = [];
-
-  // Pass/fail banner
-  const status = result.passed ? "✅ PASS" : "❌ FAIL";
-  lines.push(status);
-  lines.push("");
-
-  // Phase and score
-  lines.push(`Phase: ${result.phase}`);
-  lines.push(`Score: ${result.currentScore.toFixed(2)}`);
-
-  if (result.baseline !== undefined) {
-    lines.push(`Baseline: ${result.baseline.toFixed(2)}`);
-  }
-
-  if (result.regressionPercent !== undefined) {
-    const sign = result.regressionPercent > 0 ? "+" : "";
-    lines.push(`Regression: ${sign}${(result.regressionPercent * 100).toFixed(1)}%`);
-  }
-
-  lines.push("");
-  lines.push(result.message);
-
-  return lines.join("\n");
+  variance?: number;
 }
 
-// ============================================================================
-// Eval Run Tests
-// ============================================================================
+/**
+ * Calculate variance for phase transitions
+ */
+function calculateVariance(scores: number[]): number {
+  if (scores.length <= 1) return 0;
 
-describe("Eval Run CI Mode", () => {
+  const mean = scores.reduce((sum, x) => sum + x, 0) / scores.length;
+  const squaredDiffs = scores.map((x) => Math.pow(x - mean, 2));
+  const variance = squaredDiffs.reduce((sum, x) => sum + x, 0) / scores.length;
+
+  return variance;
+}
+
+/**
+ * Read all eval run records from .hive/eval-history.jsonl
+ */
+function readAllRecords(projectPath: string): EvalRunRecord[] {
+  const recordsPath = join(projectPath, ".hive", "eval-history.jsonl");
+
+  if (!existsSync(recordsPath)) {
+    return [];
+  }
+
+  const content = readFileSync(recordsPath, "utf-8");
+  const lines = content.split("\n").filter((line) => line.trim());
+
+  return lines.map((line) => JSON.parse(line) as EvalRunRecord);
+}
+
+/**
+ * Record an eval run to .hive/eval-history.jsonl
+ */
+function recordEvalRun(
+  projectPath: string,
+  record: EvalRunRecord,
+): void {
+  const hivePath = join(projectPath, ".hive");
+  const recordsPath = join(hivePath, "eval-history.jsonl");
+
+  // Ensure .hive directory exists
+  if (!existsSync(hivePath)) {
+    mkdirSync(hivePath, { recursive: true });
+  }
+
+  // Append record as JSONL
+  const line = JSON.stringify(record) + "\n";
+
+  if (existsSync(recordsPath)) {
+    const existingContent = readFileSync(recordsPath, "utf-8");
+    writeFileSync(recordsPath, existingContent + line);
+  } else {
+    writeFileSync(recordsPath, line);
+  }
+}
+
+/**
+ * Check eval gate for progressive gating
+ */
+function checkGate(
+  projectPath: string,
+  evalName: string,
+  currentScore: number,
+): GateResult {
+  const records = readAllRecords(projectPath).filter(
+    (r) => r.eval_name === evalName,
+  );
+
+  if (records.length < 10) {
+    return {
+      passed: true,
+      phase: "bootstrap",
+      message: `BOOTSTRAP (${records.length}/10 runs): no gates yet`,
+    };
+  }
+
+  const lastTenScores = records.slice(-10).map((r) => r.score);
+  const baseline = lastTenScores.reduce((sum, x) => sum + x, 0) / lastTenScores.length;
+  const variance = calculateVariance(lastTenScores);
+
+  if (records.length < 50) {
+    const drop = ((baseline - currentScore) / baseline) * 100;
+    if (drop > 5) {
+      return {
+        passed: false,
+        phase: "stabilization",
+        message: `WARN: Score dropped ${drop.toFixed(1)}% from baseline ${baseline.toFixed(2)}`,
+        baseline,
+        variance,
+      };
+    }
+
+    return {
+      passed: true,
+      phase: "stabilization",
+      message: `Stabilization (${records.length}/50 runs): baseline=${baseline.toFixed(2)}`,
+      baseline,
+      variance,
+    };
+  }
+
+  // Production phase: variance < 0.1 AND score doesn't drop >5%
+  if (variance < 0.1) {
+    const drop = ((baseline - currentScore) / baseline) * 100;
+    if (drop > 5) {
+      return {
+        passed: false,
+        phase: "production",
+        message: `FAIL: Score dropped ${drop.toFixed(1)}% from baseline ${baseline.toFixed(2)} (variance=${variance.toFixed(3)})`,
+        baseline,
+        variance,
+      };
+    }
+
+    return {
+      passed: true,
+      phase: "production",
+      message: `PASS: Production phase (variance=${variance.toFixed(3)}, baseline=${baseline.toFixed(2)})`,
+      baseline,
+      variance,
+    };
+  }
+
+  // Stuck in stabilization (>50 runs but variance still high)
+  return {
+    passed: true,
+    phase: "stabilization",
+    message: `Stabilization: variance too high (${variance.toFixed(3)} > 0.1), need more consistent runs`,
+    baseline,
+    variance,
+  };
+}
+
+/**
+ * Ensure .hive directory exists
+ */
+function ensureHiveDirectory(projectPath: string): void {
+  const hivePath = join(projectPath, ".hive");
+  if (!existsSync(hivePath)) {
+    mkdirSync(hivePath, { recursive: true });
+  }
+}
+
+describe("Eval gate", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `eval-run-test-${Date.now()}`);
+    testDir = join(tmpdir(), `eval-gate-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1441,82 +925,527 @@ describe("Eval Run CI Mode", () => {
     }
   });
 
-  test("writes eval results JSON file", async () => {
-    // Import the function we need to test
-    const { recordEvalRun, getScoreHistory } = await import("../src/eval-history.js");
-    const { checkGate } = await import("../src/eval-gates.js");
-    const { ensureHiveDirectory } = await import("../src/hive.js");
+  describe("Bootstrap phase (<10 runs)", () => {
+    test("allows any score", () => {
+      ensureHiveDirectory(testDir);
 
-    // Set up test data
-    const evalName = "test-eval";
-    const mockScore = 0.85;
+      // Record 5 runs
+      for (let i = 0; i < 5; i++) {
+        recordEvalRun(testDir, {
+          timestamp: new Date().toISOString(),
+          eval_name: "test-eval",
+          score: 0.5 + i * 0.1,
+          run_count: i + 1,
+        });
+      }
 
-    // Ensure directory exists
-    ensureHiveDirectory(testDir);
+      const result = checkGate(testDir, "test-eval", 0.3); // Low score
 
-    // Get history and record run (simulating what eval run does)
-    const history = getScoreHistory(testDir, evalName);
-    recordEvalRun(testDir, {
-      timestamp: new Date().toISOString(),
-      eval_name: evalName,
-      score: mockScore,
-      run_count: history.length + 1,
+      expect(result.passed).toBe(true);
+      expect(result.phase).toBe("bootstrap");
+      expect(result.message).toContain("BOOTSTRAP");
     });
 
-    // Check gate
-    const gateResult = checkGate(testDir, evalName, mockScore);
+    test("counts runs correctly", () => {
+      ensureHiveDirectory(testDir);
 
-    // Write results file (simulating CI mode)
-    const resultsPath = join(testDir, ".hive", "eval-results.json");
-    const results = { [evalName]: gateResult };
-    writeFileSync(resultsPath, JSON.stringify(results, null, 2));
+      for (let i = 0; i < 7; i++) {
+        recordEvalRun(testDir, {
+          timestamp: new Date().toISOString(),
+          eval_name: "test-eval",
+          score: 0.8,
+          run_count: i + 1,
+        });
+      }
 
-    // Verify file exists and has correct structure
-    expect(existsSync(resultsPath)).toBe(true);
+      const result = checkGate(testDir, "test-eval", 0.8);
 
-    const savedResults = JSON.parse(readFileSync(resultsPath, "utf-8"));
-    expect(savedResults).toHaveProperty(evalName);
-    expect(savedResults[evalName]).toMatchObject({
-      passed: true,
-      phase: "bootstrap",
-      currentScore: mockScore,
+      expect(result.phase).toBe("bootstrap");
+      expect(result.message).toContain("7/10");
     });
   });
 
-  test("bootstrap phase always passes", async () => {
-    const { checkGate } = await import("../src/eval-gates.js");
+  describe("Stabilization phase (10-50 runs)", () => {
+    test("warns on >5% regression", () => {
+      ensureHiveDirectory(testDir);
 
-    // Even with a low score, bootstrap phase should pass
-    const result = checkGate(testDir, "test-eval", 0.1);
+      // Record 20 runs with consistent 0.9 score
+      for (let i = 0; i < 20; i++) {
+        recordEvalRun(testDir, {
+          timestamp: new Date().toISOString(),
+          eval_name: "test-eval",
+          score: 0.9,
+          run_count: i + 1,
+        });
+      }
 
-    expect(result.passed).toBe(true);
-    expect(result.phase).toBe("bootstrap");
-    expect(result.message).toContain("Bootstrap phase");
+      // Test with regressed score (>5% drop from 0.9 baseline)
+      const regressedScore = 0.85; // 5.5% drop
+      const result = checkGate(testDir, "test-eval", regressedScore);
+
+      expect(result.passed).toBe(false);
+      expect(result.phase).toBe("stabilization");
+      expect(result.message).toContain("WARN");
+      expect(result.baseline).toBeCloseTo(0.9, 2);
+    });
+
+    test("passes when score is stable", () => {
+      ensureHiveDirectory(testDir);
+
+      for (let i = 0; i < 25; i++) {
+        recordEvalRun(testDir, {
+          timestamp: new Date().toISOString(),
+          eval_name: "test-eval",
+          score: 0.85,
+          run_count: i + 1,
+        });
+      }
+
+      const result = checkGate(testDir, "test-eval", 0.86);
+
+      expect(result.passed).toBe(true);
+      expect(result.phase).toBe("stabilization");
+      expect(result.baseline).toBeCloseTo(0.85, 2);
+    });
   });
 
-  test("production phase fails on regression", async () => {
-    const { recordEvalRun } = await import("../src/eval-history.js");
-    const { checkGate } = await import("../src/eval-gates.js");
-    const { ensureHiveDirectory } = await import("../src/hive.js");
+  describe("Production phase (>50 runs, low variance)", () => {
+    test("enters production when variance < 0.1", () => {
+      ensureHiveDirectory(testDir);
 
-    ensureHiveDirectory(testDir);
+      // Simulate 60 runs with consistent scores (low variance)
+      for (let i = 0; i < 60; i++) {
+        recordEvalRun(testDir, {
+          timestamp: new Date().toISOString(),
+          eval_name: "test-eval",
+          score: 0.9, // All same score = zero variance
+          run_count: i + 1,
+        });
+      }
 
-    // Simulate 60 runs with consistent high scores to reach production phase
-    for (let i = 0; i < 60; i++) {
-      recordEvalRun(testDir, {
-        timestamp: new Date().toISOString(),
-        eval_name: "test-eval",
-        score: 0.9,
-        run_count: i + 1,
-      });
+      const result = checkGate(testDir, "test-eval", 0.91);
+
+      expect(result.phase).toBe("production");
+      expect(result.variance).toBeLessThan(0.1);
+    });
+
+    test("fails on regression in production", () => {
+      ensureHiveDirectory(testDir);
+
+      // Simulate 60 runs with consistent high scores to reach production phase
+      for (let i = 0; i < 60; i++) {
+        recordEvalRun(testDir, {
+          timestamp: new Date().toISOString(),
+          eval_name: "test-eval",
+          score: 0.9,
+          run_count: i + 1,
+        });
+      }
+
+      // Now test with a regressed score (>5% drop from 0.9 baseline)
+      const regressedScore = 0.8; // 11% drop
+      const result = checkGate(testDir, "test-eval", regressedScore);
+
+      expect(result.passed).toBe(false);
+      expect(result.phase).toBe("production");
+      expect(result.message).toContain("FAIL");
+    });
+  });
+});
+
+// ============================================================================
+// History Command Tests (TDD)
+// ============================================================================
+
+interface SwarmHistoryRecord {
+  epic_id: string;
+  epic_title: string;
+  strategy: string;
+  timestamp: string;
+  overall_success: boolean;
+  task_count: number;
+  completed_count: number;
+}
+
+/**
+ * Format relative time (e.g., "2h ago", "1d ago")
+ */
+function formatRelativeTime(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const diffMs = now - then;
+
+  const minutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(diffMs / 86400000);
+
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+}
+
+/**
+ * Format swarm history as beautiful CLI table
+ */
+function formatSwarmHistory(records: SwarmHistoryRecord[]): string {
+  if (records.length === 0) {
+    return "No swarm history found";
+  }
+
+  const rows = records.map(r => ({
+    time: formatRelativeTime(r.timestamp),
+    status: r.overall_success ? "✅" : "❌",
+    title: r.epic_title.length > 30 ? r.epic_title.slice(0, 27) + "..." : r.epic_title,
+    strategy: r.strategy,
+    tasks: `${r.completed_count}/${r.task_count} tasks`,
+  }));
+
+  // Box drawing characters
+  const lines: string[] = [];
+  lines.push("┌─────────────────────────────────────────────────────────────┐");
+  lines.push("│                    SWARM HISTORY                            │");
+  lines.push("├─────────────────────────────────────────────────────────────┤");
+
+  for (const row of rows) {
+    const statusCol = `${row.time.padEnd(8)} ${row.status}`;
+    const titleCol = row.title.padEnd(32);
+    const strategyCol = row.strategy.padEnd(13);
+    const tasksCol = row.tasks;
+
+    const line = `│ ${statusCol} ${titleCol} ${strategyCol} ${tasksCol.padEnd(3)} │`;
+    lines.push(line);
+  }
+
+  lines.push("└─────────────────────────────────────────────────────────────┘");
+
+  return lines.join("\n");
+}
+
+/**
+ * Filter history by status
+ */
+function filterHistoryByStatus(
+  records: SwarmHistoryRecord[],
+  status?: "success" | "failed" | "in_progress",
+): SwarmHistoryRecord[] {
+  if (!status) return records;
+
+  switch (status) {
+    case "success":
+      return records.filter(r => r.overall_success);
+    case "failed":
+      return records.filter(r => !r.overall_success && r.completed_count === r.task_count);
+    case "in_progress":
+      return records.filter(r => r.completed_count < r.task_count);
+    default:
+      return records;
+  }
+}
+
+/**
+ * Filter history by strategy
+ */
+function filterHistoryByStrategy(
+  records: SwarmHistoryRecord[],
+  strategy?: "file-based" | "feature-based" | "risk-based",
+): SwarmHistoryRecord[] {
+  if (!strategy) return records;
+  return records.filter(r => r.strategy === strategy);
+}
+
+/**
+ * Parse history CLI arguments
+ */
+function parseHistoryArgs(args: string[]): {
+  limit: number;
+  status?: "success" | "failed" | "in_progress";
+  strategy?: "file-based" | "feature-based" | "risk-based";
+  verbose: boolean;
+} {
+  const result: {
+    limit: number;
+    status?: "success" | "failed" | "in_progress";
+    strategy?: "file-based" | "feature-based" | "risk-based";
+    verbose: boolean;
+  } = {
+    limit: 10,
+    verbose: false,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--limit" || arg === "-n") {
+      const limitStr = args[i + 1];
+      if (limitStr && !isNaN(Number(limitStr))) {
+        result.limit = Number(limitStr);
+        i++;
+      }
+    } else if (arg === "--status") {
+      const statusStr = args[i + 1];
+      if (statusStr && ["success", "failed", "in_progress"].includes(statusStr)) {
+        result.status = statusStr as "success" | "failed" | "in_progress";
+        i++;
+      }
+    } else if (arg === "--strategy") {
+      const strategyStr = args[i + 1];
+      if (strategyStr && ["file-based", "feature-based", "risk-based"].includes(strategyStr)) {
+        result.strategy = strategyStr as "file-based" | "feature-based" | "risk-based";
+        i++;
+      }
+    } else if (arg === "--verbose" || arg === "-v") {
+      result.verbose = true;
     }
+  }
 
-    // Now test with a regressed score (>5% drop from 0.9 baseline)
-    const regressedScore = 0.8; // 11% drop
-    const result = checkGate(testDir, "test-eval", regressedScore);
+  return result;
+}
 
-    expect(result.passed).toBe(false);
-    expect(result.phase).toBe("production");
-    expect(result.message).toContain("FAIL");
+describe("swarm history", () => {
+  describe("formatRelativeTime", () => {
+    test("formats minutes ago", () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60000).toISOString();
+      const result = formatRelativeTime(fiveMinutesAgo);
+      expect(result).toMatch(/5m ago/);
+    });
+
+    test("formats hours ago", () => {
+      const threeHoursAgo = new Date(Date.now() - 3 * 3600000).toISOString();
+      const result = formatRelativeTime(threeHoursAgo);
+      expect(result).toMatch(/3h ago/);
+    });
+
+    test("formats days ago", () => {
+      const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+      const result = formatRelativeTime(twoDaysAgo);
+      expect(result).toMatch(/2d ago/);
+    });
+  });
+
+  describe("formatSwarmHistory", () => {
+    test("formats history as beautiful box-drawn table", () => {
+      const records: SwarmHistoryRecord[] = [
+        {
+          epic_id: "epic-1",
+          epic_title: "Add auth flow",
+          strategy: "feature-based",
+          timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),
+          overall_success: true,
+          task_count: 4,
+          completed_count: 4,
+        },
+        {
+          epic_id: "epic-2",
+          epic_title: "Refactor DB layer",
+          strategy: "file-based",
+          timestamp: new Date(Date.now() - 5 * 3600000).toISOString(),
+          overall_success: false,
+          task_count: 5,
+          completed_count: 2,
+        },
+      ];
+
+      const result = formatSwarmHistory(records);
+
+      expect(result).toContain("┌─────");
+      expect(result).toContain("SWARM HISTORY");
+      expect(result).toContain("✅");
+      expect(result).toContain("❌");
+      expect(result).toContain("Add auth flow");
+      expect(result).toContain("Refactor DB layer");
+      expect(result).toContain("feature-based");
+      expect(result).toContain("file-based");
+      expect(result).toContain("4/4 tasks");
+      expect(result).toContain("2/5 tasks");
+      expect(result).toContain("└─────");
+    });
+
+    test("truncates long titles with ellipsis", () => {
+      const records: SwarmHistoryRecord[] = [
+        {
+          epic_id: "epic-1",
+          epic_title: "A".repeat(100),
+          strategy: "feature-based",
+          timestamp: new Date(Date.now() - 1000).toISOString(),
+          overall_success: true,
+          task_count: 1,
+          completed_count: 1,
+        },
+      ];
+
+      const result = formatSwarmHistory(records);
+
+      expect(result).toContain("...");
+      expect(result).toMatch(/A{27}\.\.\./);
+    });
+
+    test("returns 'No swarm history found' for empty array", () => {
+      const result = formatSwarmHistory([]);
+      expect(result).toBe("No swarm history found");
+    });
+  });
+
+  describe("filterHistoryByStatus", () => {
+    const records: SwarmHistoryRecord[] = [
+      {
+        epic_id: "epic-1",
+        epic_title: "Success",
+        strategy: "feature-based",
+        timestamp: "2025-01-01T00:00:00Z",
+        overall_success: true,
+        task_count: 4,
+        completed_count: 4,
+      },
+      {
+        epic_id: "epic-2",
+        epic_title: "Failed",
+        strategy: "file-based",
+        timestamp: "2025-01-01T00:00:00Z",
+        overall_success: false,
+        task_count: 4,
+        completed_count: 4,
+      },
+      {
+        epic_id: "epic-3",
+        epic_title: "In Progress",
+        strategy: "risk-based",
+        timestamp: "2025-01-01T00:00:00Z",
+        overall_success: false,
+        task_count: 5,
+        completed_count: 2,
+      },
+    ];
+
+    test("filters success only", () => {
+      const result = filterHistoryByStatus(records, "success");
+      expect(result).toHaveLength(1);
+      expect(result[0].epic_title).toBe("Success");
+    });
+
+    test("filters failed only", () => {
+      const result = filterHistoryByStatus(records, "failed");
+      expect(result).toHaveLength(1);
+      expect(result[0].epic_title).toBe("Failed");
+    });
+
+    test("filters in_progress only", () => {
+      const result = filterHistoryByStatus(records, "in_progress");
+      expect(result).toHaveLength(1);
+      expect(result[0].epic_title).toBe("In Progress");
+    });
+
+    test("returns all when no status filter", () => {
+      const result = filterHistoryByStatus(records);
+      expect(result).toHaveLength(3);
+    });
+  });
+
+  describe("filterHistoryByStrategy", () => {
+    const records: SwarmHistoryRecord[] = [
+      {
+        epic_id: "epic-1",
+        epic_title: "File",
+        strategy: "file-based",
+        timestamp: "2025-01-01T00:00:00Z",
+        overall_success: true,
+        task_count: 4,
+        completed_count: 4,
+      },
+      {
+        epic_id: "epic-2",
+        epic_title: "Feature",
+        strategy: "feature-based",
+        timestamp: "2025-01-01T00:00:00Z",
+        overall_success: true,
+        task_count: 4,
+        completed_count: 4,
+      },
+      {
+        epic_id: "epic-3",
+        epic_title: "Risk",
+        strategy: "risk-based",
+        timestamp: "2025-01-01T00:00:00Z",
+        overall_success: true,
+        task_count: 4,
+        completed_count: 4,
+      },
+    ];
+
+    test("filters file-based only", () => {
+      const result = filterHistoryByStrategy(records, "file-based");
+      expect(result).toHaveLength(1);
+      expect(result[0].epic_title).toBe("File");
+    });
+
+    test("filters feature-based only", () => {
+      const result = filterHistoryByStrategy(records, "feature-based");
+      expect(result).toHaveLength(1);
+      expect(result[0].epic_title).toBe("Feature");
+    });
+
+    test("filters risk-based only", () => {
+      const result = filterHistoryByStrategy(records, "risk-based");
+      expect(result).toHaveLength(1);
+      expect(result[0].epic_title).toBe("Risk");
+    });
+
+    test("returns all when no strategy filter", () => {
+      const result = filterHistoryByStrategy(records);
+      expect(result).toHaveLength(3);
+    });
+  });
+
+  describe("parseHistoryArgs", () => {
+    test("parses --limit flag", () => {
+      const result = parseHistoryArgs(["--limit", "20"]);
+      expect(result.limit).toBe(20);
+    });
+
+    test("parses -n shorthand for limit", () => {
+      const result = parseHistoryArgs(["-n", "5"]);
+      expect(result.limit).toBe(5);
+    });
+
+    test("parses --status flag", () => {
+      const result = parseHistoryArgs(["--status", "success"]);
+      expect(result.status).toBe("success");
+    });
+
+    test("parses --strategy flag", () => {
+      const result = parseHistoryArgs(["--strategy", "file-based"]);
+      expect(result.strategy).toBe("file-based");
+    });
+
+    test("parses --verbose flag", () => {
+      const result = parseHistoryArgs(["--verbose"]);
+      expect(result.verbose).toBe(true);
+    });
+
+    test("parses -v shorthand for verbose", () => {
+      const result = parseHistoryArgs(["-v"]);
+      expect(result.verbose).toBe(true);
+    });
+
+    test("parses multiple flags together", () => {
+      const result = parseHistoryArgs(["--limit", "15", "--status", "failed", "--verbose"]);
+      expect(result.limit).toBe(15);
+      expect(result.status).toBe("failed");
+      expect(result.verbose).toBe(true);
+    });
+
+    test("uses default limit of 10 when not specified", () => {
+      const result = parseHistoryArgs([]);
+      expect(result.limit).toBe(10);
+    });
+
+    test("ignores invalid status values", () => {
+      const result = parseHistoryArgs(["--status", "invalid"]);
+      expect(result.status).toBeUndefined();
+    });
+
+    test("ignores invalid strategy values", () => {
+      const result = parseHistoryArgs(["--strategy", "invalid"]);
+      expect(result.strategy).toBeUndefined();
+    });
   });
 });

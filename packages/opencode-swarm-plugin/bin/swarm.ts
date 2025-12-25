@@ -2520,6 +2520,8 @@ ${cyan("Commands:")}
   swarm migrate   Migrate PGlite database to libSQL
   swarm cells     List or get cells from database (replaces 'swarm tool hive_query')
   swarm log       View swarm logs with filtering
+  swarm stats     Show swarm health metrics and success rates
+  swarm history   Show recent swarm activity timeline
   swarm eval      Eval-driven development commands
   swarm update    Update to latest version
   swarm version   Show version and banner
@@ -2553,6 +2555,16 @@ ${cyan("Log Viewing:")}
   swarm log sessions --latest          View most recent session
   swarm log sessions --type <type>     Filter by event type (DECISION, VIOLATION, OUTCOME, COMPACTION)
   swarm log sessions --json            Raw JSON output for jq
+
+${cyan("Stats & History:")}
+  swarm stats                          Show swarm health metrics (last 7 days)
+  swarm stats --since 24h              Show stats for custom time period
+  swarm stats --json                   Output as JSON for scripting
+  swarm history                        Show recent swarms (last 10)
+  swarm history --limit 20             Show more swarms
+  swarm history --status success       Filter by success/failed/in_progress
+  swarm history --strategy file-based  Filter by decomposition strategy
+  swarm history --verbose              Show detailed subtask information
 
 ${cyan("Eval Commands:")}
   swarm eval status [eval-name]        Show current phase, thresholds, recent scores
@@ -4014,6 +4026,262 @@ function formatEvalRunResultOutput(result: {
 }
 
 // ============================================================================
+// Stats Command - Swarm Health Metrics
+// ============================================================================
+
+async function stats() {
+	const { getSwarmMailLibSQL } = await import("swarm-mail");
+	const { formatSwarmStats, parseTimePeriod, aggregateByStrategy } = await import(
+		"../src/observability-tools"
+	);
+
+	p.intro("swarm stats");
+
+	// Parse args
+	const args = process.argv.slice(3);
+	let period = "7d"; // default to 7 days
+	let format: "text" | "json" = "text";
+
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === "--since" || args[i] === "-s") {
+			period = args[i + 1] || "7d";
+			i++;
+		} else if (args[i] === "--json") {
+			format = "json";
+		}
+	}
+
+	try {
+		const projectPath = process.cwd();
+		const swarmMail = await getSwarmMailLibSQL(projectPath);
+		const db = await swarmMail.getDatabase();
+		
+		// Calculate since timestamp
+		const since = parseTimePeriod(period);
+		const periodMatch = period.match(/^(\d+)([dhm])$/);
+		const periodDays = periodMatch ? 
+			(periodMatch[2] === "d" ? Number.parseInt(periodMatch[1]) :
+			 periodMatch[2] === "h" ? Number.parseInt(periodMatch[1]) / 24 :
+			 Number.parseInt(periodMatch[1]) / (24 * 60)) : 7;
+
+		// Query overall stats
+		const overallResult = await db.query(
+			`SELECT 
+				COUNT(DISTINCT json_extract(data, '$.epic_id')) as total_swarms,
+				SUM(CASE WHEN json_extract(data, '$.success') = 'true' THEN 1 ELSE 0 END) as successes,
+				COUNT(*) as total_outcomes,
+				CAST(AVG(CAST(json_extract(data, '$.duration_ms') AS REAL)) / 60000 AS REAL) as avg_duration_min
+			FROM events
+			WHERE type = 'subtask_outcome'
+				AND timestamp >= ?`,
+			[since],
+		);
+
+		const overall = overallResult.rows[0] as {
+			total_swarms: number;
+			successes: number;
+			total_outcomes: number;
+			avg_duration_min: number;
+		} || { total_swarms: 0, successes: 0, total_outcomes: 0, avg_duration_min: 0 };
+
+		// Query strategy breakdown
+		const strategyResult = await db.query(
+			`SELECT 
+				json_extract(data, '$.strategy') as strategy,
+				json_extract(data, '$.success') as success
+			FROM events
+			WHERE type = 'subtask_outcome'
+				AND timestamp >= ?`,
+			[since],
+		);
+
+		const strategies = aggregateByStrategy(
+			(strategyResult.rows as Array<{ strategy: string | null; success: string }>).map(
+				(row) => ({
+					strategy: row.strategy,
+					success: row.success === "true",
+				}),
+			),
+		);
+
+		// Query coordinator stats from sessions
+		const sessionsPath = join(
+			homedir(),
+			".config",
+			"swarm-tools",
+			"sessions",
+		);
+		let coordinatorStats = {
+			violationRate: 0,
+			spawnEfficiency: 0,
+			reviewThoroughness: 0,
+		};
+
+		if (existsSync(sessionsPath)) {
+			const sessionFiles = readdirSync(sessionsPath).filter(
+				(f) => f.endsWith(".jsonl") && statSync(join(sessionsPath, f)).mtimeMs >= since,
+			);
+
+			let totalViolations = 0;
+			let totalSpawns = 0;
+			let totalReviews = 0;
+			let totalSwarms = 0;
+
+			for (const file of sessionFiles) {
+				try {
+					const content = readFileSync(join(sessionsPath, file), "utf-8");
+					const lines = content.trim().split("\n");
+
+					let violations = 0;
+					let spawns = 0;
+					let reviews = 0;
+
+					for (const line of lines) {
+						try {
+							const event = JSON.parse(line);
+							if (event.type === "VIOLATION") violations++;
+							if (event.type === "DECISION" && event.action === "spawn") spawns++;
+							if (event.type === "DECISION" && event.action === "review") reviews++;
+						} catch {
+							// Skip invalid lines
+						}
+					}
+
+					if (spawns > 0 || violations > 0) {
+						totalViolations += violations;
+						totalSpawns += spawns;
+						totalReviews += reviews;
+						totalSwarms++;
+					}
+				} catch {
+					// Skip unreadable files
+				}
+			}
+
+			coordinatorStats = {
+				violationRate: totalSwarms > 0 ? (totalViolations / totalSwarms) * 100 : 0,
+				spawnEfficiency: totalSwarms > 0 ? (totalSpawns / totalSwarms) * 100 : 0,
+				reviewThoroughness: totalSpawns > 0 ? (totalReviews / totalSpawns) * 100 : 0,
+			};
+		}
+
+		// Build stats data
+		const stats = {
+			overall: {
+				totalSwarms: overall.total_swarms,
+				successRate:
+					overall.total_outcomes > 0
+						? (overall.successes / overall.total_outcomes) * 100
+						: 0,
+				avgDurationMin: overall.avg_duration_min || 0,
+			},
+			byStrategy: strategies,
+			coordinator: coordinatorStats,
+			recentDays: Math.round(periodDays * 10) / 10,
+		};
+
+		// Output
+		if (format === "json") {
+			console.log(JSON.stringify(stats, null, 2));
+		} else {
+			console.log();
+			console.log(formatSwarmStats(stats));
+			console.log();
+		}
+
+		p.outro("Stats ready!");
+	} catch (error) {
+		p.log.error(error instanceof Error ? error.message : String(error));
+		p.outro("Failed to load stats");
+		process.exit(1);
+	}
+}
+
+// ============================================================================
+// History Command
+// ============================================================================
+
+async function swarmHistory() {
+	const {
+		querySwarmHistory,
+		formatSwarmHistory,
+	} = await import("../src/observability-tools.js");
+
+	p.intro("swarm history");
+
+	// Parse args
+	const args = process.argv.slice(3);
+	let limit = 10;
+	let status: "success" | "failed" | "in_progress" | undefined;
+	let strategy: "file-based" | "feature-based" | "risk-based" | undefined;
+	let verbose = false;
+
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+
+		if (arg === "--limit" || arg === "-n") {
+			const limitStr = args[i + 1];
+			if (limitStr && !Number.isNaN(Number(limitStr))) {
+				limit = Number(limitStr);
+				i++;
+			}
+		} else if (arg === "--status") {
+			const statusStr = args[i + 1];
+			if (
+				statusStr &&
+				["success", "failed", "in_progress"].includes(statusStr)
+			) {
+				status = statusStr as "success" | "failed" | "in_progress";
+				i++;
+			}
+		} else if (arg === "--strategy") {
+			const strategyStr = args[i + 1];
+			if (
+				strategyStr &&
+				["file-based", "feature-based", "risk-based"].includes(strategyStr)
+			) {
+				strategy = strategyStr as "file-based" | "feature-based" | "risk-based";
+				i++;
+			}
+		} else if (arg === "--verbose" || arg === "-v") {
+			verbose = true;
+		}
+	}
+
+	try {
+		const projectPath = process.cwd();
+		const records = await querySwarmHistory(projectPath, {
+			limit,
+			status,
+			strategy,
+		});
+
+		console.log();
+		console.log(formatSwarmHistory(records));
+		console.log();
+
+		if (verbose && records.length > 0) {
+			console.log("Details:");
+			for (const record of records) {
+				console.log(
+					`  ${record.epic_id}: ${record.epic_title} (${record.strategy})`,
+				);
+				console.log(
+					`    Tasks: ${record.completed_count}/${record.task_count}, Success: ${record.overall_success ? "✅" : "❌"}`,
+				);
+			}
+			console.log();
+		}
+
+		p.outro("History ready!");
+	} catch (error) {
+		p.log.error(error instanceof Error ? error.message : String(error));
+		p.outro("Failed to load history");
+		process.exit(1);
+	}
+}
+
+// ============================================================================
 // Eval Command
 // ============================================================================
 
@@ -4273,6 +4541,12 @@ switch (command) {
   case "log":
   case "logs":
     await logs();
+    break;
+  case "stats":
+    await stats();
+    break;
+  case "history":
+    await swarmHistory();
     break;
   case "eval":
     await evalCommand();

@@ -583,6 +583,283 @@ const swarm_insights = tool({
 });
 
 // ============================================================================
+// Stats CLI Helpers (exported for bin/swarm.ts)
+// ============================================================================
+
+export interface SwarmStatsData {
+	overall: {
+		totalSwarms: number;
+		successRate: number;
+		avgDurationMin: number;
+	};
+	byStrategy: Array<{
+		strategy: string;
+		total: number;
+		successRate: number;
+		successes: number;
+	}>;
+	coordinator: {
+		violationRate: number;
+		spawnEfficiency: number;
+		reviewThoroughness: number;
+	};
+	recentDays: number;
+}
+
+/**
+ * Format swarm stats as beautiful CLI output with box drawing
+ */
+export function formatSwarmStats(stats: SwarmStatsData): string {
+	const lines: string[] = [];
+
+	// Header with ASCII art
+	lines.push("┌─────────────────────────────────────────┐");
+	lines.push("│        🐝  SWARM STATISTICS  🐝         │");
+	lines.push("├─────────────────────────────────────────┤");
+
+	// Overall stats
+	const totalStr = stats.overall.totalSwarms.toString().padEnd(4);
+	const rateStr = `${Math.round(stats.overall.successRate)}%`.padStart(3);
+	lines.push(`│ Total Swarms: ${totalStr} Success: ${rateStr}      │`);
+	
+	const durationStr = stats.overall.avgDurationMin.toFixed(1);
+	lines.push(`│ Avg Duration: ${durationStr}min${" ".repeat(23 - durationStr.length)}│`);
+	lines.push("├─────────────────────────────────────────┤");
+
+	// Strategy breakdown
+	lines.push("│ BY STRATEGY                             │");
+	if (stats.byStrategy.length === 0) {
+		lines.push("│ ├─ No data yet                          │");
+	} else {
+		for (const strategy of stats.byStrategy) {
+			const label = strategy.strategy.padEnd(15);
+			const rate = `${Math.round(strategy.successRate)}%`.padStart(4);
+			const counts = `(${strategy.successes}/${strategy.total})`.padEnd(8);
+			lines.push(`│ ├─ ${label} ${rate} ${counts}     │`);
+		}
+	}
+	lines.push("├─────────────────────────────────────────┤");
+
+	// Coordinator health
+	lines.push("│ COORDINATOR HEALTH                      │");
+	const violationStr = `${Math.round(stats.coordinator.violationRate)}%`.padStart(3);
+	const spawnStr = `${Math.round(stats.coordinator.spawnEfficiency)}%`.padStart(4);
+	const reviewStr = `${Math.round(stats.coordinator.reviewThoroughness)}%`.padStart(3);
+	
+	lines.push(`│ Violation Rate:   ${violationStr}${" ".repeat(19 - violationStr.length)}│`);
+	lines.push(`│ Spawn Efficiency: ${spawnStr}${" ".repeat(17 - spawnStr.length)}│`);
+	lines.push(`│ Review Rate:      ${reviewStr}${" ".repeat(19 - reviewStr.length)}│`);
+	lines.push("└─────────────────────────────────────────┘");
+	
+	lines.push("");
+	lines.push(`📊 Stats for last ${stats.recentDays} days`);
+
+	return lines.join("\n");
+}
+
+/**
+ * Parse time period string like "7d", "24h", "30m" to timestamp
+ */
+export function parseTimePeriod(period: string): number {
+	const match = period.match(/^(\d+)([dhm])$/);
+	if (!match) {
+		throw new Error(
+			`Invalid time period format: ${period}. Use "7d", "24h", or "30m"`,
+		);
+	}
+
+	const [, value, unit] = match;
+	const num = Number.parseInt(value, 10);
+	const now = Date.now();
+
+	switch (unit) {
+		case "d":
+			return now - num * 24 * 60 * 60 * 1000;
+		case "h":
+			return now - num * 60 * 60 * 1000;
+		case "m":
+			return now - num * 60 * 1000;
+		default:
+			throw new Error(`Unknown time unit: ${unit}`);
+	}
+}
+
+/**
+ * Aggregate swarm outcomes by strategy
+ */
+export function aggregateByStrategy(
+	outcomes: Array<{ strategy: string | null; success: boolean }>,
+): Array<{ strategy: string; total: number; successRate: number; successes: number }> {
+	const grouped: Record<string, { total: number; successes: number }> = {};
+
+	for (const outcome of outcomes) {
+		const strategy = outcome.strategy || "unknown";
+		if (!grouped[strategy]) {
+			grouped[strategy] = { total: 0, successes: 0 };
+		}
+		grouped[strategy].total++;
+		if (outcome.success) {
+			grouped[strategy].successes++;
+		}
+	}
+
+	return Object.entries(grouped).map(([strategy, stats]) => ({
+		strategy,
+		total: stats.total,
+		successes: stats.successes,
+		successRate: (stats.successes / stats.total) * 100,
+	}));
+}
+
+// ============================================================================
+// History CLI Helpers (exported for bin/swarm.ts)
+// ============================================================================
+
+export interface SwarmHistoryRecord {
+	epic_id: string;
+	epic_title: string;
+	strategy: string;
+	timestamp: string;
+	overall_success: boolean;
+	task_count: number;
+	completed_count: number;
+}
+
+/**
+ * Query swarm history from eval_records table
+ */
+export async function querySwarmHistory(
+	projectPath: string,
+	options?: {
+		limit?: number;
+		status?: "success" | "failed" | "in_progress";
+		strategy?: "file-based" | "feature-based" | "risk-based";
+	},
+): Promise<SwarmHistoryRecord[]> {
+	const swarmMail = await getSwarmMailLibSQL(projectPath);
+	const db = await swarmMail.getDatabase();
+
+	// Build WHERE clause
+	const conditions: string[] = [];
+	const params: (string | number)[] = [];
+
+	if (options?.status) {
+		switch (options.status) {
+			case "success":
+				conditions.push("json_extract(data, '$.overall_success') = 'true'");
+				break;
+			case "failed":
+				conditions.push(
+					"json_extract(data, '$.overall_success') = 'false' AND json_extract(data, '$.completed_count') = json_extract(data, '$.task_count')",
+				);
+				break;
+			case "in_progress":
+				conditions.push(
+					"json_extract(data, '$.completed_count') < json_extract(data, '$.task_count')",
+				);
+				break;
+		}
+	}
+
+	if (options?.strategy) {
+		conditions.push("json_extract(data, '$.strategy') = ?");
+		params.push(options.strategy);
+	}
+
+	const whereClause = conditions.length > 0 ? `AND ${conditions.join(" AND ")}` : "";
+	const limit = options?.limit || 10;
+
+	const query = `
+		SELECT 
+			json_extract(data, '$.epic_id') as epic_id,
+			json_extract(data, '$.task') as epic_title,
+			json_extract(data, '$.strategy') as strategy,
+			timestamp,
+			json_extract(data, '$.overall_success') as overall_success,
+			CAST(json_extract(data, '$.task_count') AS INTEGER) as task_count,
+			CAST(json_extract(data, '$.completed_count') AS INTEGER) as completed_count
+		FROM events
+		WHERE type = 'eval_finalized'
+		${whereClause}
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`;
+
+	params.push(limit);
+
+	const result = await db.query(query, params);
+	const rows = result.rows as unknown[];
+
+	return rows.map((row) => {
+		const r = row as Record<string, unknown>;
+		return {
+			epic_id: String(r.epic_id || ""),
+			epic_title: String(r.epic_title || "Unknown"),
+			strategy: String(r.strategy || "unknown"),
+			timestamp: String(r.timestamp || new Date().toISOString()),
+			overall_success: String(r.overall_success) === "true",
+			task_count: Number(r.task_count) || 0,
+			completed_count: Number(r.completed_count) || 0,
+		};
+	});
+}
+
+/**
+ * Format relative time (e.g., "2h ago", "1d ago")
+ */
+export function formatRelativeTime(timestamp: string): string {
+	const now = Date.now();
+	const then = new Date(timestamp).getTime();
+	const diffMs = now - then;
+
+	const minutes = Math.floor(diffMs / 60000);
+	const hours = Math.floor(diffMs / 3600000);
+	const days = Math.floor(diffMs / 86400000);
+
+	if (minutes < 60) return `${minutes}m ago`;
+	if (hours < 24) return `${hours}h ago`;
+	return `${days}d ago`;
+}
+
+/**
+ * Format swarm history as beautiful CLI table
+ */
+export function formatSwarmHistory(records: SwarmHistoryRecord[]): string {
+	if (records.length === 0) {
+		return "No swarm history found";
+	}
+
+	const rows = records.map((r) => ({
+		time: formatRelativeTime(r.timestamp),
+		status: r.overall_success ? "✅" : "❌",
+		title:
+			r.epic_title.length > 30 ? `${r.epic_title.slice(0, 27)}...` : r.epic_title,
+		strategy: r.strategy,
+		tasks: `${r.completed_count}/${r.task_count} tasks`,
+	}));
+
+	// Box drawing characters
+	const lines: string[] = [];
+	lines.push("┌─────────────────────────────────────────────────────────────┐");
+	lines.push("│                    SWARM HISTORY                            │");
+	lines.push("├─────────────────────────────────────────────────────────────┤");
+
+	for (const row of rows) {
+		const statusCol = `${row.time.padEnd(8)} ${row.status}`;
+		const titleCol = row.title.padEnd(32);
+		const strategyCol = row.strategy.padEnd(13);
+		const tasksCol = row.tasks;
+
+		const line = `│ ${statusCol} ${titleCol} ${strategyCol} ${tasksCol.padEnd(3)} │`;
+		lines.push(line);
+	}
+
+	lines.push("└─────────────────────────────────────────────────────────────┘");
+
+	return lines.join("\n");
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 

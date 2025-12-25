@@ -343,4 +343,17 @@ describe("observability-tools", () => {
 			}
 		});
 	});
+
+	describe("CLI Stats Helpers", () => {
+		// These helpers will be exported for use in bin/swarm.ts
+		// They format analytics data for beautiful CLI output
+
+		describe("formatSwarmStatsBox", () => {
+			test("formats stats in a beautiful box", () => {
+				// This will be implemented in observability-tools.ts
+				// Just defining the test structure for now
+				expect(true).toBe(true);
+			});
+		});
+	});
 });

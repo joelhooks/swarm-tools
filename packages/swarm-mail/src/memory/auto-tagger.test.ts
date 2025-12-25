@@ -2,19 +2,22 @@
  * Auto-Tagger Tests
  *
  * Tests for automatic tag and keyword generation using LLM.
+ * Requires AI_GATEWAY_API_KEY environment variable.
  */
 
 import { describe, test, expect } from "bun:test";
 import { generateTags } from "./auto-tagger.js";
 
+const HAS_API_KEY = Boolean(process.env.AI_GATEWAY_API_KEY);
+
 describe("generateTags", () => {
-  // Mock config for tests
+  // Config for tests - requires real API key
   const testConfig = {
     model: "anthropic/claude-haiku-4-5",
-    apiKey: process.env.AI_GATEWAY_API_KEY || "test-key",
+    apiKey: process.env.AI_GATEWAY_API_KEY || "",
   };
 
-  test("generates valid AutoTagResult structure", async () => {
+  test.skipIf(!HAS_API_KEY)("generates valid AutoTagResult structure", async () => {
     const content = "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions";
     
     const result = await generateTags(content, undefined, testConfig);
@@ -27,7 +30,7 @@ describe("generateTags", () => {
     expect(typeof result.category).toBe("string");
   });
 
-  test("generates tags in expected range (3-5 tags)", async () => {
+  test.skipIf(!HAS_API_KEY)("generates tags in expected range (3-5 tags)", async () => {
     const content = "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions";
     
     const result = await generateTags(content, undefined, testConfig);
@@ -38,7 +41,7 @@ describe("generateTags", () => {
     expect(result.tags.every(tag => tag.length > 0)).toBe(true);
   });
 
-  test("generates keywords in expected range (5-10 keywords)", async () => {
+  test.skipIf(!HAS_API_KEY)("generates keywords in expected range (5-10 keywords)", async () => {
     const content = "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions";
     
     const result = await generateTags(content, undefined, testConfig);
@@ -49,7 +52,7 @@ describe("generateTags", () => {
     expect(result.keywords.every(kw => kw.length > 0)).toBe(true);
   });
 
-  test("incorporates existing user-provided tags", async () => {
+  test.skipIf(!HAS_API_KEY)("incorporates existing user-provided tags", async () => {
     const content = "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions";
     const existingTags = ["auth", "tokens"];
     
@@ -61,7 +64,7 @@ describe("generateTags", () => {
     expect(allTags.includes("token")).toBe(true);
   });
 
-  test("extracts relevant keywords from content", async () => {
+  test.skipIf(!HAS_API_KEY)("extracts relevant keywords from content", async () => {
     const content = "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions";
     
     const result = await generateTags(content, undefined, testConfig);
@@ -76,7 +79,7 @@ describe("generateTags", () => {
     ).toBe(true);
   });
 
-  test("assigns appropriate category", async () => {
+  test.skipIf(!HAS_API_KEY)("assigns appropriate category", async () => {
     const content = "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions";
     
     const result = await generateTags(content, undefined, testConfig);

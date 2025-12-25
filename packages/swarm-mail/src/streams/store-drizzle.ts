@@ -455,14 +455,145 @@ async function handleDecompositionGeneratedDrizzle(
 }
 
 async function handleSubtaskOutcomeDrizzle(
-  _db: SwarmDb,
+  db: SwarmDb,
   event: AgentEvent & { id: number; sequence: number },
 ): Promise<void> {
   if (event.type !== "subtask_outcome") return;
 
-  // TODO: Implement outcome tracking logic
-  // This requires reading current record, appending to outcomes array, recomputing metrics
-  console.warn("[SwarmMail] handleSubtaskOutcomeDrizzle not fully implemented");
+  // Fetch current record to compute metrics
+  const result = await db
+    .select({
+      outcomes: evalRecordsTable.outcomes,
+      subtasks: evalRecordsTable.subtasks,
+    })
+    .from(evalRecordsTable)
+    .where(eq(evalRecordsTable.id, event.epic_id));
+
+  if (!result[0]) {
+    console.warn(
+      `[SwarmMail] No eval_record found for epic_id ${event.epic_id}`,
+    );
+    return;
+  }
+
+  const row = result[0];
+  
+  // Parse subtasks and outcomes (stored as JSON strings)
+  const subtasks = (
+    typeof row.subtasks === "string" ? JSON.parse(row.subtasks) : row.subtasks
+  ) as Array<{
+    title: string;
+    files: string[];
+  }>;
+  
+  const outcomes = row.outcomes
+    ? ((typeof row.outcomes === "string"
+        ? JSON.parse(row.outcomes)
+        : row.outcomes) as Array<{
+        bead_id: string;
+        planned_files: string[];
+        actual_files: string[];
+        duration_ms: number;
+        error_count: number;
+        retry_count: number;
+        success: boolean;
+      }>)
+    : [];
+
+  // Create new outcome
+  const newOutcome = {
+    bead_id: event.bead_id,
+    planned_files: event.planned_files,
+    actual_files: event.actual_files,
+    duration_ms: event.duration_ms,
+    error_count: event.error_count,
+    retry_count: event.retry_count,
+    success: event.success,
+  };
+
+  // Append to outcomes array
+  const updatedOutcomes = [...outcomes, newOutcome];
+
+  // Compute metrics
+  const fileOverlapCount = computeFileOverlapDrizzle(subtasks);
+  const scopeAccuracy = computeScopeAccuracyDrizzle(
+    event.planned_files,
+    event.actual_files,
+  );
+  const timeBalanceRatio = computeTimeBalanceRatioDrizzle(updatedOutcomes);
+  const overallSuccess = updatedOutcomes.every((o) => o.success);
+  const totalDurationMs = updatedOutcomes.reduce(
+    (sum, o) => sum + o.duration_ms,
+    0,
+  );
+  const totalErrors = updatedOutcomes.reduce(
+    (sum, o) => sum + o.error_count,
+    0,
+  );
+
+  // Update record
+  await db
+    .update(evalRecordsTable)
+    .set({
+      outcomes: JSON.stringify(updatedOutcomes),
+      file_overlap_count: fileOverlapCount,
+      scope_accuracy: scopeAccuracy,
+      time_balance_ratio: timeBalanceRatio,
+      overall_success: overallSuccess,
+      total_duration_ms: totalDurationMs,
+      total_errors: totalErrors,
+      updated_at: event.timestamp,
+    })
+    .where(eq(evalRecordsTable.id, event.epic_id));
+}
+
+// ============================================================================
+// Metric Computation Helpers (Drizzle version)
+// ============================================================================
+
+/**
+ * Count files that appear in multiple subtasks
+ */
+function computeFileOverlapDrizzle(subtasks: Array<{ files: string[] }>): number {
+  const fileCount = new Map<string, number>();
+
+  for (const subtask of subtasks) {
+    for (const file of subtask.files) {
+      fileCount.set(file, (fileCount.get(file) || 0) + 1);
+    }
+  }
+
+  return Array.from(fileCount.values()).filter((count) => count > 1).length;
+}
+
+/**
+ * Compute scope accuracy: intersection(actual, planned) / planned.length
+ */
+function computeScopeAccuracyDrizzle(planned: string[], actual: string[]): number {
+  if (planned.length === 0) return 1.0;
+
+  const plannedSet = new Set(planned);
+  const intersection = actual.filter((file) => plannedSet.has(file));
+
+  return intersection.length / planned.length;
+}
+
+/**
+ * Compute time balance ratio: max(duration) / min(duration)
+ * Lower is better (more balanced)
+ */
+function computeTimeBalanceRatioDrizzle(
+  outcomes: Array<{ duration_ms: number }>,
+): number | null {
+  if (outcomes.length === 0) return null;
+
+  const durations = outcomes.map((o) => o.duration_ms);
+  const max = Math.max(...durations);
+  const min = Math.min(...durations);
+
+  if (min === 0) return null;
+
+  return max / min;
 }
 
 async function handleHumanFeedbackDrizzle(

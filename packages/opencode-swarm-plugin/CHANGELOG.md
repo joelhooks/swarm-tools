@@ -1,5 +1,13 @@
 # opencode-swarm-plugin
 
+## 0.42.3
+
+### Patch Changes
+
+- [`35eab3e`](https://github.com/joelhooks/swarm-tools/commit/35eab3e9e482b41e1535020a485561d5174e943c) Thanks [@joelhooks](https://github.com/joelhooks)! - ## First Real Tweet Incoming
+
+  Fixed X OAuth tokens - now with write permissions. Let's see if the bees can actually post.
+
 ## 0.42.2
 
 ### Patch Changes

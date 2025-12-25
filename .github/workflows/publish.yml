@@ -57,9 +57,30 @@ jobs:
           model: "anthropic/claude-sonnet-4-20250514"
           api-key: ${{ secrets.AI_GATEWAY_API_KEY }}
           prompt: |
-            Summarize this changelog into a tweet (max 280 chars) announcing the release from @swarmtoolsai. Be concise, highlight the key feature. The ONLY emoji allowed is 🐝 - use it once at most. No hashtags. Include the version number. Keep it professional, not cringe. Output ONLY the tweet text, nothing else.
-
-            Changelog:
+            Write a tweet announcing this release. Rules:
+            - Max 280 chars
+            - Only emoji allowed: 🐝 (use once, at start)
+            - No hashtags
+            - Include version number
+            - Terse, technical, slightly cheeky tone
+            - Focus on what devs can DO now, not what we did
+            
+            Examples of good tweets:
+            
+            INPUT: Added swarm observability with stats and history commands
+            OUTPUT: 🐝 v0.42.0 - swarm stats and swarm history commands. See what your bees are doing, which strategies work, where they're failing. Feedback loops that actually close.
+            
+            INPUT: Compaction prompt now includes swarm protocol context
+            OUTPUT: 🐝 v0.41.0 - coordinators no longer wake up confused after context compaction. Protocol guidance survives the squeeze.
+            
+            INPUT: Automated release tweets from @swarmtoolsai
+            OUTPUT: 🐝 v0.42.1 - releases now tweet themselves. One less thing to remember.
+            
+            INPUT: Fixed parallel swarm spawning and eval scoring
+            OUTPUT: 🐝 v0.40.0 - parallel workers actually spawn in parallel now. Evals score what matters.
+            
+            Now write ONE tweet for this changelog. Output ONLY the tweet, nothing else:
+            
             ${{ steps.changelog.outputs.content }}
 
       - name: Post to X

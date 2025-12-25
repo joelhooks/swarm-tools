@@ -273,6 +273,168 @@ describe("captureSubtaskOutcome integration", () => {
 });
 
 // ============================================================================
+// Event Emission Tests (subtask_outcome events to libSQL)
+// ============================================================================
+
+describe("subtask_outcome event emission", () => {
+  const mockContext = {
+    sessionID: `test-event-emission-${Date.now()}`,
+    messageID: `test-message-${Date.now()}`,
+    agent: "test-agent",
+    abort: new AbortController().signal,
+  };
+
+  let testProjectPath: string;
+
+  beforeEach(async () => {
+    testProjectPath = `/tmp/test-event-emission-${Date.now()}`;
+    fs.mkdirSync(testProjectPath, { recursive: true });
+    
+    // Create .hive directory and issues.jsonl
+    const hiveDir = `${testProjectPath}/.hive`;
+    fs.mkdirSync(hiveDir, { recursive: true });
+    fs.writeFileSync(`${hiveDir}/issues.jsonl`, "", "utf-8");
+    
+    // Set hive working directory to testProjectPath
+    const { setHiveWorkingDirectory } = await import("./hive");
+    setHiveWorkingDirectory(testProjectPath);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(testProjectPath)) {
+      fs.rmSync(testProjectPath, { recursive: true, force: true });
+    }
+  });
+
+  test("swarm_complete emits subtask_outcome event to libSQL database", async () => {
+    // Import dependencies
+    const { hive_create_epic } = await import("./hive");
+    const { readEvents, getSwarmMailLibSQL } = await import("swarm-mail");
+
+    // Create an epic with a subtask
+    const epicResult = await hive_create_epic.execute({
+      epic_title: "Add feature X",
+      subtasks: [
+        {
+          title: "Implement X service",
+          priority: 2,
+          files: ["src/x.ts"],
+        },
+      ],
+    }, mockContext);
+    
+    const epicData = JSON.parse(epicResult);
+    const epicId = epicData.epic.id;
+    const beadId = epicData.subtasks[0].id;
+
+    const startTime = Date.now() - 60000; // Started 1 minute ago
+
+    // Call swarm_complete
+    const result = await swarm_complete.execute(
+      {
+        project_key: testProjectPath,
+        agent_name: "TestAgent",
+        bead_id: beadId,
+        summary: "Implemented X service",
+        files_touched: ["src/x.ts"],
+        skip_verification: true,
+        skip_review: true,
+        planned_files: ["src/x.ts"],
+        start_time: startTime,
+        error_count: 0,
+        retry_count: 0,
+      },
+      mockContext,
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+
+    // Query events from libSQL database
+    const events = await readEvents({
+      projectKey: testProjectPath,
+      types: ["subtask_outcome"],
+    }, testProjectPath);
+
+    // Should have exactly 1 subtask_outcome event
+    expect(events.length).toBe(1);
+    
+    const event = events[0] as any;
+    expect(event.type).toBe("subtask_outcome");
+    expect(event.epic_id).toBe(epicId);
+    expect(event.bead_id).toBe(beadId);
+    expect(event.success).toBe(true);
+    expect(event.duration_ms).toBeGreaterThan(0);
+  });
+
+  test("subtask_outcome event updates eval_records.outcomes in libSQL", async () => {
+    // Import dependencies
+    const { hive_create_epic } = await import("./hive");
+    const { getSwarmMailLibSQL } = await import("swarm-mail");
+
+    // Create an epic with a subtask
+    const epicResult = await hive_create_epic.execute({
+      epic_title: "Add feature Y",
+      subtasks: [
+        {
+          title: "Implement Y service",
+          priority: 2,
+          files: ["src/y.ts"],
+        },
+      ],
+    }, mockContext);
+    
+    const epicData = JSON.parse(epicResult);
+    const epicId = epicData.epic.id;
+    const beadId = epicData.subtasks[0].id;
+
+    const startTime = Date.now() - 90000; // Started 1.5 minutes ago
+
+    // Call swarm_complete
+    await swarm_complete.execute(
+      {
+        project_key: testProjectPath,
+        agent_name: "TestAgent",
+        bead_id: beadId,
+        summary: "Implemented Y service",
+        files_touched: ["src/y.ts", "src/y.test.ts"],
+        skip_verification: true,
+        skip_review: true,
+        planned_files: ["src/y.ts"],
+        start_time: startTime,
+        error_count: 0,
+        retry_count: 0,
+      },
+      mockContext,
+    );
+
+    // Query eval_records from libSQL
+    const swarmMail = await getSwarmMailLibSQL(testProjectPath);
+    const db = await swarmMail.getDatabase();
+
+    const result = await db.query<{ outcomes: string | null }>(
+      `SELECT outcomes FROM eval_records WHERE id = ?`,
+      [epicId]
+    );
+
+    expect(result.rows.length).toBe(1);
+    
+    const outcomes = result.rows[0].outcomes;
+    expect(outcomes).not.toBeNull();
+    
+    const parsed = JSON.parse(outcomes || "[]");
+    expect(parsed.length).toBe(1);
+    
+    const outcome = parsed[0];
+    expect(outcome.bead_id).toBe(beadId);
+    expect(outcome.success).toBe(true);
+    expect(outcome.duration_ms).toBeGreaterThan(0);
+    expect(outcome.planned_files).toEqual(["src/y.ts"]);
+    expect(outcome.actual_files).toEqual(["src/y.ts", "src/y.test.ts"]);
+  });
+});
+
+// ============================================================================
 // Eval Capture Integration Tests (swarm_record_outcome)
 // ============================================================================
 

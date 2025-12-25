@@ -146,8 +146,8 @@ describe("SUBTASK_PROMPT_V2", () => {
 });
 
 describe("formatSubtaskPromptV2", () => {
-  test("substitutes all placeholders correctly", () => {
-    const result = formatSubtaskPromptV2({
+  test("substitutes all placeholders correctly", async () => {
+    const result = await formatSubtaskPromptV2({
       bead_id: "test-project-abc123-bead456",
       epic_id: "test-project-abc123-epic789",
       subtask_title: "Test Subtask",
@@ -165,8 +165,8 @@ describe("formatSubtaskPromptV2", () => {
     expect(result).toContain("/path/to/project");
   });
 
-  test("includes memory query step with MANDATORY emphasis", () => {
-    const result = formatSubtaskPromptV2({
+  test("includes memory query step with MANDATORY emphasis", async () => {
+    const result = await formatSubtaskPromptV2({
       bead_id: "test-project-abc123-def456",
       epic_id: "test-project-abc123-ghi789",
       subtask_title: "Test",
@@ -976,5 +976,130 @@ describe("getRecentEvalFailures", () => {
     
     // Should not throw even if memory is unavailable
     await expect(getRecentEvalFailures()).resolves.toBeDefined();
+  });
+});
+
+describe("getPromptInsights", () => {
+  describe("for coordinators (planning prompts)", () => {
+    test("returns formatted insights string", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ role: "coordinator" });
+      
+      expect(typeof result).toBe("string");
+    });
+
+    test.skip("includes strategy success rates when data exists", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ role: "coordinator" });
+      
+      // If there's data, should mention strategies
+      if (result.length > 0) {
+        expect(result).toMatch(/strategy|file-based|feature-based|risk-based/i);
+      }
+    });
+
+    test.skip("includes recent failure patterns", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ role: "coordinator" });
+      
+      // Should query for failures and anti-patterns
+      if (result.length > 0) {
+        expect(result).toMatch(/avoid|failure|anti-pattern|success rate/i);
+      }
+    });
+
+    test.skip("returns empty string when no data available", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      
+      // With project_key filter that doesn't exist, should return empty
+      const result = await getPromptInsights({ 
+        role: "coordinator",
+        project_key: "non-existent-project-xyz123"
+      });
+      
+      expect(typeof result).toBe("string");
+    });
+  });
+
+  describe("for workers (subtask prompts)", () => {
+    test.skip("returns formatted insights string", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ 
+        role: "worker",
+        files: ["src/test.ts"]
+      });
+      
+      expect(typeof result).toBe("string");
+    });
+
+    test.skip("queries semantic-memory for file-specific learnings", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ 
+        role: "worker",
+        files: ["src/auth.ts", "src/api/login.ts"]
+      });
+      
+      // Should query semantic memory with file/domain keywords
+      // Result format doesn't matter, just verify it doesn't throw
+      expect(typeof result).toBe("string");
+    });
+
+    test.skip("includes common pitfalls for domain area", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ 
+        role: "worker",
+        domain: "authentication"
+      });
+      
+      if (result.length > 0) {
+        expect(result).toMatch(/pitfall|gotcha|warning|common|issue/i);
+      }
+    });
+  });
+
+  describe("handles errors gracefully", () => {
+    test.skip("returns empty string when database unavailable", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      
+      // Should not throw even if swarm-mail DB is unavailable
+      await expect(getPromptInsights({ role: "coordinator" })).resolves.toBeDefined();
+    });
+
+    test.skip("returns empty string when semantic-memory unavailable", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      
+      // Should not throw even if memory is unavailable
+      await expect(getPromptInsights({ role: "worker", files: [] })).resolves.toBeDefined();
+    });
+  });
+
+  describe("formatting", () => {
+    test.skip("formats strategy stats as readable table", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ role: "coordinator" });
+      
+      if (result.includes("Strategy")) {
+        // Should use markdown table or similar readable format
+        expect(result).toMatch(/\|.*\||\n-+\n|Strategy.*Success/i);
+      }
+    });
+
+    test.skip("limits output to prevent context bloat", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ role: "coordinator" });
+      
+      // Should cap at reasonable length (say, 1500 chars max)
+      expect(result.length).toBeLessThan(2000);
+    });
+
+    test.skip("includes visual emphasis (emoji or markdown)", async () => {
+      const { getPromptInsights } = await import("./swarm-prompts");
+      const result = await getPromptInsights({ role: "coordinator" });
+      
+      if (result.length > 0) {
+        // Should have at least some formatting
+        expect(result).toMatch(/##|📊|✅|❌|⚠️|\*\*/);
+      }
+    });
   });
 });

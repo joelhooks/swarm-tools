@@ -741,42 +741,44 @@ export const hive_create_epic = tool({
       };
 
       // Emit DecompositionGeneratedEvent for learning system
-      if (args.project_key) {
-        try {
-          const event = createEvent("decomposition_generated", {
-            project_key: args.project_key,
-            epic_id: epic.id,
-            task: args.task || validated.epic_title,
-            context: validated.epic_description,
-            strategy: args.strategy || "feature-based",
-            epic_title: validated.epic_title,
-            subtasks: validated.subtasks.map((st) => ({
-              title: st.title,
-              files: st.files || [],
-              priority: st.priority,
-            })),
-            recovery_context: args.recovery_context,
-          });
-          await appendEvent(event, args.project_key);
-        } catch (error) {
-          // Non-fatal - log and continue
-          console.warn(
-            "[hive_create_epic] Failed to emit DecompositionGeneratedEvent:",
-            error,
-          );
-        }
+      // Always emit using projectKey (from getHiveWorkingDirectory), not args.project_key
+      // This fixes the bug where events weren't emitted when callers didn't pass project_key
+      const effectiveProjectKey = args.project_key || projectKey;
+      try {
+        const event = createEvent("decomposition_generated", {
+          project_key: effectiveProjectKey,
+          epic_id: epic.id,
+          task: args.task || validated.epic_title,
+          context: validated.epic_description,
+          strategy: args.strategy || "feature-based",
+          epic_title: validated.epic_title,
+          subtasks: validated.subtasks.map((st) => ({
+            title: st.title,
+            files: st.files || [],
+            priority: st.priority,
+          })),
+          recovery_context: args.recovery_context,
+        });
+        await appendEvent(event, effectiveProjectKey);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn(
+          "[hive_create_epic] Failed to emit DecompositionGeneratedEvent:",
+          error,
+        );
+      }
 
-        // Capture decomposition_complete event for eval scoring
-        try {
-          const { captureCoordinatorEvent } = await import("./eval-capture.js");
-          
-          // Build files_per_subtask map (indexed by subtask index)
-          const filesPerSubtask: Record<number, string[]> = {};
-          validated.subtasks.forEach((subtask, index) => {
-            if (subtask.files && subtask.files.length > 0) {
-              filesPerSubtask[index] = subtask.files;
-            }
-          });
+      // Capture decomposition_complete event for eval scoring
+      try {
+        const { captureCoordinatorEvent } = await import("./eval-capture.js");
+        
+        // Build files_per_subtask map (indexed by subtask index)
+        const filesPerSubtask: Record<number, string[]> = {};
+        validated.subtasks.forEach((subtask, index) => {
+          if (subtask.files && subtask.files.length > 0) {
+            filesPerSubtask[index] = subtask.files;
+          }
+        });
 
           captureCoordinatorEvent({
             session_id: ctx.sessionID || "unknown",
@@ -792,13 +794,12 @@ export const hive_create_epic = tool({
               task: args.task,
             },
           });
-        } catch (error) {
-          // Non-fatal - log and continue
-          console.warn(
-            "[hive_create_epic] Failed to capture decomposition_complete event:",
-            error,
-          );
-        }
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn(
+          "[hive_create_epic] Failed to capture decomposition_complete event:",
+          error,
+        );
       }
 
       // Sync cells to JSONL so spawned workers can see them immediately

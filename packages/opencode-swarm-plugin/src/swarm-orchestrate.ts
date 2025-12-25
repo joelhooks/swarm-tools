@@ -1510,15 +1510,17 @@ This will be recorded as a negative learning signal.`;
 
       // Emit SubtaskOutcomeEvent for learning system
       try {
-        const epicId = args.bead_id.includes(".")
-          ? args.bead_id.split(".")[0]
-          : args.bead_id;
-
         const durationMs = args.start_time ? Date.now() - args.start_time : 0;
+        
+        // Determine epic ID: use parent_id if available, otherwise fall back to extracting from bead_id
+        // (New hive cell IDs don't follow epicId.subtaskNum pattern - they're independent IDs)
+        const eventEpicId = cell.parent_id || (args.bead_id.includes(".")
+          ? args.bead_id.split(".")[0]
+          : args.bead_id);
 
         const event = createEvent("subtask_outcome", {
           project_key: args.project_key,
-          epic_id: epicId,
+          epic_id: eventEpicId,
           bead_id: args.bead_id,
           planned_files: args.planned_files || [],
           actual_files: args.files_touched || [],

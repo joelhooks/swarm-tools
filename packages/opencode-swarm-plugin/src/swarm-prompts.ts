@@ -1143,6 +1143,165 @@ ${lines.join("\n")}
 }
 
 // ============================================================================
+// Prompt Insights Integration
+// ============================================================================
+
+interface PromptInsightsOptions {
+  role: "coordinator" | "worker";
+  project_key?: string;
+  files?: string[];
+  domain?: string;
+}
+
+/**
+ * Get swarm insights for prompt injection
+ * 
+ * Queries recent swarm outcomes and semantic memory to surface:
+ * - Strategy success rates
+ * - Common failure modes
+ * - Anti-patterns
+ * - File/domain-specific learnings
+ * 
+ * Returns formatted string for injection into coordinator or worker prompts.
+ * 
+ * @param options - Role and filters for insights
+ * @returns Formatted insights string (empty if no data or errors)
+ */
+export async function getPromptInsights(
+  options: PromptInsightsOptions,
+): Promise<string> {
+  try {
+    if (options.role === "coordinator") {
+      return await getCoordinatorInsights(options.project_key);
+    } else {
+      return await getWorkerInsights(options.files, options.domain);
+    }
+  } catch (e) {
+    // Best effort - don't fail if data unavailable
+    console.warn("Failed to query prompt insights:", e);
+    return "";
+  }
+}
+
+/**
+ * Get coordinator-specific insights (strategy stats, anti-patterns)
+ */
+async function getCoordinatorInsights(project_key?: string): Promise<string> {
+  try {
+    // Import swarm-mail and analytics
+    const { createLibSQLAdapter, createSwarmMailAdapter, strategySuccessRates } = await import("swarm-mail");
+    
+    // Create libSQL database adapter
+    const dbAdapter = await createLibSQLAdapter({ url: "file:./.swarm-mail/streams.db" });
+    
+    // Create swarm-mail adapter with database
+    const adapter = createSwarmMailAdapter(dbAdapter, project_key || "default");
+    
+    // Get database for raw queries
+    const db = await adapter.getDatabase();
+    
+    // Query strategy success rates
+    const query = strategySuccessRates({ project_key });
+    const result = await db.query(query.sql, Object.values(query.parameters || {}));
+    
+    if (!result || !result.rows || result.rows.length === 0) {
+      return "";
+    }
+    
+    // Format as markdown table
+    const rows = result.rows.map((r: any) => {
+      const strategy = r.strategy || "unknown";
+      const total = r.total_attempts || 0;
+      const successRate = r.success_rate || 0;
+      const emoji = successRate >= 80 ? "✅" : successRate >= 60 ? "⚠️" : "❌";
+      
+      return `| ${emoji} ${strategy} | ${successRate.toFixed(1)}% | ${total} |`;
+    });
+    
+    // Limit to top 5 strategies to prevent context bloat
+    const topRows = rows.slice(0, 5);
+    
+    // Add anti-pattern hints for low-success strategies
+    const antiPatterns = result.rows
+      .filter((r: any) => r.success_rate < 60)
+      .map((r: any) => `- AVOID: ${r.strategy} strategy (${r.success_rate.toFixed(1)}% success rate)`)
+      .slice(0, 3);
+    
+    const antiPatternsSection = antiPatterns.length > 0
+      ? `\n\n**Anti-Patterns:**\n${antiPatterns.join("\n")}`
+      : "";
+    
+    return `
+## 📊 Swarm Insights (Strategy Success Rates)
+
+| Strategy | Success Rate | Total Attempts |
+|----------|--------------|----------------|
+${topRows.join("\n")}
+
+**Use these insights to select decomposition strategies.**${antiPatternsSection}
+`;
+  } catch (e) {
+    console.warn("Failed to get coordinator insights:", e);
+    return "";
+  }
+}
+
+/**
+ * Get worker-specific insights (file/domain learnings, common pitfalls)
+ */
+async function getWorkerInsights(
+  files?: string[],
+  domain?: string,
+): Promise<string> {
+  try {
+    const adapter = await getMemoryAdapter();
+    
+    // Build query from files and domain
+    let query = "";
+    if (files && files.length > 0) {
+      // Extract domain keywords from file paths
+      const keywords = files
+        .flatMap((f) => f.split(/[\/\\.]/).filter((part) => part.length > 2))
+        .slice(0, 5);
+      query = keywords.join(" ");
+    } else if (domain) {
+      query = domain;
+    } else {
+      return ""; // No context to query
+    }
+    
+    // Query semantic memory for relevant learnings
+    const result = await adapter.find({
+      query: `${query} gotcha pitfall pattern bug`,
+      limit: 3,
+    });
+    
+    if (result.count === 0) {
+      return "";
+    }
+    
+    // Format as bullet list
+    const learnings = result.results.map((r) => {
+      const content = r.content.length > 150
+        ? r.content.slice(0, 150) + "..."
+        : r.content;
+      return `- ${content}`;
+    });
+    
+    return `
+## 💡 Relevant Learnings (from past agents)
+
+${learnings.join("\n")}
+
+**Check semantic-memory for full details if needed.**
+`;
+  } catch (e) {
+    console.warn("Failed to get worker insights:", e);
+    return "";
+  }
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -1185,7 +1344,7 @@ export function formatCoordinatorPrompt(params: {
 /**
  * Format the V2 subtask prompt for a specific agent
  */
-export function formatSubtaskPromptV2(params: {
+export async function formatSubtaskPromptV2(params: {
   bead_id: string;
   epic_id: string;
   subtask_title: string;
@@ -1200,7 +1359,7 @@ export function formatSubtaskPromptV2(params: {
     skills_to_load?: string[];
     coordinator_notes?: string;
   };
-}): string {
+}): Promise<string> {
   const fileList =
     params.files.length > 0
       ? params.files.map((f) => `- \`${f}\``).join("\n")
@@ -1211,6 +1370,13 @@ export function formatSubtaskPromptV2(params: {
     : "";
 
   const errorSection = params.error_context ? params.error_context : "";
+  
+  // Fetch worker insights (file/domain specific learnings)
+  const insights = await getPromptInsights({ 
+    role: "worker", 
+    files: params.files,
+    domain: params.subtask_title.split(/\s+/).slice(0, 3).join(" ") // Extract domain from title
+  });
 
   // Build recovery context section
   let recoverySection = "";
@@ -1263,6 +1429,11 @@ export function formatSubtaskPromptV2(params: {
   const handoffJson = JSON.stringify(handoff, null, 2);
   const handoffSection = `\n## WorkerHandoff Contract\n\nThis is your machine-readable contract. The contract IS the instruction.\n\n\`\`\`json\n${handoffJson}\n\`\`\`\n`;
 
+  // Inject insights into shared_context section
+  const sharedContextWithInsights = insights
+    ? `${params.shared_context || "(none)"}\n\n${insights}`
+    : params.shared_context || "(none)";
+
   return SUBTASK_PROMPT_V2.replace(/{bead_id}/g, params.bead_id)
     .replace(/{epic_id}/g, params.epic_id)
     .replace(/{project_path}/g, params.project_path || "$PWD")
@@ -1272,7 +1443,7 @@ export function formatSubtaskPromptV2(params: {
       params.subtask_description || "(see title)",
     )
     .replace("{file_list}", fileList)
-    .replace("{shared_context}", params.shared_context || "(none)")
+    .replace("{shared_context}", sharedContextWithInsights)
     .replace("{compressed_context}", compressedSection)
     .replace("{error_context}", errorSection + recoverySection + handoffSection);
 }
@@ -1404,7 +1575,7 @@ export const swarm_spawn_subtask = tool({
       .describe("Optional explicit model override (auto-selected if not provided)"),
   },
   async execute(args, _ctx) {
-    const prompt = formatSubtaskPromptV2({
+    const prompt = await formatSubtaskPromptV2({
       bead_id: args.bead_id,
       epic_id: args.epic_id,
       subtask_title: args.subtask_title,
@@ -1821,13 +1992,18 @@ export const swarm_plan_prompt = tool({
       }
     }
 
+    // Fetch swarm insights (strategy success rates, anti-patterns)
+    const insights = await getPromptInsights({ role: "coordinator" });
+
     // Format strategy guidelines
     const strategyGuidelines = formatStrategyGuidelines(selectedStrategy);
 
-    // Combine user context
+    // Combine user context and insights
     const contextSection = args.context
-      ? `## Additional Context\n${args.context}`
-      : "## Additional Context\n(none provided)";
+      ? `## Additional Context\n${args.context}\n\n${insights}`
+      : insights
+        ? `## Additional Context\n(none provided)\n\n${insights}`
+        : "## Additional Context\n(none provided)";
 
     // Build the prompt (without CASS - we'll let the module handle that)
     const prompt = STRATEGY_DECOMPOSITION_PROMPT.replace("{task}", args.task)

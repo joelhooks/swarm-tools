@@ -1,5 +1,41 @@
 # opencode-swarm-plugin
 
+## 0.42.7
+
+### Patch Changes
+
+- [`7a6a4a3`](https://github.com/joelhooks/swarm-tools/commit/7a6a4a37c4ea753de359dac5062d11186ee98ccd) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 📐 Swarm Insights Gets Its Blueprint
+
+  > _"The major documentation tool for information architecture... diagrams."_
+  > — Jesse James Garrett, The Elements of User Experience
+
+  The README now shows you how the swarm learns, not just that it does.
+
+  **Added:**
+
+  - ASCII diagram of the swarm learning loop (task → decompose → execute → complete → insights → repeat)
+  - Data flow architecture showing Event Store → Insights Aggregation → Agents
+  - Full API reference with TypeScript examples for coordinators and workers
+  - Token budget table (500 for coordinators, 300 for workers)
+  - Recommendation threshold table (≥80% = good, <40% = AVOID)
+  - Data sources table (Event Store, Semantic Memory, Anti-Pattern Registry)
+
+  **Why it matters:**
+  Diagrams > prose for architecture. Now you can see the feedback loop at a glance instead of reading paragraphs. The API examples are copy-pasteable.
+
+  ```
+  ┌──────────┐    ┌──────────┐    ┌──────────┐
+  │  TASK    │───▶│ INSIGHTS │───▶│  BETTER  │
+  │          │    │  LAYER   │    │  SWARMS  │
+  └──────────┘    └──────────┘    └──────────┘
+  ```
+
+- [`0ad79d5`](https://github.com/joelhooks/swarm-tools/commit/0ad79d57cd119517a8e04d0e74b4909f20a7f0be) Thanks [@joelhooks](https://github.com/joelhooks)! - ## Release Tweets Link to Source, PR Titles Get Smart
+
+  - Tweets now include link to the feature PR (or commit if pushed direct to main)
+  - Version bump PRs get AI-generated titles from changeset content via Opus
+  - No more "chore: update versions" - titles describe what actually shipped
+
 ## 0.42.6
 
 ### Patch Changes

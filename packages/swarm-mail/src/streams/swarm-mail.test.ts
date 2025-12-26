@@ -5,6 +5,9 @@
  * The Drizzle convenience wrappers should auto-create adapters.
  */
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInMemorySwarmMailLibSQL } from "../libsql.convenience";
 import type { SwarmMailAdapter } from "../types";
 
@@ -23,7 +26,8 @@ import {
 describe("swarm-mail", () => {
   let swarmMail: SwarmMailAdapter;
   let db: any; // LibSQLAdapter
-  const TEST_PROJECT = "/test/swarm-mail-test";
+  // Use a real temp directory instead of fake path to avoid EROFS errors
+  const TEST_PROJECT = mkdtempSync(join(tmpdir(), "swarm-mail-test-"));
 
   beforeAll(async () => {
     swarmMail = await createInMemorySwarmMailLibSQL("swarm-mail-test");

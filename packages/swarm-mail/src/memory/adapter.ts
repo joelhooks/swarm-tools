@@ -586,13 +586,17 @@ export function createMemoryAdapter(db: SwarmDb, config: MemoryConfig) {
       let results: SearchResult[];
 
       if (fts) {
-        // Use full-text search
+        // Use full-text search (explicit user choice - no warning needed)
         results = await store.ftsSearch(query, { limit, collection });
       } else {
         // Try vector search
         const embedding = await generateEmbedding(query);
         if (!embedding) {
-          // Fallback to FTS if Ollama unavailable
+          // Graceful degradation: Ollama unavailable, fallback to FTS
+          console.warn(
+            "⚠️  Ollama unavailable - falling back to FTS (full-text search). " +
+            "Semantic search disabled. To restore vector search, ensure Ollama is running."
+          );
           results = await store.ftsSearch(query, { limit, collection });
         } else {
           results = await store.search(embedding, { limit, collection });

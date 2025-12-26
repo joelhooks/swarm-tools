@@ -33,7 +33,13 @@ export {
 } from "./auto-tagger.js";
 
 // Migrations
-export { memoryMigration, memoryMigrations } from "./migrations.js";
+export { 
+	memoryMigration, 
+	memoryMigrations,
+	repairStaleEmbeddings,
+	type RepairStats,
+	type OllamaEmbedder,
+} from "./migrations.js";
 
 // Legacy migration tool
 export {

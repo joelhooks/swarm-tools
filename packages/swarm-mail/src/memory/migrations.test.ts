@@ -266,3 +266,167 @@ describe("Memory Migrations", () => {
     expect(memoryMigrationsLibSQL[0].description).toContain("memory");
   });
 });
+
+describe("repairStaleEmbeddings", () => {
+  let client: Client;
+  let db: DatabaseAdapter;
+
+  beforeEach(async () => {
+    client = createClient({ url: ":memory:" });
+    db = wrapLibSQL(client);
+
+    // Create base schema and apply memory migration
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sequence INTEGER,
+        type TEXT NOT NULL,
+        project_key TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        data TEXT NOT NULL DEFAULT '{}'
+      )
+    `);
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at INTEGER NOT NULL,
+        description TEXT
+      )
+    `);
+    await db.exec(memoryMigrationLibSQL.up);
+  });
+
+  test("detects memories with null embeddings", async () => {
+    // Insert memories with null embeddings (simulating Ollama being down during store)
+    const memoryId1 = `mem_${randomUUID()}`;
+    const memoryId2 = `mem_${randomUUID()}`;
+    const memoryId3 = `mem_${randomUUID()}`;
+
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId1, "Memory without embedding 1", "default"]
+    );
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId2, "Memory without embedding 2", "default"]
+    );
+    
+    // Insert one with valid embedding for comparison
+    const validEmbedding = new Array(1024).fill(0).map(() => Math.random());
+    await db.query(
+      `INSERT INTO memories (id, content, collection, embedding) VALUES ($1, $2, $3, vector($4))`,
+      [memoryId3, "Memory with embedding", "default", JSON.stringify(validEmbedding)]
+    );
+
+    // Run repair WITHOUT Ollama - should remove memories without embeddings
+    const { repairStaleEmbeddings } = await import("./migrations.js");
+    const stats = await repairStaleEmbeddings(db);
+
+    // Should have removed 2 memories with null embeddings
+    expect(stats.removed).toBe(2);
+    expect(stats.repaired).toBe(0);
+
+    // Verify only the valid memory remains
+    const remaining = await db.query<{ id: string }>(
+      `SELECT id FROM memories ORDER BY id`
+    );
+    expect(remaining.rows.length).toBe(1);
+    expect(remaining.rows[0].id).toBe(memoryId3);
+  });
+
+  test("re-embeds memories if Ollama is available", async () => {
+    // This test will check if Ollama is running and skip if not
+    // Insert memories with null embeddings
+    const memoryId1 = `mem_${randomUUID()}`;
+    const memoryId2 = `mem_${randomUUID()}`;
+
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId1, "Content to re-embed 1", "default"]
+    );
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId2, "Content to re-embed 2", "default"]
+    );
+
+    // Mock Ollama client
+    const mockOllama = {
+      embed: async (text: string) => {
+        // Return a valid 1024-dim embedding
+        return new Array(1024).fill(0).map(() => Math.random());
+      }
+    };
+
+    const { repairStaleEmbeddings } = await import("./migrations.js");
+    const stats = await repairStaleEmbeddings(db, mockOllama);
+
+    // Should have re-embedded 2 memories
+    expect(stats.repaired).toBe(2);
+    expect(stats.removed).toBe(0);
+
+    // Verify memories now have embeddings
+    const results = await db.query<{ id: string; embedding: unknown }>(
+      `SELECT id, embedding FROM memories WHERE id IN ($1, $2)`,
+      [memoryId1, memoryId2]
+    );
+    expect(results.rows.length).toBe(2);
+    
+    // Both should have non-null embeddings
+    for (const row of results.rows) {
+      expect(row.embedding).not.toBeNull();
+    }
+  });
+
+  test("returns correct stats for mixed repair/removal", async () => {
+    // Insert 3 memories without embeddings
+    const memoryId1 = `mem_${randomUUID()}`;
+    const memoryId2 = `mem_${randomUUID()}`;
+    const memoryId3 = `mem_${randomUUID()}`;
+
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId1, "Content 1", "default"]
+    );
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId2, "Content 2", "default"]
+    );
+    await db.query(
+      `INSERT INTO memories (id, content, collection) VALUES ($1, $2, $3)`,
+      [memoryId3, "Content 3", "default"]
+    );
+
+    // Mock Ollama that fails on one memory
+    const mockOllama = {
+      embed: async (text: string) => {
+        if (text.includes("Content 2")) {
+          throw new Error("Embedding generation failed");
+        }
+        return new Array(1024).fill(0).map(() => Math.random());
+      }
+    };
+
+    const { repairStaleEmbeddings } = await import("./migrations.js");
+    const stats = await repairStaleEmbeddings(db, mockOllama);
+
+    // Should have repaired 2, removed 1 (the one that failed to embed)
+    expect(stats.repaired).toBe(2);
+    expect(stats.removed).toBe(1);
+
+    // Verify correct memories remain
+    const remaining = await db.query<{ id: string }>(
+      `SELECT id FROM memories ORDER BY id`
+    );
+    expect(remaining.rows.length).toBe(2);
+    const remainingIds = remaining.rows.map(r => r.id).sort();
+    expect(remainingIds).toEqual([memoryId1, memoryId3].sort());
+  });
+
+  test("handles empty database gracefully", async () => {
+    const { repairStaleEmbeddings } = await import("./migrations.js");
+    const stats = await repairStaleEmbeddings(db);
+
+    expect(stats.repaired).toBe(0);
+    expect(stats.removed).toBe(0);
+  });
+});

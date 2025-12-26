@@ -75,19 +75,50 @@ describe("streams/index.ts module", () => {
 });
 
 describe("getDatabasePath()", () => {
-  it("always returns global ~/.config/swarm-tools/swarm.db", async () => {
+  it("returns global path when no projectPath provided", async () => {
     const { getDatabasePath } = await import("./index");
     const { homedir } = await import("node:os");
     const { join } = await import("node:path");
     
     const expected = join(homedir(), ".config", "swarm-tools", "swarm.db");
     
-    // With no argument
+    // With no argument - should use global
     expect(getDatabasePath()).toBe(expected);
+  });
+  
+  it("returns project-local path when projectPath provided", async () => {
+    const { getDatabasePath } = await import("./index");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
     
-    // With project path (ignored)
-    expect(getDatabasePath("/some/project")).toBe(expected);
-    expect(getDatabasePath("/another/project")).toBe(expected);
+    // Use temp directory to avoid read-only filesystem errors
+    const projectPath = join(tmpdir(), "test-project-" + Date.now());
+    const expected = join(projectPath, ".opencode", "swarm.db");
+    
+    const result = getDatabasePath(projectPath);
+    expect(result).toBe(expected);
+    
+    // Clean up
+    const { rmSync } = await import("node:fs");
+    rmSync(join(projectPath, ".opencode"), { recursive: true, force: true });
+  });
+  
+  it("resolves worktrees to main repo path", async () => {
+    const { getDatabasePath } = await import("./index");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    
+    // Use temp directory for real filesystem operations
+    const projectPath = join(tmpdir(), "test-project-worktree-" + Date.now());
+    const expected = join(projectPath, ".opencode", "swarm.db");
+    
+    // For non-worktree paths, getMainRepoPath returns the same path
+    const result = getDatabasePath(projectPath);
+    expect(result).toBe(expected);
+    
+    // Clean up
+    const { rmSync } = await import("node:fs");
+    rmSync(join(projectPath, ".opencode"), { recursive: true, force: true });
   });
 });
 

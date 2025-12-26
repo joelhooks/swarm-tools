@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getMainRepoPath } from "../db/worktree.js";
 
 // ============================================================================
 // Query Timeout Wrapper
@@ -76,15 +77,27 @@ export async function withTiming<T>(
 // ============================================================================
 
 /**
- * Get the database path for SwarmMail
+ * Get database file path with worktree resolution
  *
- * Always returns global ~/.config/swarm-tools/swarm.db
- * The projectPath parameter is kept for backward compatibility but ignored.
+ * If projectPath is provided, returns {mainRepoPath}/.opencode/swarm.db
+ * (resolving to main repo if path is a worktree).
+ * If no projectPath, returns global ~/.config/swarm-tools/swarm.db
  *
- * @param projectPath - Deprecated, kept for backward compatibility but ignored
- * @returns Path to global swarm-tools database
+ * @param projectPath - Optional project path (resolves worktrees to main repo)
+ * @returns Path to database file
  */
 export function getDatabasePath(projectPath?: string): string {
+	if (projectPath) {
+		// Use worktree resolution - ensures DB is in main repo's .opencode, not worktree's
+		const mainRepoPath = getMainRepoPath(projectPath);
+		const opencodeDir = join(mainRepoPath, ".opencode");
+		if (!existsSync(opencodeDir)) {
+			mkdirSync(opencodeDir, { recursive: true });
+		}
+		return join(opencodeDir, "swarm.db");
+	}
+	
+	// No project path - use global database
 	const globalDir = join(homedir(), ".config", "swarm-tools");
 	if (!existsSync(globalDir)) {
 		mkdirSync(globalDir, { recursive: true });
@@ -99,14 +112,18 @@ export function getDatabasePath(projectPath?: string): string {
  * - libsql: Old libSQL database at {projectPath}/.opencode/streams.db
  * - pglite: Old PGlite database directory at {projectPath}/.opencode/streams/
  *
- * @param projectPath - Project directory path
+ * If projectPath is a worktree, resolves to the main repository's .opencode directory.
+ *
+ * @param projectPath - Project directory path (worktree or main repo)
  * @returns Object with paths to check for migration
  */
 export function getOldProjectDbPaths(projectPath: string): {
 	libsql: string;
 	pglite: string;
 } {
-	const localDir = join(projectPath, ".opencode");
+	// Resolve to main repo if in worktree
+	const mainRepoPath = getMainRepoPath(projectPath);
+	const localDir = join(mainRepoPath, ".opencode");
 	return {
 		libsql: join(localDir, "streams.db"),
 		pglite: join(localDir, "streams"),

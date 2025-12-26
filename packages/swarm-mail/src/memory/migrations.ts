@@ -276,3 +276,96 @@ export const memorySchemaOverhaulLibSQL: Migration = {
  */
 export const memoryMigrations: Migration[] = [memoryMigration];
 export const memoryMigrationsLibSQL: Migration[] = [memoryMigrationLibSQL, memorySchemaOverhaulLibSQL];
+
+/**
+ * Repair stats returned by repairStaleEmbeddings
+ */
+export interface RepairStats {
+  /** Number of memories that were re-embedded */
+  repaired: number;
+  /** Number of memories that were removed (couldn't be re-embedded) */
+  removed: number;
+}
+
+/**
+ * Simple Ollama-compatible interface for embedding
+ */
+export interface OllamaEmbedder {
+  embed(text: string): Promise<number[]>;
+}
+
+/**
+ * Repair stale embeddings in the database
+ *
+ * Fixes the "dimensions are different: 0 != 1024" error that occurs when:
+ * - Memories were stored without embeddings (Ollama was down)
+ * - User tries to search with a valid 1024-dim query vector
+ *
+ * Strategy:
+ * - Finds memories with NULL or empty embeddings
+ * - If Ollama is available: re-embeds the content and updates
+ * - If Ollama is unavailable: deletes the memory (can't search without embedding)
+ *
+ * @param db - Database adapter instance
+ * @param ollama - Optional Ollama embedder for re-embedding
+ * @returns Stats about repaired and removed memories
+ *
+ * @example
+ * ```typescript
+ * // Without Ollama - removes memories without embeddings
+ * const stats = await repairStaleEmbeddings(db);
+ * console.log(`Removed ${stats.removed} memories without embeddings`);
+ *
+ * // With Ollama - re-embeds memories
+ * const ollama = { embed: async (text) => [...] };
+ * const stats = await repairStaleEmbeddings(db, ollama);
+ * console.log(`Repaired ${stats.repaired}, removed ${stats.removed}`);
+ * ```
+ */
+export async function repairStaleEmbeddings(
+  db: { query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }> },
+  ollama?: OllamaEmbedder
+): Promise<RepairStats> {
+  const stats: RepairStats = { repaired: 0, removed: 0 };
+
+  // Find memories with null embeddings
+  // In libSQL, F32_BLOB can be NULL when not set
+  const staleMemories = await db.query<{ id: string; content: string }>(
+    `SELECT id, content FROM memories WHERE embedding IS NULL`
+  );
+
+  if (staleMemories.rows.length === 0) {
+    return stats; // No stale memories to repair
+  }
+
+  // If Ollama is available, try to re-embed
+  if (ollama) {
+    for (const memory of staleMemories.rows) {
+      try {
+        // Generate new embedding
+        const embedding = await ollama.embed(memory.content);
+        
+        // Update memory with new embedding
+        await db.query(
+          `UPDATE memories SET embedding = vector($1) WHERE id = $2`,
+          [JSON.stringify(embedding), memory.id]
+        );
+        
+        stats.repaired++;
+      } catch (error) {
+        // If embedding fails, remove the memory
+        await db.query(`DELETE FROM memories WHERE id = $1`, [memory.id]);
+        stats.removed++;
+      }
+    }
+  } else {
+    // No Ollama - remove all memories without embeddings
+    // They can't be searched anyway, so keeping them would just cause errors
+    for (const memory of staleMemories.rows) {
+      await db.query(`DELETE FROM memories WHERE id = $1`, [memory.id]);
+      stats.removed++;
+    }
+  }
+
+  return stats;
+}

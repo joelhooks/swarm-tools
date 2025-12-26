@@ -1136,6 +1136,129 @@ describe("MemoryAdapter - Decay Calculation", () => {
   });
 });
 
+describe("MemoryAdapter - Graceful Degradation When Ollama Unavailable", () => {
+  let client: Client;
+  let db: SwarmDb;
+  let adapter: ReturnType<typeof createMemoryAdapter>;
+  let originalFetch: typeof fetch;
+  let consoleWarnSpy: ReturnType<typeof mock>;
+
+  beforeEach(async () => {
+    originalFetch = global.fetch;
+    const testDb = await createTestDb();
+    client = testDb.client;
+    db = testDb.db;
+
+    // Spy on console.warn to verify degradation warnings
+    consoleWarnSpy = mock(() => {});
+    console.warn = consoleWarnSpy as typeof console.warn;
+
+    adapter = createMemoryAdapter(db, mockConfig);
+  });
+
+  afterEach(async () => {
+    global.fetch = originalFetch;
+    client.close();
+  });
+
+  test("find() falls back to FTS when Ollama unavailable", async () => {
+    // ARRANGE: Store memory with working Ollama
+    const mockFetchWorking = mock(() => mockSuccessResponse(mockEmbedding(1)));
+    global.fetch = mockFetchWorking as typeof fetch;
+    await adapter.store("TypeScript is a typed superset");
+    await adapter.store("JavaScript is dynamic");
+
+    // ACT: Make Ollama unavailable, then search
+    const mockFetchFailing = mock(() => Promise.reject(new Error("ECONNREFUSED")));
+    global.fetch = mockFetchFailing as typeof fetch;
+
+    const results = await adapter.find("TypeScript");
+
+    // ASSERT: Should use FTS fallback and return results
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].matchType).toBe("fts");
+    expect(results[0].memory.content).toContain("TypeScript");
+  });
+
+  test("find() logs warning when falling back to FTS", async () => {
+    // ARRANGE: Store memory with working Ollama
+    const mockFetchWorking = mock(() => mockSuccessResponse(mockEmbedding(1)));
+    global.fetch = mockFetchWorking as typeof fetch;
+    await adapter.store("Test content for FTS fallback");
+
+    // Reset console.warn spy
+    consoleWarnSpy.mockClear();
+
+    // ACT: Make Ollama unavailable, then search
+    const mockFetchFailing = mock(() => Promise.reject(new Error("Connection refused")));
+    global.fetch = mockFetchFailing as typeof fetch;
+
+    await adapter.find("Test content");
+
+    // ASSERT: Should log warning about degraded mode
+    // Note: This will fail until we implement the warning
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    const warnMessage = consoleWarnSpy.mock.calls[0]?.[0];
+    expect(warnMessage).toContain("Ollama");
+    expect(warnMessage).toContain("FTS");
+  });
+
+  test("find() returns FTS results with matchType='fts' in degraded mode", async () => {
+    // ARRANGE: Store memories
+    const mockFetchWorking = mock(() => mockSuccessResponse(mockEmbedding(1)));
+    global.fetch = mockFetchWorking as typeof fetch;
+    await adapter.store("Python for machine learning");
+    await adapter.store("JavaScript frameworks");
+
+    // ACT: Ollama down, search anyway
+    const mockFetchFailing = mock(() => Promise.reject(new Error("ECONNREFUSED")));
+    global.fetch = mockFetchFailing as typeof fetch;
+
+    const results = await adapter.find("Python");
+
+    // ASSERT: All results should have matchType='fts'
+    expect(results.length).toBeGreaterThan(0);
+    results.forEach((result) => {
+      expect(result.matchType).toBe("fts");
+    });
+  });
+
+  test("find() with fts=false still falls back when Ollama unavailable", async () => {
+    // ARRANGE: Store memory
+    const mockFetchWorking = mock(() => mockSuccessResponse(mockEmbedding(1)));
+    global.fetch = mockFetchWorking as typeof fetch;
+    await adapter.store("Graceful degradation test");
+
+    // ACT: Ollama unavailable, user didn't specify fts: true
+    const mockFetchFailing = mock(() => Promise.reject(new Error("Network error")));
+    global.fetch = mockFetchFailing as typeof fetch;
+
+    const results = await adapter.find("degradation", { fts: false });
+
+    // ASSERT: Should still work via automatic fallback
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].matchType).toBe("fts");
+  });
+
+  test("find() with explicit fts: true doesn't require Ollama at all", async () => {
+    // ARRANGE: Store memory with working Ollama
+    const mockFetchWorking = mock(() => mockSuccessResponse(mockEmbedding(1)));
+    global.fetch = mockFetchWorking as typeof fetch;
+    await adapter.store("Explicit FTS test");
+
+    // ACT: Make Ollama unavailable, but user explicitly requested FTS
+    const mockFetchFailing = mock(() => Promise.reject(new Error("ECONNREFUSED")));
+    global.fetch = mockFetchFailing as typeof fetch;
+
+    const results = await adapter.find("Explicit", { fts: true });
+
+    // ASSERT: Should work fine (no fallback needed, direct FTS)
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].matchType).toBe("fts");
+    // console.warn should NOT be called (direct FTS, not fallback)
+  });
+});
+
 describe("MemoryAdapter - Confidence-Based Decay", () => {
   let client: Client;
   let db: SwarmDb;

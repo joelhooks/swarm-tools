@@ -2,14 +2,18 @@
  * Migration tests - PGlite → libSQL
  * 
  * Tests the migration of memories and beads from PGlite to libSQL.
+ * 
+ * Note: Tests requiring PGlite are skipped if @electric-sql/pglite is not installed.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PGlite } from "@electric-sql/pglite";
 import { migratePGliteToLibSQL, pgliteExists } from "./migrate-pglite-to-libsql.js";
+
+// PGlite type - only used for type annotation, actual import is dynamic
+type PGlite = Awaited<ReturnType<typeof import("@electric-sql/pglite").then>>["PGlite"] extends new (...args: any[]) => infer T ? T : never;
 
 describe("migratePGliteToLibSQL", () => {
   let tempDir: string;
@@ -48,7 +52,16 @@ describe("migratePGliteToLibSQL", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  describe("with real PGlite database", () => {
+  // Check if PGlite is available before defining tests
+  let pgliteAvailable = false;
+  try {
+    require.resolve("@electric-sql/pglite");
+    pgliteAvailable = true;
+  } catch {
+    console.log("PGlite not available, skipping real PGlite tests");
+  }
+
+  describe.skipIf(!pgliteAvailable)("with real PGlite database", () => {
     let pglite: PGlite;
 
     beforeAll(async () => {

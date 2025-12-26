@@ -27,7 +27,7 @@
   "license": "MIT",
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node && tsc",
-    "test": "bun test src/",
+    "test": "bun test src/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

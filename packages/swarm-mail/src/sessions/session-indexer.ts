@@ -168,9 +168,9 @@ export class SessionIndexer {
 		this.ollamaLayer = ollamaLayer;
 
 		// Initialize components
-		// For now, default to "opencode" agent type
+		// For now, default to "opencode-swarm" agent type
 		// TODO: Integrate AgentDiscovery when implemented
-		this.parser = new SessionParser("opencode");
+		this.parser = new SessionParser("opencode-swarm");
 		this.processor = new ChunkProcessor();
 		this.memoryStore = createMemoryStore(db);
 	}
@@ -272,7 +272,7 @@ export class SessionIndexer {
 
 			return {
 				path: filePath,
-				agent_type: "opencode", // TODO: Use AgentDiscovery
+				agent_type: "opencode-swarm", // TODO: Use AgentDiscovery
 				indexed,
 				skipped,
 				duration_ms,
@@ -406,7 +406,7 @@ export class SessionIndexer {
 
 			// For now, use a simplified approach
 			// TODO: Enhance with proper session counting
-			by_agent["opencode"] = {
+			by_agent["opencode-swarm"] = {
 				sessions: 0, // Would need to count unique session_ids
 				chunks: stats.memories,
 			};

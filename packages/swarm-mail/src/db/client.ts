@@ -36,22 +36,28 @@ let clientInstance: Client | undefined;
 /**
  * Initialize database schema.
  * 
- * Creates tables if they don't exist using the libSQL streams schema.
+ * Creates tables if they don't exist using both:
+ * - Streams schema (events, agents, messages, reservations, etc.)
+ * - Memory schema (memories with FTS5 and vector indexes)
  * 
  * @param client - libSQL client
  */
 async function initializeSchema(client: Client): Promise<void> {
   // Import libSQL schema creation
   const { createLibSQLStreamsSchema } = await import("../streams/libsql-schema.js");
+  const { createLibSQLMemorySchema } = await import("../memory/libsql-schema.js");
   const { createLibSQLAdapter } = await import("../libsql.js");
   
-  // Create a database adapter to pass to schema creation
+  // Create a database adapter to pass to streams schema creation
   const adapter = await createLibSQLAdapter({ url: ":memory:" });
   // Replace its internal client with ours
   Object.assign(adapter, { client });
   
-  // Initialize streams schema
+  // Initialize streams schema (events, agents, messages, etc.)
   await createLibSQLStreamsSchema(adapter);
+  
+  // Initialize memory schema (memories table with FTS5 and vector indexes)
+  await createLibSQLMemorySchema(client);
 }
 
 /**

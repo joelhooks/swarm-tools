@@ -10,7 +10,8 @@ tools:
   - skills_init
   - skills_create
   - skills_update
-  - skills_read
+  - skills_delete
+  - skills_add_script
 ---
 
 # Skill Creator
@@ -38,8 +39,8 @@ skill-name/
 │   ├── YAML frontmatter (name, description, tags, tools)
 │   └── Markdown instructions
 └── Bundled Resources (optional)
-    ├── scripts/      - Executable code (run with skills_execute)
-    └── references/   - Documentation (load with skills_read)
+    ├── scripts/      - Executable helpers
+    └── references/   - On-demand documentation
 ```
 
 ### Progressive Disclosure
@@ -54,9 +55,10 @@ Keep SKILL.md lean. Move detailed content to references/.
 
 ## Creating a Skill
 
-### Step 1: Understand the Use Cases
+### Step 1: Understand the Use Case
 
 Before creating, understand concrete examples:
+
 - What triggers should activate this skill?
 - What user requests would benefit from it?
 - What workflows does it enable?
@@ -71,7 +73,7 @@ Use `skills_init` to create the full template structure:
 skills_init(
   name: "my-skill",
   description: "Initial description",
-  directory: ".opencode/skills"
+  directory: ".opencode/skill"
 )
 ```
 
@@ -115,36 +117,21 @@ tools:
 3. Always validate output before completing
 ```
 
-**Examples** - Realistic user requests:
-```markdown
-## Examples
-
-### Example: Realistic Scenario
-
-**User**: "Help me do X"
-
-**Process**:
-1. First step
-2. Second step
-3. Final step
-```
-
 ### Step 4: Add Bundled Resources (Optional)
 
 **scripts/** - Executable helpers:
 - Use for repeated automation
 - Token-efficient (run without reading)
-- Run via `skills_execute`
 
 **references/** - On-demand documentation:
 - Detailed guides too long for SKILL.md
 - API documentation
 - Complex workflows
-- Load via `skills_read`
+- Load via native skill syntax: `use skill <name>` (e.g., `use skill api-integration`)
 
 ### Step 5: Test and Iterate
 
-1. Use `skills_use` to load the skill
+1. Use `skills_use` to load the skill (see below)
 2. Try it on real tasks
 3. Notice struggles or inefficiencies
 4. Update SKILL.md based on experience
@@ -154,20 +141,20 @@ tools:
 
 ### Metadata Quality
 
-The `name` and `description` determine when the skill triggers:
+The `name` and `description` determine when a skill triggers:
 
-**Good descriptions**:
+**Good descriptions:**
 - "Guide for creating MCP servers. Use when building tools that connect LLMs to external APIs."
 - "File organization helper. Use when Downloads folder is messy or files need restructuring."
 
-**Bad descriptions**:
+**Bad descriptions:**
 - "A useful skill" (too vague)
 - "Does stuff with files" (not actionable)
 
 ### Writing Style
 
 Use **imperative/infinitive form** throughout:
-- "Read the file first" (not "You should read the file")
+- "Read the configuration file first" (not "You should read the file")
 - "Check for patterns" (not "Consider checking patterns")
 
 ### Keep SKILL.md Lean
@@ -181,43 +168,36 @@ Use **imperative/infinitive form** throughout:
 
 - Tags help agents find skills by category
 - "When to Use" sections enable proper triggering
-- Tools list shows what capabilities the skill uses
+- Tools list shows what capabilities skill uses
 
 ## Quick Reference
 
-### Creating Skills
-
 | Tool | Use When |
-|------|----------|
+|-------|----------|
 | `skills_init` | Want full template structure with TODOs |
 | `skills_create` | Have complete content ready to write |
 | `swarm_learn` | Converting learned patterns to skills |
+| `use skill <name>` | Loading a skill into context for use |
+
+### Creating Skills
+
+Use `create_skill=true` or `skills_init` to create new skills.
 
 ### Managing Skills
 
-| Tool | Use For |
-|------|---------|
-| `skills_list` | Discover available skills |
-| `skills_use` | Activate a skill by loading its content |
-| `skills_read` | Load a reference file from a skill |
-| `skills_update` | Modify an existing skill |
-| `skills_delete` | Remove an obsolete skill |
+Skills are managed by OpenCode native format (.opencode/skill/).
 
 ### Execution
 
-| Tool | Use For |
-|------|---------|
-| `skills_execute` | Run a script from a skill |
-| `skills_add_script` | Add a new script to a skill |
+Skills support scripts via native skill syntax. When a skill defines scripts in its frontmatter `tools` field, those scripts are automatically available in the skill's context.
 
 ## From Learned Patterns to Skills
 
 When you discover something reusable during work:
 
-1. **Identify the pattern** - What worked well?
+1. **Identify pattern** - What worked well?
 2. **Consider scope** - Is it project-specific or universal?
-3. **Use `swarm_learn`** - Document the learning
-4. **Create the skill** - Use `create_skill=true` or `skills_init`
-5. **Test and refine** - Iterate based on usage
+3. **Document via skill** - Create new skill with clear instructions
+4. **Test and refine** - Iterate based on usage
 
 Skills make swarms smarter over time by preserving learned knowledge for future agents.

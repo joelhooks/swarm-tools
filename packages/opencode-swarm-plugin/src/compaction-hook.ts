@@ -189,9 +189,9 @@ swarm_status(epic_id, project_key)    # Overall progress
 
 ### 2. Skill Loading (BEFORE spawning workers)
 \`\`\`
-skills_use(name="swarm-coordination")  # ALWAYS for swarms
-skills_use(name="testing-patterns")    # If task involves tests
-skills_use(name="system-design")       # If architectural decisions
+use skill swarm-coordination  # ALWAYS for swarms
+use skill testing-patterns    # If task involves tests
+use skill system-design       # If architectural decisions
 \`\`\`
 **Include skill recommendations in shared_context for workers.**
 
@@ -267,7 +267,8 @@ swarm_spawn_researcher(
 \`\`\`
 semantic-memory_find(query="TASK_KEYWORDS", limit=5)   # Past learnings
 cass_search(query="TASK_DESCRIPTION", limit=5)         # Similar past tasks
-skills_list()                                          # Available skills
+# Skills are managed by OpenCode native format (.opencode/skill/)
+# Check .opencode/skill/ directory for available skills
 \`\`\`
 
 ### Phase 3: Decompose

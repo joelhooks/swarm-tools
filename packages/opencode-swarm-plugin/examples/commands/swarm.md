@@ -181,30 +181,32 @@ semantic-memory_find(query="<task keywords>", limit=5)
 # How similar tasks were solved before
 cass_search(query="<task description>", limit=5)
 
-# Available skills to inject into workers
-skills_list()
+# Check .opencode/skill/ directory for available skills
+
+```bash
+# Skills are loaded using: `use skill <name>`
 ```
 
 **Load coordinator skills based on task type (MANDATORY):**
 
 ```bash
-# For swarm coordination (ALWAYS load this)
-skills_use(name="swarm-coordination")
+# For swarm coordination (ALWAYS use this skill)
+use skill swarm-coordination
 
 # For architectural decisions
-skills_use(name="system-design")
+use skill system-design
 
 # If task involves testing
-skills_use(name="testing-patterns")
+use skill testing-patterns
 
 # If building CLI tools
-skills_use(name="cli-builder")
+use skill cli-builder
 ```
 
 **Event tracked:** `skill_loaded` (for each skill)
 
 **✅ GOOD:**
-- Load skills_use(name="swarm-coordination") at start of every swarm
+- Use `use skill swarm-coordination` at start of every swarm
 - Load task-specific skills based on keywords in task description
 - Include skill recommendations in shared_context for workers
 
@@ -446,14 +448,13 @@ swarm_spawn_subtask(
 ```markdown
 ## Recommended Skills
 
-Load these skills before starting work:
+Load these skills before starting work using native OpenCode syntax:
 
-- skills_use(name="testing-patterns") - if adding tests or breaking dependencies
-- skills_use(name="swarm-coordination") - if coordinating with other agents
-- skills_use(name="system-design") - if making architectural decisions
-- skills_use(name="cli-builder") - if working on CLI components
+- use skill testing-patterns - if adding tests or breaking dependencies
+- use skill system-design - if making architectural decisions
+- use skill cli-builder - if working on CLI components
 
-See full skill list with skills_list().
+Check .opencode/skill/ directory for available skills
 ```
 
 Then spawn:
@@ -623,12 +624,12 @@ gh pr create --title "feat: <epic title>" --body "## Summary\n<bullets>\n\n## Be
 
 | Task Pattern           | Skills to Load                                          |
 | ---------------------- | ------------------------------------------------------- |
-| Contains "test"        | `skills_use(name="testing-patterns")`                   |
-| Contains "refactor"    | `skills_use(name="testing-patterns")` + `system-design` |
-| Contains "CLI"         | `skills_use(name="cli-builder")`                        |
-| Multi-agent work       | `skills_use(name="swarm-coordination")`                 |
-| Architecture decisions | `skills_use(name="system-design")`                      |
-| Breaking dependencies  | `skills_use(name="testing-patterns")`                   |
+| Contains "test"        | `use skill testing-patterns`                   |
+| Contains "refactor"    | `use skill testing-patterns` + `use skill system-design` |
+| Contains "CLI"         | `use skill cli-builder`                        |
+| Multi-agent work       | `use skill swarm-coordination`                 |
+| Architecture decisions | `use skill system-design`                      |
+| Breaking dependencies  | `use skill testing-patterns`                   |
 
 ## Event Tracking Reference (for eval visibility)
 
@@ -637,7 +638,7 @@ These events are now tracked for coordinator evaluation:
 | Event Type               | When Fired                                |
 | ------------------------ | ----------------------------------------- |
 | `session_initialized`    | swarmmail_init called                     |
-| `skill_loaded`           | skills_use called                         |
+| `skill_loaded`           | Skills loaded using `use skill <name>` syntax         |
 | `researcher_spawned`     | Task(subagent_type="swarm-researcher")    |
 | `worker_spawned`         | Task(subagent_type="swarm/worker")        |
 | `decomposition_complete` | hive_create_epic called                   |
@@ -670,7 +671,7 @@ Not: Do Everything Inline → Run Out of Context → Fail
 
 - [ ] **swarmmail_init** called FIRST → Event: `session_initialized`
 - [ ] Knowledge gathered (semantic-memory, CASS, pdf-brain, skills)
-- [ ] **Skills loaded** → Event: `skill_loaded` (per skill)
+- [ ] **Skills loaded** → Check .opencode/skill/ for available skills
 - [ ] **Researcher spawned if needed** → Event: `researcher_spawned`
 - [ ] **Planning delegated to swarm/planner subagent** (NOT inline)
 - [ ] CellTree validated (no file conflicts)

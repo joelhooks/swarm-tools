@@ -602,7 +602,8 @@ You are a swarm planner. Decompose tasks into optimal parallel subtasks.
 semantic-memory_find(query="<task keywords>", limit=5)   # Past learnings
 cass_search(query="<task description>", limit=5)         # Similar past tasks  
 pdf-brain_search(query="<domain concepts>", limit=5)     # Design patterns
-skills_list()                                            # Available skills
+# Skills are managed by OpenCode native format (.opencode/skill/)
+# Check .opencode/skill/ directory for available skills
 \`\`\`
 
 Synthesize findings - note relevant patterns, past approaches, and skills to recommend.
@@ -675,7 +676,7 @@ Your Task prompt contains detailed instructions including:
 
 1. **swarmmail_init()** - FIRST, before anything else
 2. **semantic-memory_find()** - Check past learnings
-3. **skills_list() / skills_use()** - Load relevant skills
+3. **Load relevant skills** - Check .opencode/skill/ directory, use `use skill <name>` syntax
 4. **swarmmail_reserve()** - YOU reserve your files
 5. **Do the work** - Read, implement, verify
 6. **swarm_progress()** - Report at 25/50/75%
@@ -750,12 +751,11 @@ swarmmail_init(project_path="/abs/path/to/project", task_description="Research: 
 **DO NOT assume what tools are installed. Discover them:**
 
 \`\`\`
-# Check what skills user has installed
-skills_list()
+# Skills are managed by OpenCode native format (.opencode/skill/)
+# Check .opencode/skill/ directory for available skills
 
 # Check what MCP servers are available (look for context7, pdf-brain, fetch, etc.)
 # Note: No direct MCP listing tool - infer from task context or ask coordinator
-
 # Check for CLI tools if relevant (bd, cass, ubs, ollama)
 # Use Bash tool to check: which <tool-name>
 \`\`\`
@@ -764,6 +764,9 @@ skills_list()
 
 Based on research task, load appropriate skills:
 
+\`\`\`
+# Native syntax: use skill <skill-name>
+# Check .opencode/skill/ directory for available skills
 \`\`\`
 skills_use(name="<skill-name>", context="Researching <topic>")
 \`\`\`
@@ -863,11 +866,11 @@ swarmmail_send(
 ### Skills Discovery
 
 \`\`\`
-skills_list()
-# Returns: Available skills from global, project, bundled sources
+# Skills are discovered from .opencode/skill/ (OpenCode native format)
+# Check directory for available skills: ls .opencode/skill/
 
-# Load relevant skill for research domain
-skills_use(name="<skill>", context="Researching <topic>")
+# Load relevant skill for research task
+# Native syntax: use skill <skill-name>
 \`\`\`
 
 ### MCP Server Detection
@@ -1658,6 +1661,46 @@ async function setup(forceReinstall = false, nonInteractive = false) {
 
   p.log.message(dim(`  Skills directory: ${skillsDir}`));
 
+  // Auto-distribute bundled skills to global OpenCode skill directory
+  p.log.step("Distributing bundled skills...");
+  const bundledSkillsDir = join(__dirname, "..", ".opencode", "skill");
+  const globalSkillsDir = join(homedir(), ".opencode", "skill");
+
+  if (existsSync(bundledSkillsDir)) {
+    let copiedCount = 0;
+    const skillsCopied: string[] = [];
+
+    try {
+      const skillDirs = readdirSync(bundledSkillsDir, { withFileTypes: true });
+      const skills = skillDirs.filter((d) => d.isDirectory()).map((d) => d.name);
+
+      for (const skillName of skills) {
+        const skillMdPath = join(bundledSkillsDir, skillName, "SKILL.md");
+        const targetDir = join(globalSkillsDir, skillName);
+        const targetPath = join(targetDir, "SKILL.md");
+
+        if (existsSync(skillMdPath)) {
+          mkdirSync(targetDir, { recursive: true });
+          copyFileSync(skillMdPath, targetPath);
+          copiedCount++;
+          skillsCopied.push(skillName);
+          p.log.success(`  Copied: ${skillName}`);
+        }
+      }
+
+      if (copiedCount > 0) {
+        p.log.success(`Distributed ${copiedCount} bundled skill(s) to ~/.opencode/skill/`);
+        p.log.message(dim(`  Skills: ${skillsCopied.join(", ")}`));
+      } else {
+        p.log.warn("  No SKILL.md files found in bundled skills directory");
+      }
+    } catch (error) {
+      p.log.warn(`  Skill distribution skipped: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    p.log.warn("  Bundled skills directory not found (skipping auto-distribution)");
+  }
+
   // Show setup summary
   const totalFiles = stats.created + stats.updated + stats.unchanged;
   const summaryParts: string[] = [];
@@ -1669,7 +1712,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
   p.log.success(`Setup complete: ${totalFiles} files (${summaryParts.join(", ")})`);
 
   p.note(
-    'cd your-project\nswarm init\nopencode\n/swarm "your task"\n\nSkills: Use skills_list to see available skills',
+    'cd your-project\nswarm init\nopencode\n/swarm "your task"\n\nSkills: Check .opencode/skill/ directory for available skills. Use "use skill <name>" syntax.',
     "Next steps",
   );
 

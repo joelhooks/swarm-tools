@@ -29,6 +29,8 @@
   "files": [
     "dist",
     "bin",
+    "examples",
+    "global-skills",
     "README.md"
   ],
   "publishConfig": {

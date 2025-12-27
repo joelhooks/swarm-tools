@@ -5,74 +5,29 @@ description: Knowledge injection system with bundled and custom skills
 
 # Skills Tools
 
-Knowledge injection system with bundled and custom skills. Skills are reusable knowledge packages that can be loaded on-demand for specialized tasks.
+Skills are reusable knowledge packages that provide domain-specific instructions the model can activate when relevant.
 
-## skills_list
+OpenCode now supports **native skills** which are auto-discovered from your project's `.opencode/skill/` directory.
 
-List available skills from global, project, and bundled sources.
+## Native Skill Syntax
 
-**Parameters:**
+To use a skill, simply use the native `use skill` command in your prompt:
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `source` | `"all" \| "global" \| "project" \| "bundled"` | ❌ | Filter by source |
+```bash
+use skill <name>
+```
 
 **Example:**
-
-```typescript
-skills_list()
-// Returns: [{ name: "testing-patterns", description: "...", hasScripts: false }, ...]
-
-// Filter by source
-skills_list({ source: "bundled" })
-skills_list({ source: "project" })
+```bash
+use skill tdd
+use skill testing-patterns
 ```
 
 ---
 
-## skills_use
+## Authoring Tools
 
-Load skill content into agent context with optional task context.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | ✅ | Skill name |
-| `context` | string | ❌ | Task context |
-
-**Example:**
-
-```typescript
-skills_use({
-  name: "testing-patterns",
-  context: "Need to break dependencies in legacy auth module"
-})
-// Returns formatted skill content with SKILL.md + references
-```
-
-**Returns:** Formatted skill content including SKILL.md and all reference files.
-
----
-
-## skills_read
-
-Read full skill content including SKILL.md and references.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | ✅ | Skill name |
-
-**Example:**
-
-```typescript
-skills_read({ name: "swarm-coordination" })
-// Returns: { metadata: {...}, body: "...", references: [...] }
-```
-
----
+The following tools are used to create and maintain skills in your project.
 
 ## skills_create
 
@@ -83,8 +38,8 @@ Create a new skill with SKILL.md template.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | ✅ | Skill name (lowercase, hyphens) |
-| `description` | string | ✅ | What the skill does |
-| `scope` | `"global" \| "project"` | ❌ | Skill scope (default: `"project"`) |
+| `description` | string | ✅ | What the skill does and when to use it |
+| `body` | string | ✅ | Markdown content with instructions |
 | `tags` | string[] | ❌ | Tags for categorization |
 
 **Example:**
@@ -93,123 +48,41 @@ Create a new skill with SKILL.md template.
 skills_create({
   name: "api-design",
   description: "REST API design patterns and best practices",
-  scope: "global",
-  tags: ["architecture", "api", "rest"]
+  body: "# API Design Guidelines\n\n1. Use nouns for resources...",
+  tags: ["architecture", "api"]
 })
 ```
-
-**Returns:** Created skill path and metadata.
-
----
-
-## skills_update
-
-Update an existing skill's SKILL.md content.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | ✅ | Skill name |
-| `content` | string | ✅ | New SKILL.md content |
-
-**Example:**
-
-```typescript
-skills_update({
-  name: "api-design",
-  content: "# API Design\n\nUpdated content..."
-})
-```
-
----
-
-## skills_delete
-
-Delete a skill (project skills only).
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | ✅ | Skill name |
-
-**Example:**
-
-```typescript
-skills_delete({ name: "old-pattern" })
-```
-
-**Note:** Only project-scoped skills can be deleted. Global and bundled skills are protected.
 
 ---
 
 ## skills_init
 
-Initialize skills directory in current project.
+Initialize a new skill with full directory structure and templates.
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `path` | string | ❌ | Project path (defaults to cwd) |
+| `name` | string | ✅ | Skill name |
+| `description` | string | ❌ | Initial description |
 
 **Example:**
 
 ```typescript
-skills_init({ path: "/Users/joel/projects/my-app" })
-// Creates .skills/ directory with README
+skills_init({ name: "frontend-patterns" })
+// Creates .opencode/skill/frontend-patterns/ directory with SKILL.md, scripts/, and references/
 ```
 
 ---
 
-## skills_add_script
+## Legacy Tools (Deprecated)
 
-Add an executable script to a skill.
+The following tools are **deprecated** and will be removed in a future version. They now function as redirection stubs.
 
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `skill_name` | string | ✅ | Skill name |
-| `script_name` | string | ✅ | Script filename |
-| `content` | string | ✅ | Script content |
-| `executable` | boolean | ❌ | Make executable (default: `true`) |
-
-**Example:**
-
-```typescript
-skills_add_script({
-  skill_name: "testing-patterns",
-  script_name: "generate-test.sh",
-  content: "#!/bin/bash\necho 'Generating test...'",
-  executable: true
-})
-```
-
----
-
-## skills_execute
-
-Execute a skill's script.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `skill_name` | string | ✅ | Skill name |
-| `script_name` | string | ✅ | Script filename |
-| `args` | string[] | ❌ | Script arguments |
-
-**Example:**
-
-```typescript
-skills_execute({
-  skill_name: "testing-patterns",
-  script_name: "generate-test.sh",
-  args: ["src/auth.ts"]
-})
-```
+- `skills_list()` -> Use native discovery
+- `skills_use(name)` -> Use `use skill <name>`
+- `skills_read(skill, file)` -> Read files directly
+- `skills_execute(skill, script)` -> Run scripts via Bash tool
 
 ---
 

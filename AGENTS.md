@@ -351,7 +351,7 @@ OpenCode plugin providing:
 
 Skills are defined in **OpenCode native format** (`.opencode/skill/` singular) and provide reusable knowledge for agents. Skills use frontmatter for metadata (`name`, `description`) and are auto-discovered by OpenCode - no plugin tools needed.
 
-**Legacy plugin tools** (`skills_list`, `skills_use`, `skills_read`, `skills_execute`) are **deprecated** but still functional. They emit console warnings encouraging migration to native syntax: `use skill <name>`.
+**Legacy plugin tools** (`skills_list`, `skills_use`, `skills_read`, `skills_execute`) are **deprecated**. They now function as redirection stubs that guide you toward the native syntax: `use skill <name>`.
 
 **Bundled skills** live in `packages/opencode-swarm-plugin/.opencode/skill/` (singular, not plural).
 

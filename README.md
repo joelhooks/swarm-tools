@@ -93,7 +93,7 @@ The "hive" is a `.hive/` directory in your repo. Work items (cells) sync via git
 
 **Skills are defined in OpenCode native format** (`.opencode/skill/` singular) with frontmatter for metadata (`name`, `description`). Auto-discovered by OpenCode - no plugin tools needed.
 
-**Legacy plugin tools** (`skills_list`, `skills_use`, `skills_read`, `skills_execute`) are **deprecated** but still functional. They emit console warnings encouraging migration to native syntax: `use skill <name>`.
+**Legacy plugin tools** (`skills_list`, `skills_use`, `skills_read`, `skills_execute`) are **deprecated**. They now function as redirection stubs that guide you toward the native syntax: `use skill <name>`.
 
 **Authoring tools** (`skills_create`, `skills_update`, `skills_delete`, `skills_init`, `skills_add_script`) remain unchanged and fully functional.
 

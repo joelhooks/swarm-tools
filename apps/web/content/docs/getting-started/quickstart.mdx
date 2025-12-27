@@ -119,7 +119,7 @@ Most work happens via `/swarm`, but you can drive manually:
 | `swarmmail_init()` | Initialize coordination for multi-agent work |
 | `swarmmail_reserve()` | Lock files before editing |
 | `swarm_complete()` | Finish task + cleanup |
-| `skills_use()` | Load domain expertise (testing, CLI building, etc) |
+| `use skill <name>` | Load domain expertise (native syntax) |
 | `semantic-memory_store()` | Store learnings for future sessions |
 | `semantic-memory_find()` | Search past learnings by meaning |
 
@@ -143,12 +143,11 @@ Memories persist across sessions. 90-day decay keeps knowledge fresh.
 
 ## Using Skills
 
-Pre-built expertise packages:
+Pre-built expertise packages. OpenCode discovers these natively from `.opencode/skill/`:
 
-```typescript
-skills_list() // See available skills
-skills_use({ name: "testing-patterns" }) // Load Feathers' dependency-breaking techniques
-skills_use({ name: "swarm-coordination" }) // Multi-agent orchestration patterns
+```bash
+use skill testing-patterns    # Load Feathers' dependency-breaking techniques
+use skill swarm-coordination  # Multi-agent orchestration patterns
 ```
 
 Bundled skills: **testing-patterns**, **swarm-coordination**, **cli-builder**, **system-design**

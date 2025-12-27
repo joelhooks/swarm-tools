@@ -321,6 +321,66 @@ export async function listSkills(): Promise<SkillRef[]> {
 }
 
 /**
+ * [DEPRECATED] List available skills. 
+ * Re-added as stub to prevent "Unknown tool" errors during native migration.
+ */
+export const skills_list = tool({
+  description: "[DEPRECATED] List all available skills. Use native 'use skill' instead.",
+  args: {
+    source: tool.schema.string().optional().describe("Legacy filter source"),
+    tag: tool.schema.string().optional().describe("Legacy filter tag"),
+  },
+  async execute() {
+    const skills = await listSkills();
+    const list = skills.map(s => `- ${s.name}: ${s.description}`).join("\n");
+    return `[DEPRECATED] skills_list is deprecated. OpenCode now provides native skills support.\n\nAvailable skills:\n${list}\n\nTo activate a skill, use the native syntax: use skill <name>`;
+  }
+});
+
+/**
+ * [DEPRECATED] Activate a skill.
+ * Re-added as stub to prevent "Unknown tool" errors.
+ */
+export const skills_use = tool({
+  description: "[DEPRECATED] Activate a skill. Use native 'use skill <name>' instead.",
+  args: {
+    name: tool.schema.string().describe("Skill name to activate"),
+  },
+  async execute(args) {
+    return `[DEPRECATED] skills_use is deprecated. To activate the '${args.name}' skill, use the native OpenCode syntax:\n\nuse skill ${args.name}`;
+  }
+});
+
+/**
+ * [DEPRECATED] Read skill resource.
+ */
+export const skills_read = tool({
+  description: "[DEPRECATED] Read a resource from a skill. Use native 'read' instead.",
+  args: {
+    skill: tool.schema.string().describe("Skill name"),
+    file: tool.schema.string().describe("File path"),
+  },
+  async execute(args) {
+    return `[DEPRECATED] skills_read is deprecated. Try reading the file directly from the skill directory if available, or use the native skill syntax.`;
+  }
+});
+
+/**
+ * [DEPRECATED] Execute skill script.
+ */
+export const skills_execute = tool({
+  description: "[DEPRECATED] Execute a script from a skill. Use Bash tool instead.",
+  args: {
+    skill: tool.schema.string().describe("Skill name"),
+    script: tool.schema.string().describe("Script name"),
+    args: tool.schema.array(tool.schema.string()).optional(),
+  },
+  async execute(args) {
+    return `[DEPRECATED] skills_execute is deprecated. You can run scripts manually using the Bash tool if you know the path.`;
+  }
+});
+
+/**
  * Invalidate the skills cache (call when skills may have changed)
  */
 export function invalidateSkillsCache(): void {
@@ -1142,6 +1202,10 @@ echo "Project directory: \$1"
  * All skills tools for plugin registration
  */
 export const skillsTools = {
+  skills_list,
+  skills_use,
+  skills_execute,
+  skills_read,
   skills_create,
   skills_update,
   skills_delete,

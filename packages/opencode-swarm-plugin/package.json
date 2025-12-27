@@ -54,7 +54,6 @@
   "dependencies": {
     "@clack/prompts": "^0.11.0",
     "@opencode-ai/plugin": "^1.0.134",
-    "better-sqlite3": "^12.5.0",
     "effect": "^3.19.12",
     "gray-matter": "^4.0.3",
     "ioredis": "^5.4.1",

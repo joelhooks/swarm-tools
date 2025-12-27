@@ -29,7 +29,7 @@ import {
 // Use unique temp dir per test run to avoid collisions
 const TEST_RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const TEST_DIR = join(process.cwd(), `.test-skills-${TEST_RUN_ID}`);
-const SKILLS_DIR = join(TEST_DIR, ".opencode", "skills");
+const SKILLS_DIR = join(TEST_DIR, ".opencode", "skill");
 
 const VALID_SKILL_MD = `---
 name: test-skill

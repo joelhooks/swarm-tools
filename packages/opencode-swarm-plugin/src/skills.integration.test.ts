@@ -39,7 +39,7 @@ import {
 
 const TEST_RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const TEST_DIR = join(process.cwd(), `.test-skills-integration-${TEST_RUN_ID}`);
-const SKILLS_DIR = join(TEST_DIR, ".opencode", "skills");
+const SKILLS_DIR = join(TEST_DIR, ".opencode", "skill");
 
 function cleanupTestDir() {
   if (existsSync(TEST_DIR)) {
@@ -182,7 +182,8 @@ describe("skills_use tool", () => {
 
     expect(result).toContain("Available Scripts");
     expect(result).toContain("setup.sh");
-    expect(result).toContain("skills_execute");
+    // Should NOT contain reference to deprecated tools_execute tool
+    expect(result).not.toContain("skills_execute");
   });
 
   it("should exclude scripts when include_scripts=false", async () => {
@@ -1149,14 +1150,14 @@ describe("deprecation warnings", () => {
     chmodSync(scriptPath, 0o755);
 
     invalidateSkillsCache();
-    
+
     const warnSpy = vi.spyOn(console, "warn");
-    
+
     await skills_execute.execute({
       skill: "test-skill",
       script: "test.sh",
     });
-    
+
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("[DEPRECATED] skills_execute")
     );

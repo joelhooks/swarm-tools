@@ -90,7 +90,14 @@ Swarm Mail: DurableMailbox, DurableLock, DurableDeferred built on event sourcing
 The "hive" is a `.hive/` directory in your repo. Work items (cells) sync via git. Distributed coordination without a server.
 
 ### 🧩 Knowledge Injection
-Skills are packages of domain knowledge. Load `testing-patterns` for Feathers seams, `swarm-coordination` for multi-agent workflows, or create your own.
+
+**Skills are defined in OpenCode native format** (`.opencode/skill/` singular) with frontmatter for metadata (`name`, `description`). Auto-discovered by OpenCode - no plugin tools needed.
+
+**Legacy plugin tools** (`skills_list`, `skills_use`, `skills_read`, `skills_execute`) are **deprecated** but still functional. They emit console warnings encouraging migration to native syntax: `use skill <name>`.
+
+**Authoring tools** (`skills_create`, `skills_update`, `skills_delete`, `skills_init`, `skills_add_script`) remain unchanged and fully functional.
+
+**Bundled skills** live in `.opencode/skill/` (singular, not plural). Load `testing-patterns` for Feathers seams, `swarm-coordination` for multi-agent workflows, or create your own.
 
 ### 🔍 Cross-Agent Search
 CASS indexes all your AI coding sessions (Claude, Cursor, Aider, etc). Query before solving - someone might've solved it already.

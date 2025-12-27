@@ -629,7 +629,7 @@ const globalStrikeStorage: StrikeStorage = new InMemoryStrikeStorage();
  * what skills exist in the project, and what features will be degraded.
  *
  * Skills are automatically discovered from:
- * - .opencode/skills/
+ * - .opencode/skill/
  * - .claude/skills/
  * - skills/
  */
@@ -706,10 +706,10 @@ export const swarm_init = tool({
     // Add skills guidance if available
     let skillsGuidance: string | undefined;
     if (availableSkills.length > 0) {
-      skillsGuidance = `Found ${availableSkills.length} skill(s). Use skills_list to see details, skills_use to activate.`;
+      skillsGuidance = `Found ${availableSkills.length} skill(s). Use "use skill <name>" to activate native skills.`;
     } else {
       skillsGuidance =
-        "No skills found. Add skills to .opencode/skills/ or .claude/skills/ for specialized guidance.";
+        "No skills found. Add skills to .opencode/skill/ (singular) or ~/.config/opencode/skill/ for specialized guidance.";
     }
 
     // Check isolation mode
@@ -3043,7 +3043,7 @@ ${args.files_context && args.files_context.length > 0 ? `## Reference Files\n\n$
               type: args.pattern_type,
             },
             learning: learning,
-            message: `Created skill '${args.skill_name}' from learned pattern. Future agents can discover it with skills_list.`,
+              message: `Created skill '${args.skill_name}' from learned pattern. Future agents can discover it via native skill discovery.`,
           },
           null,
           2,

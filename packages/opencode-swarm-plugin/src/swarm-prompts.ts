@@ -325,16 +325,17 @@ semantic-memory_find(query="<keywords from your task>", limit=5, expand=true)
 **If you skip this step, you WILL waste time solving already-solved problems.**
 
 ### Step 3: Load Relevant Skills (if available)
+
+Skills are auto-discovered from `.opencode/skill/` and activated with native syntax:
 \`\`\`
-skills_list()  # See what skills exist
-skills_use(name="<relevant-skill>", context="<your task>")  # Load skill
+use skill <skill-name>
 \`\`\`
 
-**Common skill triggers:**
-- Writing tests? → \`skills_use(name="testing-patterns")\`
-- Breaking dependencies? → \`skills_use(name="testing-patterns")\`
-- Multi-agent coordination? → \`skills_use(name="swarm-coordination")\`
-- Building a CLI? → \`skills_use(name="cli-builder")\`
+**Common skills:**
+- Writing tests? → use skill tdd
+- Breaking dependencies? → use skill testing-patterns
+- Multi-agent coordination? → use skill swarm-coordination
+- Building a CLI? → use skill cli-builder
 
 ### Step 4: Reserve Your Files (YOU reserve, not coordinator)
 \`\`\`
@@ -551,9 +552,8 @@ Other cell operations:
 - hive_query(status="open") - See what else needs work
 
 ### Skills
-- skills_list() - Discover available skills
-- skills_use(name) - Activate skill for specialized guidance
-- skills_create(name) - Create new skill (if you found a reusable pattern)
+- Native skills are auto-discovered from .opencode/skill/ and activated with use skill <name>
+- Skills can be created with use skill skill-creator
 
 ## [CRITICAL REQUIREMENTS]
 
@@ -737,8 +737,8 @@ const researchFindings = await Task(subagent_type="swarm/researcher", prompt="<f
 
 \`\`\`
 semantic-memory_find(query="<task keywords>", limit=5)   # Past learnings
-cass_search(query="<task description>", limit=5)         # Similar past tasks  
-skills_list()                                            # Available skills
+cass_search(query="<task description>", limit=5)         # Similar past tasks
+Native skills are auto-discovered from .opencode/skill/
 \`\`\`
 
 Synthesize findings into shared_context for workers.
@@ -1412,7 +1412,7 @@ export async function formatSubtaskPromptV2(params: {
       params.recovery_context.skills_to_load.length > 0
     ) {
       sections.push(
-        `### Skills to Load\nBefore starting work, load these skills for specialized guidance:\n${params.recovery_context.skills_to_load.map((s) => `- skills_use(name="${s}")`).join("\n")}`,
+        `### Skills to Load\nBefore starting work, load these skills for specialized guidance:\n${params.recovery_context.skills_to_load.map((s) => `- use skill ${s}`).join("\n")}`,
       );
     }
 

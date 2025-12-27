@@ -91,12 +91,12 @@ describe("SUBTASK_PROMPT_V2", () => {
       const step2Pos = SUBTASK_PROMPT_V2.indexOf("### Step 2:");
       const step3Pos = SUBTASK_PROMPT_V2.indexOf("### Step 3:");
       const memoryFindPos = SUBTASK_PROMPT_V2.indexOf("semantic-memory_find");
-      const skillsPos = SUBTASK_PROMPT_V2.indexOf("skills_list");
+      const nativeSkillsPos = SUBTASK_PROMPT_V2.indexOf("use skill");
       
       // Memory find should be in Step 2, before skills in Step 3
       expect(memoryFindPos).toBeGreaterThan(step2Pos);
       expect(memoryFindPos).toBeLessThan(step3Pos);
-      expect(skillsPos).toBeGreaterThan(step3Pos);
+      expect(nativeSkillsPos).toBeGreaterThan(step3Pos);
     });
 
     test("semantic-memory_store comes before swarm_complete", () => {

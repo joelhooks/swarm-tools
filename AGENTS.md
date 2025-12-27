@@ -345,17 +345,21 @@ OpenCode plugin providing:
 - Swarm coordination (task decomposition, parallel agents)
 - Swarm Mail (inter-agent messaging)
 - Learning system (pattern maturity, anti-pattern detection)
-- Skills system (knowledge injection)
+- Skills system (OpenCode native skills with auto-discovery)
 
 ## Project Skills
 
-Skills live in `.opencode/skills/` and provide reusable knowledge for agents.
+Skills are defined in **OpenCode native format** (`.opencode/skill/` singular) and provide reusable knowledge for agents. Skills use frontmatter for metadata (`name`, `description`) and are auto-discovered by OpenCode - no plugin tools needed.
+
+**Legacy plugin tools** (`skills_list`, `skills_use`, `skills_read`, `skills_execute`) are **deprecated** but still functional. They emit console warnings encouraging migration to native syntax: `use skill <name>`.
+
+**Bundled skills** live in `packages/opencode-swarm-plugin/.opencode/skill/` (singular, not plural).
 
 ### pr-triage
 
 Context-efficient PR comment handling. **Evaluate → Decide → Act.** Fix important issues, resolve the rest silently.
 
-**Location:** `.opencode/skills/pr-triage/`
+**Location:** `.opencode/skill/pr-triage/`
 
 **Philosophy:** Replies are SECONDARY to addressing concerns. Don't reply to every comment - that's noise.
 

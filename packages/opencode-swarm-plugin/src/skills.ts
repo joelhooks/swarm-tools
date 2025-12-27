@@ -6,7 +6,7 @@
  * domain-specific instructions the model can activate when relevant.
  *
  * Discovery locations (in priority order):
- * 1. {projectDir}/.opencode/skills/
+ * 1. {projectDir}/.opencode/skill/ (native OpenCode skills)
  * 2. {projectDir}/.claude/skills/ (compatibility)
  * 3. {projectDir}/skills/ (simple projects)
  *
@@ -185,7 +185,7 @@ function validateSkillMetadata(
  * Skill discovery locations relative to project root (checked first)
  */
 const PROJECT_SKILL_DIRECTORIES = [
-  ".opencode/skills",
+  ".opencode/skill",
   ".claude/skills",
   "skills",
 ] as const;
@@ -195,7 +195,7 @@ const PROJECT_SKILL_DIRECTORIES = [
  */
 function getGlobalSkillsDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE || "~";
-  return join(home, ".config", "opencode", "skills");
+  return join(home, ".config", "opencode", "skill");
 }
 
 /**
@@ -292,13 +292,13 @@ async function loadSkill(skillPath: string): Promise<Skill> {
 }
 
 /**
- * Discover all skills in the project and global directories
+ * Discover all skills in project and global directories
  *
  * Priority order (first match wins):
- * 1. Project: .opencode/skills/
- * 2. Project: .claude/skills/
+ * 1. Project: .opencode/skill/ (native OpenCode skills)
+ * 2. Project: .claude/skills/ (compatibility)
  * 3. Project: skills/
- * 4. Global: ~/.config/opencode/skills/
+ * 4. Global: ~/.config/opencode/skill/
  * 5. Global: ~/.claude/skills/
  */
 export async function discoverSkills(
@@ -424,8 +424,8 @@ Returns skill names, descriptions, and whether they have executable scripts.`,
 
     if (refs.length === 0) {
       return args.tag
-        ? `No skills found with tag '${args.tag}'. Try skills_list without a tag filter.`
-        : `No skills found. Skills should be in .opencode/skills/, .claude/skills/, or skills/ directories with SKILL.md files.`;
+        ? `No skills found with tag '${args.tag}'. Try without a tag filter.`
+        : `No skills found. Skills should be in .opencode/skill/, .claude/skills/, or skills/ directories with SKILL.md files.`;
     }
 
     const formatted = refs
@@ -480,7 +480,6 @@ If the skill has scripts, you can run them with skills_execute.`,
       output += `\n---\n\n## Available Scripts\n\n`;
       output += `This skill includes the following scripts in ${skill.directory}/scripts/:\n\n`;
       output += skill.scripts.map((s) => `• ${s}`).join("\n");
-      output += `\n\nRun scripts with skills_execute tool.`;
     }
 
     return output;
@@ -637,7 +636,7 @@ Use this to access supplementary skill resources.`,
 /**
  * Default skills directory for new skills
  */
-const DEFAULT_SKILLS_DIR = ".opencode/skills";
+const DEFAULT_SKILLS_DIR = ".opencode/skill";
 
 // =============================================================================
 // CSO (Claude Search Optimization) Validation
@@ -874,7 +873,7 @@ export const skills_create = tool({
 Use this to codify learned patterns, best practices, or domain knowledge
 into a reusable skill that future agents can discover and use.
 
-Skills are stored in .opencode/skills/<name>/SKILL.md by default.
+Skills are stored in .opencode/skill/<name>/SKILL.md by default.
 
 Good skills have:
 - Clear, specific descriptions explaining WHEN to use them
@@ -903,7 +902,7 @@ Good skills have:
       .describe("Tools this skill commonly uses"),
     directory: tool.schema
       .enum([
-        ".opencode/skills",
+        ".opencode/skill",
         ".claude/skills",
         "skills",
         "global",
@@ -911,7 +910,7 @@ Good skills have:
       ])
       .optional()
       .describe(
-        "Where to create the skill (default: .opencode/skills). Use 'global' for ~/.config/opencode/skills/, 'global-claude' for ~/.claude/skills/",
+        "Where to create skill (default: .opencode/skill). Use 'global' for ~/.config/opencode/skill/, 'global-claude' for ~/.claude/skills/",
       ),
   },
   async execute(args) {
@@ -1338,9 +1337,9 @@ Perfect for learning to create effective skills.`,
       .optional()
       .describe("Initial description (can be a TODO placeholder)"),
     directory: tool.schema
-      .enum([".opencode/skills", ".claude/skills", "skills", "global"])
+      .enum([".opencode/skill", ".claude/skills", "skills", "global"])
       .optional()
-      .describe("Where to create (default: .opencode/skills)"),
+      .describe("Where to create (default: .opencode/skill)"),
     include_example_script: tool.schema
       .boolean()
       .default(true)

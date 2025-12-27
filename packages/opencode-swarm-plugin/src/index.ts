@@ -96,7 +96,7 @@ const SwarmPlugin: Plugin = async (
   setHiveWorkingDirectory(directory);
 
   // Set the project directory for skills discovery
-  // Skills are discovered from .opencode/skills/, .claude/skills/, or skills/
+  // Skills are discovered from .opencode/skill/, .claude/skills/, or skills/
   setSkillsProjectDirectory(directory);
 
   // Set the project directory for Agent Mail (legacy MCP-based)

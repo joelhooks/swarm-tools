@@ -1,5 +1,34 @@
 # opencode-swarm-plugin
 
+## 0.45.0
+
+### Patch Changes
+
+- Native skills migration completed. **Skills system now uses OpenCode native format** (`.opencode/skill/` singular).
+
+> _"The greatest danger in communication is the illusion that it has been accomplished."_
+> — George Bernard Shaw
+
+**What changed:**
+
+- **Discovery:** Skills defined in `.opencode/skill/` (singular) with SKILL.md files
+- **Frontmatter:** `name` (validated regex) and `description` metadata for auto-discovery
+- **Bundled skills:** Migrated from `global-skills/` to `.opencode/skill/`
+- **Deprecated tools:** `skills_list`, `skills_use`, `skills_read`, `skills_execute` emit console warnings
+- **Authoring tools:** `skills_create`, `skills_update`, `skills_delete`, `skills_init`, `skills_add_script` remain unchanged
+
+**Why it matters:**
+
+- **Auto-discovery:** No plugin tools needed for skill discovery
+- **Native syntax:** Use `use skill <name>` instead of deprecated `skills_use`
+- **Backward compatible:** Legacy tools still work with console warnings
+
+**Migration notes:**
+
+- Existing `skills_use` calls still work (emits warnings)
+- New skills: Create `.opencode/skill/my-skill/SKILL.md` files
+- Documentation updated to reflect native format and deprecation
+
 ## 0.44.2
 
 ### Patch Changes

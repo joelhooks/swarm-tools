@@ -1,5 +1,28 @@
 # opencode-swarm-plugin
 
+## 0.45.6
+
+### Patch Changes
+
+- [`8b04270`](https://github.com/joelhooks/swarm-tools/commit/8b0427013f145a3b68535f3e0da134f32e04d239) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 Skills Directory Auto-Migration
+
+  OpenCode renamed `skills` → `skill` (singular). This patch handles the migration automatically.
+
+  ```
+     ~/.config/opencode/skills/     ~/.config/opencode/skill/
+            ┌─────────┐                    ┌─────────┐
+            │ BEFORE  │  ──swarm setup──►  │ AFTER   │
+            └─────────┘                    └─────────┘
+  ```
+
+  **What happens:**
+
+  - `swarm setup` detects old `skills` directory and renames to `skill`
+  - Claude compatibility preserved (`.claude/skills` stays plural)
+  - Plugin wrapper template now properly included in npm package
+
+  No manual migration needed - just run `swarm setup`.
+
 ## 0.45.5
 
 ### Patch Changes

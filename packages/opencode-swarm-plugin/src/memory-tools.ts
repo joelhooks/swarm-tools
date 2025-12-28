@@ -14,7 +14,7 @@
  */
 
 import { tool } from "@opencode-ai/plugin";
-import { getSwarmMailLibSQL } from "swarm-mail";
+import { getSwarmMailLibSQL, createEvent, appendEvent } from "swarm-mail";
 import {
 	createMemoryAdapter,
 	type MemoryAdapter,
@@ -149,6 +149,25 @@ export const semantic_memory_store = tool({
 	async execute(args, ctx: ToolContext) {
 		const adapter = await getMemoryAdapter();
 		const result = await adapter.store(args);
+
+		// Emit memory_stored event for observability
+		try {
+			const projectKey = cachedProjectPath || process.cwd();
+			const tags = args.tags ? args.tags.split(",").map(t => t.trim()) : [];
+			const event = createEvent("memory_stored", {
+				project_key: projectKey,
+				memory_id: result.id,
+				content_preview: args.information.slice(0, 100),
+				tags,
+				auto_tagged: args.autoTag,
+				collection: args.collection,
+			});
+			await appendEvent(event, projectKey);
+		} catch (error) {
+			// Non-fatal - log and continue
+			console.warn("[semantic_memory_store] Failed to emit memory_stored event:", error);
+		}
+
 		return JSON.stringify(result, null, 2);
 	},
 });
@@ -179,8 +198,29 @@ export const semantic_memory_find = tool({
 			.describe("Use full-text search instead of vector search (default: false)"),
 	},
 	async execute(args, ctx: ToolContext) {
+		const startTime = Date.now();
 		const adapter = await getMemoryAdapter();
 		const result = await adapter.find(args);
+		const duration = Date.now() - startTime;
+
+		// Emit memory_found event for observability
+		try {
+			const projectKey = cachedProjectPath || process.cwd();
+			const topScore = result.results.length > 0 ? result.results[0].score : undefined;
+			const event = createEvent("memory_found", {
+				project_key: projectKey,
+				query: args.query,
+				result_count: result.results.length,
+				top_score: topScore,
+				search_duration_ms: duration,
+				used_fts: args.fts,
+			});
+			await appendEvent(event, projectKey);
+		} catch (error) {
+			// Non-fatal - log and continue
+			console.warn("[semantic_memory_find] Failed to emit memory_found event:", error);
+		}
+
 		return JSON.stringify(result, null, 2);
 	},
 });
@@ -211,6 +251,22 @@ export const semantic_memory_remove = tool({
 	async execute(args, ctx: ToolContext) {
 		const adapter = await getMemoryAdapter();
 		const result = await adapter.remove(args);
+
+		// Emit memory_deleted event for observability
+		if (result.success) {
+			try {
+				const projectKey = cachedProjectPath || process.cwd();
+				const event = createEvent("memory_deleted", {
+					project_key: projectKey,
+					memory_id: args.id,
+				});
+				await appendEvent(event, projectKey);
+			} catch (error) {
+				// Non-fatal - log and continue
+				console.warn("[semantic_memory_remove] Failed to emit memory_deleted event:", error);
+			}
+		}
+
 		return JSON.stringify(result, null, 2);
 	},
 });
@@ -227,6 +283,23 @@ export const semantic_memory_validate = tool({
 	async execute(args, ctx: ToolContext) {
 		const adapter = await getMemoryAdapter();
 		const result = await adapter.validate(args);
+
+		// Emit memory_validated event for observability
+		if (result.success) {
+			try {
+				const projectKey = cachedProjectPath || process.cwd();
+				const event = createEvent("memory_validated", {
+					project_key: projectKey,
+					memory_id: args.id,
+					decay_reset: true,
+				});
+				await appendEvent(event, projectKey);
+			} catch (error) {
+				// Non-fatal - log and continue
+				console.warn("[semantic_memory_validate] Failed to emit memory_validated event:", error);
+			}
+		}
+
 		return JSON.stringify(result, null, 2);
 	},
 });
@@ -318,6 +391,22 @@ export const semantic_memory_upsert = tool({
 	async execute(args, ctx: ToolContext) {
 		const adapter = await getMemoryAdapter();
 		const result = await adapter.upsert(args);
+
+		// Emit memory_updated event for observability (covers ADD, UPDATE, DELETE, NOOP)
+		try {
+			const projectKey = cachedProjectPath || process.cwd();
+			const event = createEvent("memory_updated", {
+				project_key: projectKey,
+				memory_id: result.memoryId || "unknown",
+				operation: result.operation,
+				reason: result.reason,
+			});
+			await appendEvent(event, projectKey);
+		} catch (error) {
+			// Non-fatal - log and continue
+			console.warn("[semantic_memory_upsert] Failed to emit memory_updated event:", error);
+		}
+
 		return JSON.stringify(result, null, 2);
 	},
 });

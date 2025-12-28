@@ -643,6 +643,23 @@ export const hive_create = tool({
       // Mark dirty for export
       await adapter.markDirty(projectKey, cell.id);
 
+      // Emit cell_created event for observability
+      try {
+        const event = createEvent("cell_created", {
+          project_key: projectKey,
+          cell_id: cell.id,
+          title: validated.title,
+          description: validated.description,
+          issue_type: validated.type || "task",
+          priority: validated.priority ?? 2,
+          parent_id: validated.parent_id,
+        });
+        await appendEvent(event, projectKey);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn("[hive_create] Failed to emit cell_created event:", error);
+      }
+
       const formatted = formatCellForOutput(cell);
       return JSON.stringify(formatted, null, 2);
     } catch (error) {
@@ -741,10 +758,26 @@ export const hive_create_epic = tool({
         subtasks: created.slice(1).map((c) => formatCellForOutput(c) as Cell),
       };
 
+      // Emit epic_created event for observability
+      const effectiveProjectKey = args.project_key || projectKey;
+      try {
+        const epicCreatedEvent = createEvent("epic_created", {
+          project_key: effectiveProjectKey,
+          epic_id: epic.id,
+          title: validated.epic_title,
+          description: validated.epic_description,
+          subtask_count: validated.subtasks.length,
+          subtask_ids: created.slice(1).map(c => c.id),
+        });
+        await appendEvent(epicCreatedEvent, effectiveProjectKey);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn("[hive_create_epic] Failed to emit epic_created event:", error);
+      }
+
       // Emit DecompositionGeneratedEvent for learning system
       // Always emit using projectKey (from getHiveWorkingDirectory), not args.project_key
       // This fixes the bug where events weren't emitted when callers didn't pass project_key
-      const effectiveProjectKey = args.project_key || projectKey;
       try {
         const event = createEvent("decomposition_generated", {
           project_key: effectiveProjectKey,
@@ -998,6 +1031,24 @@ export const hive_update = tool({
 
       await adapter.markDirty(projectKey, cellId);
 
+      // Emit cell_updated event for observability
+      try {
+        const fieldsChanged: string[] = [];
+        if (validated.status) fieldsChanged.push("status");
+        if (validated.description !== undefined) fieldsChanged.push("description");
+        if (validated.priority !== undefined) fieldsChanged.push("priority");
+        
+        const event = createEvent("cell_updated", {
+          project_key: projectKey,
+          cell_id: cellId,
+          fields_changed: fieldsChanged,
+        });
+        await appendEvent(event, projectKey);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn("[hive_update] Failed to emit cell_updated event:", error);
+      }
+
       const formatted = formatCellForOutput(cell!);
       return JSON.stringify(formatted, null, 2);
     } catch (error) {
@@ -1173,6 +1224,19 @@ export const hive_close = tool({
         }
       }
 
+      // Emit cell_closed event for all cells (including epics)
+      try {
+        const event = createEvent("cell_closed", {
+          project_key: projectKey,
+          cell_id: cellId,
+          reason: validated.reason,
+        });
+        await appendEvent(event, projectKey);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn("[hive_close] Failed to emit cell_closed event:", error);
+      }
+
       return `Closed ${cell.id}: ${validated.reason}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1223,6 +1287,20 @@ export const hive_start = tool({
       );
 
       await adapter.markDirty(projectKey, cellId);
+
+      // Emit cell_status_changed event for observability
+      try {
+        const event = createEvent("cell_status_changed", {
+          project_key: projectKey,
+          cell_id: cellId,
+          old_status: "open",
+          new_status: "in_progress",
+        });
+        await appendEvent(event, projectKey);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn("[hive_start] Failed to emit cell_status_changed event:", error);
+      }
 
       return `Started: ${cell.id}`;
     } catch (error) {
@@ -1538,6 +1616,7 @@ export const hive_sync = tool({
     const remoteCheckResult = await runGitCommand(["remote"]);
     const hasRemote = remoteCheckResult.stdout.trim() !== "";
 
+    let pushSuccess = false;
     if (hasRemote) {
       const pushResult = await withTimeout(
         runGitCommand(["push"]),
@@ -1551,6 +1630,23 @@ export const hive_sync = tool({
           pushResult.exitCode,
         );
       }
+      pushSuccess = true;
+    }
+
+    // Emit hive_synced event for observability
+    try {
+      const event = createEvent("hive_synced", {
+        project_key: projectKey,
+        cells_synced: flushResult.cellsExported,
+        push_success: pushSuccess,
+      });
+      await appendEvent(event, projectKey);
+    } catch (error) {
+      // Non-fatal - log and continue
+      console.warn("[hive_sync] Failed to emit hive_synced event:", error);
+    }
+
+    if (hasRemote) {
       return "Hive synced and pushed successfully";
     } else {
       return "Hive synced successfully (no remote configured)";

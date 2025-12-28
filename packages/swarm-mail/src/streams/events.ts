@@ -384,6 +384,195 @@ export const SwarmCompletedEventSchema = BaseEventSchema.extend({
 });
 
 // ============================================================================
+// Hive/Cell Events
+// ============================================================================
+
+export const CellCreatedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cell_created"),
+  cell_id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  issue_type: z.enum(["bug", "feature", "task", "epic", "chore"]).optional(),
+  priority: z.number().min(0).max(3).optional(),
+  parent_id: z.string().optional(),
+  created_by: z.string().optional(),
+});
+
+export const CellUpdatedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cell_updated"),
+  cell_id: z.string(),
+  fields_changed: z.array(z.string()),
+  updated_by: z.string().optional(),
+});
+
+export const CellStatusChangedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cell_status_changed"),
+  cell_id: z.string(),
+  old_status: z.enum(["open", "in_progress", "blocked", "closed"]),
+  new_status: z.enum(["open", "in_progress", "blocked", "closed"]),
+  reason: z.string().optional(),
+  changed_by: z.string().optional(),
+});
+
+export const CellClosedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cell_closed"),
+  cell_id: z.string(),
+  reason: z.string(),
+  closed_by: z.string().optional(),
+  duration_ms: z.number().int().min(0).optional(),
+});
+
+export const EpicCreatedEventSchema = BaseEventSchema.extend({
+  type: z.literal("epic_created"),
+  epic_id: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  subtask_count: z.number().int().min(0),
+  subtask_ids: z.array(z.string()),
+  created_by: z.string().optional(),
+});
+
+export const HiveSyncedEventSchema = BaseEventSchema.extend({
+  type: z.literal("hive_synced"),
+  cells_synced: z.number().int().min(0),
+  push_success: z.boolean(),
+  sync_duration_ms: z.number().int().min(0).optional(),
+});
+
+// ============================================================================
+// Memory Events
+// ============================================================================
+
+export const MemoryStoredEventSchema = BaseEventSchema.extend({
+  type: z.literal("memory_stored"),
+  memory_id: z.string(),
+  content_preview: z.string(), // First 100 chars
+  tags: z.array(z.string()),
+  auto_tagged: z.boolean().optional(),
+  collection: z.string().optional(),
+  embedding_model: z.string().optional(),
+});
+
+export const MemoryFoundEventSchema = BaseEventSchema.extend({
+  type: z.literal("memory_found"),
+  query: z.string(),
+  result_count: z.number().int().min(0),
+  top_score: z.number().min(0).max(1).optional(),
+  search_duration_ms: z.number().int().min(0).optional(),
+  used_fts: z.boolean().optional(),
+});
+
+export const MemoryUpdatedEventSchema = BaseEventSchema.extend({
+  type: z.literal("memory_updated"),
+  memory_id: z.string(),
+  operation: z.enum(["ADD", "UPDATE", "DELETE", "NOOP"]),
+  reason: z.string().optional(),
+  supersedes_id: z.string().optional(),
+});
+
+export const MemoryValidatedEventSchema = BaseEventSchema.extend({
+  type: z.literal("memory_validated"),
+  memory_id: z.string(),
+  decay_reset: z.boolean(),
+});
+
+export const MemoryDeletedEventSchema = BaseEventSchema.extend({
+  type: z.literal("memory_deleted"),
+  memory_id: z.string(),
+  reason: z.string().optional(),
+});
+
+// ============================================================================
+// CASS Events
+// ============================================================================
+
+export const CassSearchedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cass_searched"),
+  query: z.string(),
+  agent_filter: z.string().optional(),
+  days_filter: z.number().optional(),
+  result_count: z.number().int().min(0),
+  search_duration_ms: z.number().int().min(0).optional(),
+});
+
+export const CassViewedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cass_viewed"),
+  session_path: z.string(),
+  line_number: z.number().int().optional(),
+  agent_type: z.string().optional(),
+});
+
+export const CassIndexedEventSchema = BaseEventSchema.extend({
+  type: z.literal("cass_indexed"),
+  sessions_indexed: z.number().int().min(0),
+  messages_indexed: z.number().int().min(0),
+  duration_ms: z.number().int().min(0).optional(),
+  full_rebuild: z.boolean().optional(),
+});
+
+// ============================================================================
+// Skills Events
+// ============================================================================
+
+export const SkillLoadedEventSchema = BaseEventSchema.extend({
+  type: z.literal("skill_loaded"),
+  skill_name: z.string(),
+  skill_source: z.enum(["global", "project", "bundled"]),
+  context_provided: z.boolean().optional(),
+  content_length: z.number().int().min(0).optional(),
+});
+
+export const SkillCreatedEventSchema = BaseEventSchema.extend({
+  type: z.literal("skill_created"),
+  skill_name: z.string(),
+  skill_scope: z.enum(["global", "project"]),
+  description: z.string().optional(),
+});
+
+// ============================================================================
+// Decision Trace Events
+// ============================================================================
+
+export const DecisionRecordedEventSchema = BaseEventSchema.extend({
+  type: z.literal("decision_recorded"),
+  decision_id: z.string(),
+  decision_type: z.string(),
+  epic_id: z.string().optional(),
+  bead_id: z.string().optional(),
+  rationale_length: z.number().int().min(0).optional(),
+  precedent_count: z.number().int().min(0).optional(),
+});
+
+// ============================================================================
+// Compaction Events
+// ============================================================================
+
+export const CompactionTriggeredEventSchema = BaseEventSchema.extend({
+  type: z.literal("compaction_triggered"),
+  session_id: z.string(),
+  trigger: z.enum(["auto", "manual", "context_limit"]),
+  context_size_before: z.number().int().min(0).optional(),
+});
+
+export const SwarmDetectedEventSchema = BaseEventSchema.extend({
+  type: z.literal("swarm_detected"),
+  session_id: z.string(),
+  confidence: z.enum(["high", "medium", "low", "none"]),
+  detection_source: z.enum(["projection", "hive_query", "fallback"]),
+  epic_id: z.string().optional(),
+  subtask_count: z.number().int().min(0).optional(),
+  reasons: z.array(z.string()),
+});
+
+export const ContextInjectedEventSchema = BaseEventSchema.extend({
+  type: z.literal("context_injected"),
+  session_id: z.string(),
+  context_type: z.enum(["llm_generated", "static_swarm_context", "static_with_dynamic_state", "detection_fallback"]),
+  content_length: z.number().int().min(0),
+  injection_method: z.enum(["output.prompt", "output.context.push"]),
+});
+
+// ============================================================================
 // Validation Events
 // ============================================================================
 
@@ -429,33 +618,67 @@ export const ValidationCompletedEventSchema = BaseEventSchema.extend({
 // ============================================================================
 
 export const AgentEventSchema = z.discriminatedUnion("type", [
+  // Agent events
   AgentRegisteredEventSchema,
   AgentActiveEventSchema,
+  // Message events
   MessageSentEventSchema,
   MessageReadEventSchema,
   MessageAckedEventSchema,
   ThreadCreatedEventSchema,
   ThreadActivityEventSchema,
+  // File events
   FileReservedEventSchema,
   FileReleasedEventSchema,
   FileConflictEventSchema,
+  // Task events
   TaskStartedEventSchema,
   TaskProgressEventSchema,
   TaskCompletedEventSchema,
   TaskBlockedEventSchema,
+  // Eval/Learning events
   DecompositionGeneratedEventSchema,
   SubtaskOutcomeEventSchema,
   HumanFeedbackEventSchema,
+  // Checkpoint events
   SwarmCheckpointedEventSchema,
   SwarmRecoveredEventSchema,
   CheckpointCreatedEventSchema,
   ContextCompactedEventSchema,
+  // Swarm lifecycle events
   SwarmStartedEventSchema,
   WorkerSpawnedEventSchema,
   WorkerCompletedEventSchema,
   ReviewStartedEventSchema,
   ReviewCompletedEventSchema,
   SwarmCompletedEventSchema,
+  // Hive/Cell events
+  CellCreatedEventSchema,
+  CellUpdatedEventSchema,
+  CellStatusChangedEventSchema,
+  CellClosedEventSchema,
+  EpicCreatedEventSchema,
+  HiveSyncedEventSchema,
+  // Memory events
+  MemoryStoredEventSchema,
+  MemoryFoundEventSchema,
+  MemoryUpdatedEventSchema,
+  MemoryValidatedEventSchema,
+  MemoryDeletedEventSchema,
+  // CASS events
+  CassSearchedEventSchema,
+  CassViewedEventSchema,
+  CassIndexedEventSchema,
+  // Skills events
+  SkillLoadedEventSchema,
+  SkillCreatedEventSchema,
+  // Decision trace events
+  DecisionRecordedEventSchema,
+  // Compaction events
+  CompactionTriggeredEventSchema,
+  SwarmDetectedEventSchema,
+  ContextInjectedEventSchema,
+  // Validation events
   ValidationStartedEventSchema,
   ValidationIssueEventSchema,
   ValidationCompletedEventSchema,
@@ -498,6 +721,32 @@ export type SwarmCompletedEvent = z.infer<typeof SwarmCompletedEventSchema>;
 export type ValidationStartedEvent = z.infer<typeof ValidationStartedEventSchema>;
 export type ValidationIssueEvent = z.infer<typeof ValidationIssueEventSchema>;
 export type ValidationCompletedEvent = z.infer<typeof ValidationCompletedEventSchema>;
+// Hive/Cell event types
+export type CellCreatedEvent = z.infer<typeof CellCreatedEventSchema>;
+export type CellUpdatedEvent = z.infer<typeof CellUpdatedEventSchema>;
+export type CellStatusChangedEvent = z.infer<typeof CellStatusChangedEventSchema>;
+export type CellClosedEvent = z.infer<typeof CellClosedEventSchema>;
+export type EpicCreatedEvent = z.infer<typeof EpicCreatedEventSchema>;
+export type HiveSyncedEvent = z.infer<typeof HiveSyncedEventSchema>;
+// Memory event types
+export type MemoryStoredEvent = z.infer<typeof MemoryStoredEventSchema>;
+export type MemoryFoundEvent = z.infer<typeof MemoryFoundEventSchema>;
+export type MemoryUpdatedEvent = z.infer<typeof MemoryUpdatedEventSchema>;
+export type MemoryValidatedEvent = z.infer<typeof MemoryValidatedEventSchema>;
+export type MemoryDeletedEvent = z.infer<typeof MemoryDeletedEventSchema>;
+// CASS event types
+export type CassSearchedEvent = z.infer<typeof CassSearchedEventSchema>;
+export type CassViewedEvent = z.infer<typeof CassViewedEventSchema>;
+export type CassIndexedEvent = z.infer<typeof CassIndexedEventSchema>;
+// Skills event types
+export type SkillLoadedEvent = z.infer<typeof SkillLoadedEventSchema>;
+export type SkillCreatedEvent = z.infer<typeof SkillCreatedEventSchema>;
+// Decision trace event types
+export type DecisionRecordedEvent = z.infer<typeof DecisionRecordedEventSchema>;
+// Compaction event types
+export type CompactionTriggeredEvent = z.infer<typeof CompactionTriggeredEventSchema>;
+export type SwarmDetectedEvent = z.infer<typeof SwarmDetectedEventSchema>;
+export type ContextInjectedEvent = z.infer<typeof ContextInjectedEventSchema>;
 
 // ============================================================================
 // Session State Types

@@ -1527,22 +1527,22 @@ This will be recorded as a negative learning signal.`;
       }
 
       // Emit SubtaskOutcomeEvent for learning system
-      try {
-        const durationMs = args.start_time ? Date.now() - args.start_time : 0;
-        
-        // Determine epic ID: use parent_id if available, otherwise fall back to extracting from bead_id
-        // (New hive cell IDs don't follow epicId.subtaskNum pattern - they're independent IDs)
-        const eventEpicId = cell.parent_id || (args.bead_id.includes(".")
-          ? args.bead_id.split(".")[0]
-          : args.bead_id);
+      const completionDurationMs = args.start_time ? Date.now() - args.start_time : 0;
+      
+      // Determine epic ID: use parent_id if available, otherwise fall back to extracting from bead_id
+      // (New hive cell IDs don't follow epicId.subtaskNum pattern - they're independent IDs)
+      const eventEpicId = cell.parent_id || (args.bead_id.includes(".")
+        ? args.bead_id.split(".")[0]
+        : args.bead_id);
 
+      try {
         const event = createEvent("subtask_outcome", {
           project_key: args.project_key,
           epic_id: eventEpicId,
           bead_id: args.bead_id,
           planned_files: args.planned_files || [],
           actual_files: args.files_touched || [],
-          duration_ms: durationMs,
+          duration_ms: completionDurationMs,
           error_count: args.error_count || 0,
           retry_count: args.retry_count || 0,
           success: true,
@@ -1558,10 +1558,29 @@ This will be recorded as a negative learning signal.`;
         );
       }
 
+      // Emit worker_completed event for dashboard observability
+      try {
+        const workerCompletedEvent = createEvent("worker_completed", {
+          project_key: args.project_key,
+          epic_id: eventEpicId,
+          bead_id: args.bead_id,
+          worker_agent: args.agent_name,
+          success: true,
+          duration_ms: completionDurationMs,
+          files_touched: args.files_touched || [],
+        });
+        await appendEvent(workerCompletedEvent, args.project_key);
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn(
+          "[swarm_complete] Failed to emit worker_completed event:",
+          error,
+        );
+      }
+
       // Automatic memory capture (MANDATORY on successful completion)
       // Extract strategy from bead metadata if available
       let capturedStrategy: LearningDecompositionStrategy | undefined;
-      const durationMs = args.start_time ? Date.now() - args.start_time : 0;
 
       // Build memory information from task completion
       const memoryInfo = formatMemoryStoreOnSuccess(

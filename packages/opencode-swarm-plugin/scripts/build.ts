@@ -19,6 +19,8 @@ const BUILD_ENTRIES: BuildEntry[] = [
   { input: "./src/compaction-prompt-scoring.ts", outfile: "./dist/compaction-prompt-scoring.js" },
   { input: "./src/hive.ts", outfile: "./dist/hive.js" },
   { input: "./src/swarm-prompts.ts", outfile: "./dist/swarm-prompts.js" },
+  // CLI - compiled so npm installs work (no ../src/ imports at runtime)
+  { input: "./bin/swarm.ts", outfile: "./dist/bin/swarm.js" },
 ];
 
 const EXTERNALS = ["@electric-sql/pglite", "swarm-mail", "evalite"];

@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "swarm": "./bin/swarm.ts"
+    "swarm": "./dist/bin/swarm.js"
   },
   "exports": {
     ".": {

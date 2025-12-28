@@ -43,13 +43,60 @@ import {
   getLibSQLProjectTempDirName,
   getLibSQLDatabasePath,
   hashLibSQLProjectPath,
+  getSwarmMailLibSQL,
+  createHiveAdapter,
+  resolvePartialId,
+  createDurableStreamAdapter,
+  createDurableStreamServer,
 } from "swarm-mail";
+import { execSync } from "child_process";
 import { tmpdir } from "os";
 
+// Query & observability tools
+import {
+  executeQuery,
+  executePreset,
+  formatAsTable,
+  formatAsCSV,
+  formatAsJSON,
+} from "../src/query-tools.js";
+import {
+  getWorkerStatus,
+  getSubtaskProgress,
+  getFileLocks,
+  getRecentMessages,
+  getEpicList,
+} from "../src/dashboard.js";
+import {
+  fetchEpicEvents,
+  filterEvents,
+  replayWithTiming,
+  formatReplayEvent,
+} from "../src/replay-tools.js";
+import {
+  exportToOTLP,
+  exportToCSV,
+  exportToJSON,
+} from "../src/export-tools.js";
+import {
+  querySwarmHistory,
+  formatSwarmHistory,
+  formatSwarmStats,
+  parseTimePeriod,
+  aggregateByStrategy,
+} from "../src/observability-tools.js";
+
+// Eval tools
+import { getPhase, getScoreHistory, recordEvalRun, getEvalHistoryPath } from "../src/eval-history.js";
+import { DEFAULT_THRESHOLDS, checkGate } from "../src/eval-gates.js";
+
+// All tools (for tool command)
+import { allTools } from "../src/index.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(
-  readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
-);
+// When bundled to dist/bin/swarm.js, need to go up two levels to find package.json
+const pkgPath = join(__dirname, "..", "..", "package.json");
+const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 const VERSION: string = pkg.version;
 
 // ============================================================================
@@ -2536,7 +2583,7 @@ async function query() {
   const parsed = parseQueryArgs(args);
 
   // Import query tools
-  const { executeQuery, executePreset, formatAsTable, formatAsCSV, formatAsJSON } = await import("../src/query-tools.js");
+  // Static import at top of file
 
   p.intro("swarm query");
 
@@ -2614,7 +2661,7 @@ async function dashboard() {
   const args = process.argv.slice(3);
   const parsed = parseDashboardArgs(args);
 
-  const { getWorkerStatus, getSubtaskProgress, getFileLocks, getRecentMessages, getEpicList } = await import("../src/observability/dashboard.js");
+  // Static import at top of file
 
   p.intro("swarm dashboard");
 
@@ -2783,7 +2830,7 @@ async function replay() {
     process.exit(1);
   }
 
-  const { fetchEpicEvents, filterEvents, replayWithTiming, formatReplayEvent } = await import("../src/observability/replay-tools.js");
+  // Static import at top of file
 
   p.intro(`swarm replay ${parsed.epicId}`);
 
@@ -2859,7 +2906,7 @@ async function exportEvents() {
   const args = process.argv.slice(3);
   const parsed = parseExportArgs(args);
 
-  const { exportToOTLP, exportToCSV, exportToJSON } = await import("../src/observability/export-tools.js");
+  // Static import at top of file
 
   p.intro("swarm export");
 
@@ -3038,7 +3085,7 @@ ${dim("Docs: https://github.com/joelhooks/opencode-swarm-plugin")}
  */
 async function executeTool(toolName: string, argsJson?: string) {
   // Lazy import to avoid loading all tools on every CLI invocation
-  const { allTools } = await import("../src/index");
+  // Static import at top of file
 
   // Validate tool name
   if (!(toolName in allTools)) {
@@ -3131,7 +3178,7 @@ async function executeTool(toolName: string, argsJson?: string) {
  * List all available tools
  */
 async function listTools() {
-  const { allTools } = await import("../src/index");
+  // Static import at top of file
   const tools = Object.keys(allTools).sort();
 
   console.log(yellow(BANNER));
@@ -3358,7 +3405,7 @@ async function migrate() {
 // Session Log Helpers
 // ============================================================================
 
-import type { CoordinatorEvent } from "../src/eval-capture.js";
+import type { CoordinatorEvent } from "../dist/eval-capture.js";
 
 /**
  * Parse a session file and return events
@@ -3884,7 +3931,7 @@ async function cells() {
   
   // Get adapter using swarm-mail
   const projectPath = process.cwd();
-  const { getSwarmMailLibSQL, createHiveAdapter, resolvePartialId } = await import("swarm-mail");
+  // Static import at top of file
   
   try {
     const swarmMail = await getSwarmMailLibSQL(projectPath);
@@ -4224,7 +4271,7 @@ async function db() {
     
     // Check schema
     try {
-      const { execSync } = await import("child_process");
+      // Static import at top of file
       const schema = execSync(`sqlite3 "${dbFile}" "SELECT sql FROM sqlite_master WHERE type='table' AND name='beads'"`, { encoding: "utf-8" }).trim();
       
       if (schema) {
@@ -4456,10 +4503,7 @@ function formatEvalRunResultOutput(result: {
 // ============================================================================
 
 async function stats() {
-	const { getSwarmMailLibSQL } = await import("swarm-mail");
-	const { formatSwarmStats, parseTimePeriod, aggregateByStrategy } = await import(
-		"../src/observability-tools"
-	);
+	// Static import at top of file
 
 	p.intro("swarm stats");
 
@@ -4628,10 +4672,7 @@ async function stats() {
 // ============================================================================
 
 async function swarmHistory() {
-	const {
-		querySwarmHistory,
-		formatSwarmHistory,
-	} = await import("../src/observability-tools.js");
+	// Static import at top of file
 
 	p.intro("swarm history");
 
@@ -4757,8 +4798,7 @@ async function evalHelp() {
 }
 
 async function evalStatus() {
-  const { getPhase, getScoreHistory } = await import("../src/eval-history.js");
-  const { DEFAULT_THRESHOLDS } = await import("../src/eval-gates.js");
+  // Static imports at top of file
   
   p.intro("swarm eval status");
   
@@ -4784,7 +4824,7 @@ async function evalStatus() {
 }
 
 async function evalHistory() {
-  const { getEvalHistoryPath } = await import("../src/eval-history.js");
+  // Static import at top of file
   
   p.intro("swarm eval history");
   
@@ -4817,8 +4857,7 @@ async function evalRun() {
   }
   
   // Import gate checking
-  const { checkGate } = await import("../src/eval-gates.js");
-  const { recordEvalRun, getScoreHistory } = await import("../src/eval-history.js");
+  // Static imports at top of file
   
   // Run evalite for each eval
   const evalFiles = [
@@ -4935,8 +4974,7 @@ async function serve() {
 
   try {
     // Import dependencies
-    const { getSwarmMailLibSQL, createHiveAdapter } = await import("swarm-mail");
-    const { createDurableStreamAdapter, createDurableStreamServer } = await import("swarm-mail");
+    // Static imports at top of file
 
     // Get swarm-mail adapter
     const swarmMail = await getSwarmMailLibSQL(projectPath);
@@ -4997,8 +5035,7 @@ async function viz() {
 
   try {
     // Import dependencies
-    const { getSwarmMailLibSQL, createHiveAdapter } = await import("swarm-mail");
-    const { createDurableStreamAdapter, createDurableStreamServer } = await import("swarm-mail");
+    // Static imports at top of file
 
     // Get swarm-mail adapter
     const swarmMail = await getSwarmMailLibSQL(projectPath);

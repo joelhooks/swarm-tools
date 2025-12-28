@@ -12,14 +12,18 @@ interface BuildEntry {
   outfile?: string; // Use outfile for single-file outputs
 }
 
-const BUILD_ENTRIES: BuildEntry[] = [
+// Phase 1: Build library entries (can run in parallel)
+const LIBRARY_ENTRIES: BuildEntry[] = [
   { input: "./src/index.ts", outdir: "./dist" },
   { input: "./src/plugin.ts", outfile: "./dist/plugin.js" },
   { input: "./src/eval-capture.ts", outfile: "./dist/eval-capture.js" },
   { input: "./src/compaction-prompt-scoring.ts", outfile: "./dist/compaction-prompt-scoring.js" },
   { input: "./src/hive.ts", outfile: "./dist/hive.js" },
   { input: "./src/swarm-prompts.ts", outfile: "./dist/swarm-prompts.js" },
-  // CLI - compiled so npm installs work (no ../src/ imports at runtime)
+];
+
+// Phase 2: Build CLI (depends on dist/swarm-prompts.js, dist/hive.js, etc.)
+const CLI_ENTRIES: BuildEntry[] = [
   { input: "./bin/swarm.ts", outfile: "./dist/bin/swarm.js" },
 ];
 
@@ -47,20 +51,36 @@ async function main() {
   console.log("🔨 Building opencode-swarm-plugin...\n");
   const start = Date.now();
   
-  // Build all entries in parallel
-  const results = await Promise.allSettled(
-    BUILD_ENTRIES.map(entry => buildEntry(entry))
+  // Phase 1: Build library entries in parallel
+  console.log("📦 Phase 1: Building library entries...");
+  const libraryResults = await Promise.allSettled(
+    LIBRARY_ENTRIES.map(entry => buildEntry(entry))
   );
   
-  // Check for failures
-  const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
-  if (failures.length > 0) {
-    console.error("\n❌ Build failed:");
-    failures.forEach(f => console.error(`  - ${f.reason}`));
+  // Check for library failures
+  const libraryFailures = libraryResults.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (libraryFailures.length > 0) {
+    console.error("\n❌ Library build failed:");
+    libraryFailures.forEach(f => console.error(`  - ${f.reason}`));
     process.exit(1);
   }
   
-  console.log(`\n✅ Built ${BUILD_ENTRIES.length} entries`);
+  // Phase 2: Build CLI (depends on library outputs)
+  console.log("\n🔧 Phase 2: Building CLI...");
+  const cliResults = await Promise.allSettled(
+    CLI_ENTRIES.map(entry => buildEntry(entry))
+  );
+  
+  // Check for CLI failures
+  const cliFailures = cliResults.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (cliFailures.length > 0) {
+    console.error("\n❌ CLI build failed:");
+    cliFailures.forEach(f => console.error(`  - ${f.reason}`));
+    process.exit(1);
+  }
+  
+  const totalEntries = LIBRARY_ENTRIES.length + CLI_ENTRIES.length;
+  console.log(`\n✅ Built ${totalEntries} entries`);
   
   // Run tsc for declarations
   console.log("\n📝 Generating type declarations...");

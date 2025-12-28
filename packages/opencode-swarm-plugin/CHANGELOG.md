@@ -1,5 +1,23 @@
 # opencode-swarm-plugin
 
+## 0.45.7
+
+### Patch Changes
+
+- [`f6c63ac`](https://github.com/joelhooks/swarm-tools/commit/f6c63ac1e4a3cf36e66ee03d6b48b12e187a24a3) Thanks [@joelhooks](https://github.com/joelhooks)! - ## 🐝 CLI Unicode Fixed
+
+  ```
+    BEFORE (bundled @clack):          AFTER (externalized):
+    â–¡ Something went wrong            ◇ Something went wrong
+    â–ˆ Checking dependencies           ◆ Checking dependencies
+  ```
+
+  The CLI was showing garbled unicode instead of proper box-drawing characters.
+
+  **Root cause:** `@clack/prompts` detects unicode support at module load using `process.env.TERM`. When bundled, this detection happened at _build time_ on macOS, not at runtime in the user's terminal.
+
+  **Fix:** Externalize `@clack/prompts` and its dependencies so unicode detection runs in the actual terminal environment.
+
 ## 0.45.6
 
 ### Patch Changes

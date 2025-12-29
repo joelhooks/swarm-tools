@@ -26,6 +26,8 @@
 
 ---
 
+_Note: You will need Bun installed to run this plugin. You can follow the instructions [here](https://bun.com/docs/installation)._
+
 ## 30-Second Start
 
 ```bash

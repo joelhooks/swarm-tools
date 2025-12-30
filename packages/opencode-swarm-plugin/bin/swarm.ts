@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * OpenCode Swarm Plugin CLI
  *
@@ -465,6 +465,15 @@ interface CheckResult {
 
 const DEPENDENCIES: Dependency[] = [
   {
+    name: "Bun",
+    command: "bun",
+    checkArgs: ["--version"],
+    required: true,
+    install: "curl -fsSL https://bun.sh/install | bash",
+    installType: "manual",
+    description: "JavaScript runtime (required for CLI)",
+  },
+  {
     name: "OpenCode",
     command: "opencode",
     checkArgs: ["--version"],
@@ -726,66 +735,171 @@ function buildAgentsSkillsSection(
   ].join(newline);
 }
 
-function buildAgentsCassSection(newline: string): string {
+/**
+ * Build the unified Hivemind section (ADR-011).
+ * Replaces separate CASS and Semantic Memory sections.
+ */
+function buildAgentsHivemindSection(newline: string): string {
   return [
-    "## CASS - Cross-Agent Session Search",
+    "## Hivemind - Unified Memory System",
     "",
-    "Search across ALL your AI coding agent histories before solving problems from scratch.",
+    "The hive remembers everything. Learnings, sessions, patterns—all searchable.",
+    "",
+    "**Unified storage:** Manual learnings and AI agent session histories stored in the same database, searchable together. Powered by libSQL vectors + Ollama embeddings.",
+    "",
+    "**Indexed agents:** Claude Code, Codex, Cursor, Gemini, Aider, ChatGPT, Cline, OpenCode, Amp, Pi-Agent",
     "",
     "### When to Use",
     "",
-    '- **BEFORE implementing anything**: check if any agent solved it before',
-    '- **Debugging**: "what did I try last time this error happened?"',
-    '- **Learning patterns**: "how did Cursor handle this API?"',
+    "- **BEFORE implementing** - check if you or any agent solved it before",
+    "- **After solving hard problems** - store learnings for future sessions",
+    "- **Debugging** - search past sessions for similar errors",
+    "- **Architecture decisions** - record reasoning, alternatives, tradeoffs",
+    "- **Project-specific patterns** - capture domain rules and gotchas",
+    "",
+    "### Tools",
+    "",
+    "| Tool | Purpose |",
+    "|------|---------|",
+    "| `hivemind_store` | Store a memory (learnings, decisions, patterns) |",
+    "| `hivemind_find` | Search all memories (learnings + sessions, semantic + FTS fallback) |",
+    "| `hivemind_get` | Get specific memory by ID |",
+    "| `hivemind_remove` | Delete outdated/incorrect memory |",
+    "| `hivemind_validate` | Confirm memory still accurate (resets 90-day decay timer) |",
+    "| `hivemind_stats` | Memory statistics and health check |",
+    "| `hivemind_index` | Index AI session directories |",
+    "| `hivemind_sync` | Sync to .hive/memories.jsonl (git-backed, team-shared) |",
     "",
     "### Usage",
     "",
-    "```bash",
-    "# Search all agents",
-    'cass_search(query="authentication token refresh", limit=5)',
+    "**Store a learning** (include WHY, not just WHAT):",
     "",
-    "# Filter by agent/time",
-    'cass_search(query="useEffect cleanup", agent="claude", days=7)',
-    "",
-    "# View specific result",
-    'cass_view(path="/path/from/search", line=42)',
-    "",
-    "# Expand context around match",
-    'cass_expand(path="/path", line=42, context=10)',
+    "```typescript",
+    "hivemind_store({",
+    '  information: "OAuth refresh tokens need 5min buffer before expiry to avoid race conditions. Without buffer, token refresh can fail mid-request if expiry happens between check and use.",',
+    '  tags: "auth,oauth,tokens,race-conditions"',
+    "})",
     "```",
     "",
-    "**Pro tip:** Query CASS at the START of complex tasks. Past solutions save time.",
+    "**Search all memories** (learnings + sessions):",
+    "",
+    "```typescript",
+    "// Search everything",
+    'hivemind_find({ query: "token refresh", limit: 5 })',
+    "",
+    "// Search only learnings (manual entries)",
+    'hivemind_find({ query: "authentication", collection: "default" })',
+    "",
+    "// Search only Claude sessions",
+    'hivemind_find({ query: "Next.js caching", collection: "claude" })',
+    "",
+    "// Search only Cursor sessions",
+    'hivemind_find({ query: "API design", collection: "cursor" })',
+    "```",
+    "",
+    "**Get specific memory**:",
+    "",
+    "```typescript",
+    'hivemind_get({ id: "mem_xyz123" })',
+    "```",
+    "",
+    "**Delete outdated memory**:",
+    "",
+    "```typescript",
+    'hivemind_remove({ id: "mem_old456" })',
+    "```",
+    "",
+    "**Validate memory is still accurate** (resets decay):",
+    "",
+    "```typescript",
+    "// Confirmed this memory is still relevant",
+    'hivemind_validate({ id: "mem_xyz123" })',
+    "```",
+    "",
+    "**Index new sessions**:",
+    "",
+    "```typescript",
+    "// Automatically indexes ~/.config/opencode/sessions, ~/.cursor-tutor, etc.",
+    "hivemind_index()",
+    "```",
+    "",
+    "**Sync to git**:",
+    "",
+    "```typescript",
+    "// Writes learnings to .hive/memories.jsonl for git sync",
+    "hivemind_sync()",
+    "```",
+    "",
+    "**Check stats**:",
+    "",
+    "```typescript",
+    "hivemind_stats()",
+    "```",
+    "",
+    "### Usage Pattern",
+    "",
+    "```bash",
+    "# 1. Before starting work - query for relevant learnings",
+    'hivemind_find({ query: "<task keywords>", limit: 5 })',
+    "",
+    "# 2. Do the work...",
+    "",
+    "# 3. After solving hard problem - store learning",
+    "hivemind_store({",
+    '  information: "<what you learned, WHY it matters>",',
+    '  tags: "<relevant,tags>"',
+    "})",
+    "",
+    "# 4. Validate memories when you confirm they're still accurate",
+    'hivemind_validate({ id: "<memory-id>" })',
+    "```",
+    "",
+    "### Integration with Workflow",
+    "",
+    "**At task start** (query BEFORE implementing):",
+    "",
+    "```bash",
+    "# Check if you or any agent solved similar problems",
+    'hivemind_find({ query: "OAuth token refresh buffer", limit: 5 })',
+    "```",
+    "",
+    "**During debugging** (search past sessions):",
+    "",
+    "```bash",
+    "# Find similar errors from past sessions",
+    'hivemind_find({ query: "cannot read property of undefined", collection: "claude" })',
+    "```",
+    "",
+    "**After solving problems** (store learnings):",
+    "",
+    "```bash",
+    '# Store root cause + solution, not just "fixed it"',
+    "hivemind_store({",
+    '  information: "Next.js searchParams causes dynamic rendering. Workaround: destructure in parent, pass as props to cached child.",',
+    '  tags: "nextjs,cache-components,dynamic-rendering,searchparams"',
+    "})",
+    "```",
+    "",
+    "**Learning from other agents**:",
+    "",
+    "```bash",
+    "# See how Cursor handled similar feature",
+    'hivemind_find({ query: "implement authentication", collection: "cursor" })',
+    "```",
+    "",
+    "**Pro tip:** Query Hivemind at the START of complex tasks. Past solutions (yours or other agents') save time and prevent reinventing wheels.",
   ].join(newline);
 }
 
+// Legacy functions kept for backwards compatibility during migration
+function buildAgentsCassSection(newline: string): string {
+  // Redirect to Hivemind section
+  return buildAgentsHivemindSection(newline);
+}
+
 function buildAgentsSemanticMemorySection(newline: string): string {
-  return [
-    "## Semantic Memory - Persistent Learning",
-    "",
-    "Store and retrieve learnings across sessions. Memories persist and are searchable.",
-    "",
-    "### When to Use",
-    "",
-    "- After solving a tricky problem - store the solution",
-    "- After making architectural decisions - store the reasoning",
-    "- Before starting work - search for relevant past learnings",
-    "- When you discover project-specific patterns",
-    "",
-    "### Usage",
-    "",
-    "```bash",
-    "# Store a learning",
-    'semantic-memory_store(information="OAuth refresh tokens need 5min buffer before expiry", metadata="auth, tokens")',
-    "",
-    "# Search for relevant memories",
-    'semantic-memory_find(query="token refresh", limit=5)',
-    "",
-    "# Validate a memory is still accurate (resets decay timer)",
-    'semantic-memory_validate(id="mem_123")',
-    "```",
-    "",
-    "**Pro tip:** Store the WHY, not just the WHAT. Future you needs context.",
-  ].join(newline);
+  // Redirect to Hivemind section
+  return buildAgentsHivemindSection(newline);
 }
 
 function buildAgentsSwarmCoordinatorSection(newline: string): string {
@@ -954,6 +1068,53 @@ function updateAgentsMdContent({
     changes.push("Updated bundled skills list");
   }
 
+  // ADR-011: Migrate old tool names to hivemind
+  const hasOldCassTools = /cass_search\(|cass_view\(|cass_expand\(/i.test(updated);
+  const hasOldSemanticTools = /semantic-memory_store\(|semantic-memory_find\(/i.test(updated);
+  const hasHivemindTools = /hivemind_store\(|hivemind_find\(/i.test(updated);
+  
+  // If has old tools but not new hivemind tools, we need to update
+  if ((hasOldCassTools || hasOldSemanticTools) && !hasHivemindTools) {
+    // Replace old tool references with hivemind equivalents
+    const beforeMigration = updated;
+    
+    // Tool name replacements
+    updated = updated.replace(/semantic-memory_store\(/g, "hivemind_store(");
+    updated = updated.replace(/semantic-memory_find\(/g, "hivemind_find(");
+    updated = updated.replace(/semantic-memory_get\(/g, "hivemind_get(");
+    updated = updated.replace(/semantic-memory_remove\(/g, "hivemind_remove(");
+    updated = updated.replace(/semantic-memory_validate\(/g, "hivemind_validate(");
+    updated = updated.replace(/semantic-memory_list\(/g, "hivemind_find(");
+    updated = updated.replace(/semantic-memory_stats\(/g, "hivemind_stats(");
+    updated = updated.replace(/cass_search\(/g, "hivemind_find(");
+    updated = updated.replace(/cass_view\(/g, "hivemind_get(");
+    updated = updated.replace(/cass_expand\(/g, "hivemind_get(");
+    updated = updated.replace(/cass_health\(/g, "hivemind_stats(");
+    updated = updated.replace(/cass_index\(/g, "hivemind_index(");
+    updated = updated.replace(/cass_stats\(/g, "hivemind_stats(");
+    
+    // Table references (without parentheses)
+    updated = updated.replace(/\| `semantic-memory_store` \|/g, "| `hivemind_store` |");
+    updated = updated.replace(/\| `semantic-memory_find` \|/g, "| `hivemind_find` |");
+    updated = updated.replace(/\| `semantic-memory_get` \|/g, "| `hivemind_get` |");
+    updated = updated.replace(/\| `semantic-memory_remove` \|/g, "| `hivemind_remove` |");
+    updated = updated.replace(/\| `semantic-memory_validate` \|/g, "| `hivemind_validate` |");
+    updated = updated.replace(/\| `semantic-memory_list` \|/g, "| `hivemind_find` |");
+    updated = updated.replace(/\| `semantic-memory_stats` \|/g, "| `hivemind_stats` |");
+    updated = updated.replace(/\| `semantic-memory_migrate` \|/g, "| `hivemind_stats` |");
+    updated = updated.replace(/\| `semantic-memory_check` \|/g, "| `hivemind_stats` |");
+    updated = updated.replace(/\| `cass_search` \|/g, "| `hivemind_find` |");
+    updated = updated.replace(/\| `cass_view` \|/g, "| `hivemind_get` |");
+    updated = updated.replace(/\| `cass_expand` \|/g, "| `hivemind_get` |");
+    updated = updated.replace(/\| `cass_health` \|/g, "| `hivemind_stats` |");
+    updated = updated.replace(/\| `cass_index` \|/g, "| `hivemind_index` |");
+    updated = updated.replace(/\| `cass_stats` \|/g, "| `hivemind_stats` |");
+    
+    if (updated !== beforeMigration) {
+      changes.push("Migrated cass_*/semantic-memory_* to hivemind_* (ADR-011)");
+    }
+  }
+
   // Update tool preferences block if present
   const toolPrefsResult = updateAgentsToolPreferencesBlock(updated, newline);
   if (toolPrefsResult.changed) {
@@ -961,14 +1122,11 @@ function updateAgentsMdContent({
     changes.push("Updated tool_preferences tool list");
   }
 
-  // Add missing sections (append at end)
+  // Check for sections - now unified under Hivemind
   const hasSkillsSection =
     /^#{1,6}\s+Skills\b/im.test(updated) || /skills_list\(\)/.test(updated);
-  const hasCassSection =
-    /^#{1,6}\s+.*CASS\b/im.test(updated) || /cass_search\(/.test(updated);
-  const hasSemanticMemorySection =
-    /^#{1,6}\s+Semantic Memory\b/im.test(updated) ||
-    /semantic-memory_store\(/.test(updated);
+  const hasHivemindSection =
+    /^#{1,6}\s+Hivemind\b/im.test(updated) || /hivemind_store\(/.test(updated);
   const hasSwarmCoordinatorSection =
     /^#{1,6}\s+Swarm Coordinator\b/im.test(updated) ||
     /swarm_review\(/.test(updated) ||
@@ -981,13 +1139,9 @@ function updateAgentsMdContent({
     );
     changes.push("Added Skills section");
   }
-  if (!hasCassSection) {
-    sectionsToAppend.push(buildAgentsCassSection(newline));
-    changes.push("Added CASS section");
-  }
-  if (!hasSemanticMemorySection) {
-    sectionsToAppend.push(buildAgentsSemanticMemorySection(newline));
-    changes.push("Added Semantic Memory section");
+  if (!hasHivemindSection) {
+    sectionsToAppend.push(buildAgentsHivemindSection(newline));
+    changes.push("Added Hivemind section (unified memory)");
   }
   if (!hasSwarmCoordinatorSection) {
     sectionsToAppend.push(buildAgentsSwarmCoordinatorSection(newline));
@@ -1607,6 +1761,23 @@ async function setup(forceReinstall = false, nonInteractive = false) {
   console.log();
 
   p.intro("opencode-swarm-plugin v" + VERSION);
+
+  // CRITICAL: Check for Bun first - the CLI requires Bun runtime
+  const bunCheck = await checkCommand("bun", ["--version"]);
+  if (!bunCheck.available) {
+    p.log.error("Bun is required but not installed!");
+    console.log();
+    console.log(dim("  The swarm CLI requires Bun runtime for Bun-specific APIs."));
+    console.log();
+    console.log("  Install Bun:");
+    console.log(cyan("    curl -fsSL https://bun.sh/install | bash"));
+    console.log();
+    console.log(dim("  Or via Homebrew:"));
+    console.log(cyan("    brew install oven-sh/bun/bun"));
+    console.log();
+    process.exit(1);
+  }
+  p.log.success(`Bun v${bunCheck.version} detected`);
 
   // Migrate legacy database if present (do this first, before config check)
   const cwd = process.cwd();
@@ -3294,7 +3465,7 @@ async function listTools() {
 // Agents Command - Update AGENTS.md with skill awareness
 // ============================================================================
 
-async function agents() {
+async function agents(nonInteractive = false) {
   const home = process.env.HOME || process.env.USERPROFILE || "~";
   const agentsPath = join(home, ".config", "opencode", "AGENTS.md");
 
@@ -3310,44 +3481,70 @@ async function agents() {
     return;
   }
 
-  const confirm = await p.confirm({
-    message: "Update AGENTS.md with skill awareness?",
-    initialValue: true,
-  });
+  if (!nonInteractive) {
+    const result = await p.confirm({
+      message: "Update AGENTS.md with Hivemind unification?",
+      initialValue: true,
+    });
 
-  if (p.isCancel(confirm) || !confirm) {
-    p.outro("Aborted");
-    return;
+    if (p.isCancel(result) || !result) {
+      p.outro("Aborted");
+      return;
+    }
   }
 
   const s = p.spinner();
-  s.start("Updating AGENTS.md with skill awareness...");
+  s.start("Updating AGENTS.md via LLM...");
 
-  const bundledSkillsPath = join(__dirname, "..", "global-skills");
-  const bundledSkills = listDirectoryNames(bundledSkillsPath);
+  const prompt = `You are updating ~/.config/opencode/AGENTS.md to unify memory tools under Hivemind (ADR-011).
+
+TASK: Update the AGENTS.md file to:
+
+1. **Rename tool references** throughout the file:
+   - \`cass_search\` → \`hivemind_find\`
+   - \`cass_view\` → \`hivemind_get\`
+   - \`cass_expand\` → \`hivemind_get\`
+   - \`cass_health\` → \`hivemind_stats\`
+   - \`cass_index\` → \`hivemind_index\`
+   - \`cass_stats\` → \`hivemind_stats\`
+   - \`semantic-memory_store\` → \`hivemind_store\`
+   - \`semantic-memory_find\` → \`hivemind_find\`
+   - \`semantic-memory_get\` → \`hivemind_get\`
+   - \`semantic-memory_remove\` → \`hivemind_remove\`
+   - \`semantic-memory_validate\` → \`hivemind_validate\`
+   - \`semantic-memory_list\` → \`hivemind_find\`
+   - \`semantic-memory_stats\` → \`hivemind_stats\`
+
+2. **Consolidate sections**: If there are separate "CASS" and "Semantic Memory" sections, merge them into a single "Hivemind - Unified Memory System" section that covers:
+   - Unified storage (learnings + sessions in same DB)
+   - All hivemind_* tools with descriptions
+   - Usage examples showing both storing learnings and searching sessions
+   - The 90-day decay and validation workflow
+
+3. **Update any prose** that mentions "CASS" or "semantic memory" separately to use "Hivemind" terminology.
+
+4. **Keep existing structure** - don't reorganize unrelated sections.
+
+Read the file, make the updates, and save it. Create a backup first.`;
 
   try {
-    const bundledSkillsCsv =
-      bundledSkills.length > 0
-        ? bundledSkills.join(", ")
-        : "cli-builder, learning-systems, skill-creator, swarm-coordination, system-design, testing-patterns";
+    const proc = Bun.spawn(["opencode", "run", prompt], {
+      stdio: ["inherit", "pipe", "pipe"],
+      cwd: home,
+    });
 
-    const result = updateAgentsMdFile({ agentsPath, bundledSkillsCsv });
-
-    if (result.changed) {
-      s.stop("AGENTS.md updated with skill awareness");
-      p.log.success("Skills section added to " + agentsPath);
-      p.log.message(
-        dim("Skills available: skills_list, skills_use, skills_read"),
-      );
-      if (result.backupPath) {
-        p.log.message(dim("Backup: " + result.backupPath));
-      }
+    const exitCode = await proc.exited;
+    
+    if (exitCode === 0) {
+      s.stop("AGENTS.md updated via LLM");
+      p.log.success("Hivemind unification complete");
     } else {
-      s.stop("AGENTS.md already up to date");
+      const stderr = await new Response(proc.stderr).text();
+      s.stop("LLM update failed");
+      p.log.error(stderr || `Exit code: ${exitCode}`);
     }
   } catch (error) {
-    s.stop("Failed to update AGENTS.md");
+    s.stop("Failed to run opencode");
     p.log.error(String(error));
   }
 
@@ -5352,9 +5549,11 @@ switch (command) {
     }
     break;
   }
-  case "agents":
-    await agents();
+  case "agents": {
+    const agentsNonInteractive = process.argv.includes("--yes") || process.argv.includes("-y");
+    await agents(agentsNonInteractive);
     break;
+  }
   case "migrate":
     await migrate();
     break;

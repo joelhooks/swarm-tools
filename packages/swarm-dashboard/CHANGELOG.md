@@ -1,5 +1,12 @@
 # swarm-dashboard
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`5d5c403`](https://github.com/joelhooks/swarm-tools/commit/5d5c4032dbdd3db87405c2f65ccb3b5aaeb02f1a)]:
+  - swarm-mail@1.7.2
+
 ## 0.0.2
 
 ### Patch Changes

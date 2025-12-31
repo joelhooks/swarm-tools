@@ -40,10 +40,25 @@ describe("cass_search", () => {
 		// Should not throw
 		expect(result).toBeTruthy();
 		
-		// Should either return results or "No results found" message
-		if (result.includes("No results found")) {
-			expect(result).toContain("Try:");
+		// Should start with the 🔍 CASS Search header
+		expect(result).toContain("🔍 CASS Search");
+		
+		// Should either have results or show no results message
+		if (result.includes("0 results")) {
+			expect(result).toContain("No matching sessions found");
+			expect(result).toContain("broader search terms");
 		}
+	});
+
+	test("returns compact format with header", async () => {
+		const result = await cassTools.cass_search.execute({ query: "authentication" });
+		
+		// Always starts with CASS Search header emoji
+		expect(result.startsWith("🔍 CASS Search")).toBe(true);
+		
+		// If there are results, they should follow the [agent] path:line - "preview" format
+		const lines = result.split("\n");
+		expect(lines.length).toBeGreaterThanOrEqual(1); // At least header line
 	});
 });
 

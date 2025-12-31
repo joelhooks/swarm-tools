@@ -25,6 +25,7 @@ import {
 } from "swarm-mail";
 import * as os from "node:os";
 import * as path from "node:path";
+import { formatCassResults, type CassResult } from "./result-formatter";
 
 // ============================================================================
 // Types
@@ -189,27 +190,22 @@ const cass_search = tool({
 
 			// Format output
 			if (results.length === 0) {
-				return "No results found. Try:\n- Broader search terms\n- Different agent filter\n- Running cass_index to refresh";
+				return "🔍 CASS Search (0 results):\n  No matching sessions found.\n\nNo results? Try: *broader search terms*, different agent filter, or run cass_index to refresh";
 			}
 
-			// Return formatted results
-			return results
-				.map((result, idx) => {
-					const metadata = result.memory.metadata as any;
-					const agentType = metadata?.agent_type || "unknown";
-					const sourcePath = metadata?.source_path || "unknown";
-					const lineNumber = metadata?.message_idx || 0;
+			// Map results to CassResult format
+			const cassResults: CassResult[] = results.map((result) => {
+				const metadata = result.memory.metadata as Record<string, unknown>;
+				return {
+					agent: (metadata?.agent_type as string) || "unknown",
+					path: (metadata?.source_path as string) || "unknown",
+					line: (metadata?.message_idx as number) || 0,
+					preview: result.memory.content,
+				};
+			});
 
-					if (args.fields === "minimal") {
-						return `${idx + 1}. ${sourcePath}:${lineNumber} (${agentType})`;
-					}
-
-					return `${idx + 1}. [${agentType}] ${sourcePath}:${lineNumber}
-   Score: ${result.score?.toFixed(3)}
-   ${result.memory.content.slice(0, 200)}...
-   `;
-				})
-				.join("\n");
+			// Use compact formatter
+			return formatCassResults(cassResults, args.query, results.length);
 		} catch (error) {
 			return JSON.stringify({
 				error: error instanceof Error ? error.message : String(error),

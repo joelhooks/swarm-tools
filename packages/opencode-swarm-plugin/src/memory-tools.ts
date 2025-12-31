@@ -31,6 +31,7 @@ import {
 	type UpsertResult,
 	type AutoTags,
 } from "./memory";
+import { formatMemoryResults, type MemoryResult } from "./result-formatter";
 
 // Re-export types for external use
 export type {
@@ -172,6 +173,53 @@ export const semantic_memory_store = tool({
 	},
 });
 
+// ============================================================================
+// Decay Calculation Utilities
+// ============================================================================
+
+/** Half-life for memory decay in days (90 days) */
+export const HALF_LIFE_DAYS = 90;
+
+/**
+ * Calculate decay percentage from creation date
+ * Uses half-life formula: 0.5^(age/halfLife) * 100
+ *
+ * @param createdAt - ISO-8601 timestamp of memory creation
+ * @param now - Current time (for testing)
+ * @returns Decay percentage (0-100, higher = more retained)
+ *
+ * @example
+ * // Memory created today: 100% retained
+ * calculateDecayPercent(new Date().toISOString()) // ~100
+ *
+ * // Memory from 90 days ago: ~50% retained (one half-life)
+ * calculateDecayPercent("2024-10-01T00:00:00Z", new Date("2024-12-30")) // ~50
+ */
+export function calculateDecayPercent(createdAt: string, now: Date = new Date()): number {
+	const eventTime = new Date(createdAt).getTime();
+	const nowTime = now.getTime();
+	const ageDays = Math.max(0, (nowTime - eventTime) / (24 * 60 * 60 * 1000));
+	const decayFactor = Math.pow(0.5, ageDays / HALF_LIFE_DAYS);
+	return decayFactor * 100;
+}
+
+/**
+ * Calculate age in days from creation date
+ *
+ * @param createdAt - ISO-8601 timestamp
+ * @param now - Current time (for testing)
+ * @returns Age in days (fractional)
+ *
+ * @example
+ * // Memory from 12 days ago
+ * calculateAgeDays("2024-12-19T00:00:00Z", new Date("2024-12-31")) // 12
+ */
+export function calculateAgeDays(createdAt: string, now: Date = new Date()): number {
+	const eventTime = new Date(createdAt).getTime();
+	const nowTime = now.getTime();
+	return Math.max(0, (nowTime - eventTime) / (24 * 60 * 60 * 1000));
+}
+
 /**
  * Find memories by semantic similarity or full-text search
  */
@@ -221,7 +269,17 @@ export const semantic_memory_find = tool({
 			console.warn("[semantic_memory_find] Failed to emit memory_found event:", error);
 		}
 
-		return JSON.stringify(result, null, 2);
+		// Map results to MemoryResult format for compact rendering
+		const memoryResults: MemoryResult[] = result.results.map((r) => ({
+			id: r.id,
+			score: r.score,
+			age_days: calculateAgeDays(r.createdAt),
+			decay_percent: calculateDecayPercent(r.createdAt),
+			content: r.content,
+			collection: r.collection,
+		}));
+
+		return formatMemoryResults(memoryResults, args.query);
 	},
 });
 

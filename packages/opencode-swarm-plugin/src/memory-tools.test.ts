@@ -5,8 +5,100 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { memoryTools, resetMemoryCache } from "./memory-tools";
+import {
+	memoryTools,
+	resetMemoryCache,
+	calculateDecayPercent,
+	calculateAgeDays,
+	HALF_LIFE_DAYS,
+} from "./memory-tools";
 import { closeAllSwarmMail } from "swarm-mail";
+
+// ============================================================================
+// Unit Tests (No Database Required)
+// ============================================================================
+
+describe("decay calculation utilities", () => {
+	test("HALF_LIFE_DAYS is 90", () => {
+		expect(HALF_LIFE_DAYS).toBe(90);
+	});
+
+	describe("calculateAgeDays", () => {
+		test("returns 0 for current time", () => {
+			const now = new Date();
+			const age = calculateAgeDays(now.toISOString(), now);
+			expect(age).toBe(0);
+		});
+
+		test("returns correct age in days", () => {
+			const now = new Date("2024-12-31T00:00:00Z");
+			const created = "2024-12-19T00:00:00Z"; // 12 days ago
+			const age = calculateAgeDays(created, now);
+			expect(age).toBe(12);
+		});
+
+		test("returns fractional days for partial days", () => {
+			const now = new Date("2024-12-31T12:00:00Z"); // noon
+			const created = "2024-12-31T00:00:00Z"; // midnight same day
+			const age = calculateAgeDays(created, now);
+			expect(age).toBeCloseTo(0.5, 5); // half a day
+		});
+
+		test("handles future dates gracefully (returns 0)", () => {
+			const now = new Date("2024-12-01T00:00:00Z");
+			const created = "2024-12-31T00:00:00Z"; // in the future
+			const age = calculateAgeDays(created, now);
+			expect(age).toBe(0);
+		});
+	});
+
+	describe("calculateDecayPercent", () => {
+		test("returns ~100% for brand new memory", () => {
+			const now = new Date();
+			const decay = calculateDecayPercent(now.toISOString(), now);
+			expect(decay).toBeCloseTo(100, 1);
+		});
+
+		test("returns ~50% after one half-life (90 days)", () => {
+			const now = new Date("2024-12-31T00:00:00Z");
+			const created = "2024-10-02T00:00:00Z"; // 90 days ago
+			const decay = calculateDecayPercent(created, now);
+			expect(decay).toBeCloseTo(50, 1);
+		});
+
+		test("returns ~25% after two half-lives (180 days)", () => {
+			const now = new Date("2024-12-31T00:00:00Z");
+			const created = "2024-07-04T00:00:00Z"; // ~180 days ago
+			const decay = calculateDecayPercent(created, now);
+			expect(decay).toBeCloseTo(25, 1);
+		});
+
+		test("returns ~99% for 1-day old memory", () => {
+			const now = new Date("2024-12-31T00:00:00Z");
+			const created = "2024-12-30T00:00:00Z"; // 1 day ago
+			const decay = calculateDecayPercent(created, now);
+			// After 1 day with 90-day half-life: 0.5^(1/90) ≈ 0.9923 ≈ 99.23%
+			expect(decay).toBeGreaterThan(99);
+			expect(decay).toBeLessThan(100);
+		});
+
+		test("decay decreases with age", () => {
+			const now = new Date("2024-12-31T00:00:00Z");
+			const decay1 = calculateDecayPercent("2024-12-30T00:00:00Z", now); // 1 day
+			const decay10 = calculateDecayPercent("2024-12-21T00:00:00Z", now); // 10 days
+			const decay30 = calculateDecayPercent("2024-12-01T00:00:00Z", now); // 30 days
+			const decay90 = calculateDecayPercent("2024-10-02T00:00:00Z", now); // 90 days
+
+			expect(decay1).toBeGreaterThan(decay10);
+			expect(decay10).toBeGreaterThan(decay30);
+			expect(decay30).toBeGreaterThan(decay90);
+		});
+	});
+});
+
+// ============================================================================
+// Integration Tests (Require Database)
+// ============================================================================
 
 describe("memory tools integration", () => {
 	afterAll(async () => {
@@ -53,7 +145,7 @@ describe("memory tools integration", () => {
 	});
 
 	describe("semantic-memory_find", () => {
-		test("executes and returns JSON array", async () => {
+		test("executes and returns compact formatted output", async () => {
 			// Store a memory first
 			const storeTool = memoryTools["semantic-memory_store"];
 			await storeTool.execute(
@@ -74,10 +166,52 @@ describe("memory tools integration", () => {
 			);
 
 			expect(typeof result).toBe("string");
-			const parsed = JSON.parse(result);
-			expect(parsed.results).toBeDefined();
-			expect(Array.isArray(parsed.results)).toBe(true);
-			expect(parsed.count).toBeGreaterThanOrEqual(0);
+			// Should have header with emoji and query
+			expect(result).toContain("📚 Semantic Memory");
+			expect(result).toContain("xyztest123");
+			// Should show results count
+			expect(result).toMatch(/\(\d+ results? for/);
+		});
+
+		test("shows score, decay, and age for each result", async () => {
+			// Store a memory first
+			const storeTool = memoryTools["semantic-memory_store"];
+			await storeTool.execute(
+				{
+					information: "Memory for format testing uniquekeyword789",
+				},
+				{ sessionID: "test-session" } as any,
+			);
+
+			// Search for it
+			const findTool = memoryTools["semantic-memory_find"];
+			const result = await findTool.execute(
+				{
+					query: "uniquekeyword789",
+					limit: 5,
+				},
+				{ sessionID: "test-session" } as any,
+			);
+
+			// Should have compact format with score, decay%, and age
+			expect(result).toMatch(/score: \d+\.\d+/);
+			expect(result).toMatch(/decay: \d+%/);
+			expect(result).toMatch(/\d+[dhm]\)/); // age like "12d)" or "3h)"
+		});
+
+		test("handles empty results", async () => {
+			const findTool = memoryTools["semantic-memory_find"];
+			const result = await findTool.execute(
+				{
+					query: "nonexistent_query_that_will_match_nothing_xyz_abc_123",
+					limit: 5,
+				},
+				{ sessionID: "test-session" } as any,
+			);
+
+			expect(result).toContain("📚 Semantic Memory");
+			expect(result).toContain("0 results");
+			expect(result).toContain("No matching memories found");
 		});
 	});
 

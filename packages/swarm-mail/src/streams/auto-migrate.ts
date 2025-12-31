@@ -176,7 +176,7 @@ export function detectSourceType(projectPath: string): SourceType {
  * 4. Return stats
  *
  * @param projectPath - absolute path to project root
- * @param globalDbPath - path to global database (defaults to ~/.opencode/swarm-mail.db)
+ * @param globalDbPath - path to global database (defaults to ~/.config/swarm-tools/swarm.db)
  * @returns migration result with stats and backup path
  *
  * @throws Error if migration fails
@@ -250,7 +250,7 @@ export async function migrateProjectToGlobal(
  *
  * @example
  * ```typescript
- * const globalDb = createClient({ url: "file:~/.opencode/swarm-mail.db" });
+ * const globalDb = createClient({ url: "file:~/.config/swarm-tools/swarm.db" });
  * const stats = await migrateLibSQLToGlobal("/project/.opencode/streams.db", globalDb);
  * ```
  */

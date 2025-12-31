@@ -248,6 +248,9 @@ export async function getThreadMessages(
 
 /**
  * Get active (non-expired, non-released) reservations
+ * 
+ * DEFENSIVE: Auto-releases expired reservations before returning results.
+ * This ensures eventual cleanup even if agents crash without releasing.
  *
  * @param projectKey - Project identifier
  * @param projectPath - Optional project path for database location
@@ -263,6 +266,17 @@ export async function getActiveReservations(
   const db = requireDbOverride(dbOverride);
 
   const now = Date.now();
+  
+  // CLEANUP: Auto-release expired reservations before querying
+  await db.query(
+    `UPDATE reservations 
+     SET released_at = $1 
+     WHERE project_key = $2 
+       AND released_at IS NULL 
+       AND expires_at < $1`,
+    [now, projectKey]
+  );
+
   const baseQuery = `
     SELECT id, agent_name, path_pattern, exclusive, reason, created_at, expires_at, lock_holder_id
     FROM reservations

@@ -306,6 +306,14 @@ export async function createLibSQLAdapter(
 	// Verify connection with a simple query
 	await client.execute("SELECT 1");
 
+	// CRITICAL: Enable foreign key constraints
+	// libSQL enables FK by default, but we set it explicitly for:
+	// 1. Defensive programming (guards against future libSQL changes)
+	// 2. Self-documenting code (explicit contract)
+	// 3. Consistency with standard SQLite patterns
+	// Prevents orphaned references (e.g., 208 orphaned message_recipients in audit)
+	await client.execute("PRAGMA foreign_keys = ON");
+
 	// Set busy_timeout to 5 seconds for automatic retry on SQLITE_BUSY
 	// This prevents "database is locked" errors during concurrent access
 	await client.execute("PRAGMA busy_timeout = 5000");

@@ -35,8 +35,12 @@ export function clearAdapterCache(): void {
  * If dbOverride is provided, returns it directly (dependency injection).
  * Otherwise, creates/reuses a cached adapter for the given projectPath.
  * 
+ * CRITICAL: This function ALWAYS uses the global database path (~/.config/swarm-tools/swarm.db).
+ * Local/project-specific databases are NOT supported. The projectPath parameter is only used
+ * for triggering auto-migration of legacy local databases to the global database.
+ * 
  * @param dbOverride - Optional explicit adapter (for dependency injection)
- * @param projectPath - Optional project path (uses global DB if not provided)
+ * @param projectPath - Optional project path (triggers auto-migration, but DB is always global)
  * @returns DatabaseAdapter instance
  * 
  * @internal Exported for use by store-drizzle.ts to ensure adapter consistency
@@ -50,8 +54,9 @@ export async function getOrCreateAdapter(
     return dbOverride;
   }
 
-  // Determine cache key
-  const cacheKey = projectPath || "global";
+  // CRITICAL: Always use "global" as cache key - we only have ONE database
+  // The projectPath is only used for triggering auto-migration of legacy local DBs
+  const cacheKey = "global";
 
   // Check cache
   const cached = adapterCache.get(cacheKey);
@@ -59,8 +64,24 @@ export async function getOrCreateAdapter(
     return cached;
   }
 
-  // Create new adapter
+  // Create new adapter - ALWAYS uses global path
+  // getDatabasePath() returns ~/.config/swarm-tools/swarm.db and triggers
+  // auto-migration if projectPath has a legacy local DB
   const dbPath = getDatabasePath(projectPath);
+  
+  // RUNTIME GUARD: Verify we're using the global database path
+  // This prevents accidental creation of local databases
+  const expectedGlobalPath = getDatabasePath(); // No projectPath = canonical global path
+  if (dbPath !== expectedGlobalPath) {
+    throw new Error(
+      `[SwarmMail] RUNTIME GUARD VIOLATION: Attempted to create non-global database.\n` +
+      `  Requested: ${dbPath}\n` +
+      `  Expected:  ${expectedGlobalPath}\n` +
+      `  All databases must use the global path: ~/.config/swarm-tools/swarm.db\n` +
+      `  See: .hive/analysis/stray-database-audit.md`
+    );
+  }
+  
   const adapter = await createLibSQLAdapter({ url: `file:${dbPath}` });
   
   // Initialize schema if needed

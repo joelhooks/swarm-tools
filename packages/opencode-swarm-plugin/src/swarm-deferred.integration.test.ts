@@ -83,6 +83,7 @@ describe("swarm_complete DurableDeferred integration", () => {
         agent_name: "TestWorker",
         bead_id: beadId,
         summary: "Task completed successfully",
+        start_time: Date.now() - 1500,
         skip_verification: true, // Skip UBS/typecheck for test
       },
       mockContext

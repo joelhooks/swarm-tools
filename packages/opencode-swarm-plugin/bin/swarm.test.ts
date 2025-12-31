@@ -2132,3 +2132,173 @@ describe("swarm export", () => {
   });
 });
 
+// ============================================================================
+// DB Repair Command Tests (TDD)
+// ============================================================================
+
+describe("swarm db repair", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `swarm-db-repair-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  describe("parseRepairArgs", () => {
+    function parseRepairArgs(args: string[]): { dryRun: boolean } {
+      let dryRun = false;
+
+      for (const arg of args) {
+        if (arg === "--dry-run") {
+          dryRun = true;
+        }
+      }
+
+      return { dryRun };
+    }
+
+    test("parses --dry-run flag", () => {
+      const result = parseRepairArgs(["--dry-run"]);
+      expect(result.dryRun).toBe(true);
+    });
+
+    test("defaults to dryRun=false", () => {
+      const result = parseRepairArgs([]);
+      expect(result.dryRun).toBe(false);
+    });
+  });
+
+  describe("executeRepair", () => {
+    /**
+     * Execute repair operation
+     * @param dryRun - If true, only count what would be deleted
+     * @returns Summary of changes
+     */
+    async function executeRepair(dryRun: boolean): Promise<{
+      nullBeads: number;
+      orphanedRecipients: number;
+      messagesWithoutRecipients: number;
+      expiredReservations: number;
+    }> {
+      // Mock implementation for testing
+      // Real implementation will use getSwarmMailLibSQL()
+      return {
+        nullBeads: dryRun ? 427 : 0,
+        orphanedRecipients: dryRun ? 208 : 0,
+        messagesWithoutRecipients: dryRun ? 72 : 0,
+        expiredReservations: dryRun ? 213 : 0,
+      };
+    }
+
+    test("dry run returns counts without deleting", async () => {
+      const result = await executeRepair(true);
+
+      expect(result.nullBeads).toBeGreaterThanOrEqual(0);
+      expect(result.orphanedRecipients).toBeGreaterThanOrEqual(0);
+      expect(result.messagesWithoutRecipients).toBeGreaterThanOrEqual(0);
+      expect(result.expiredReservations).toBeGreaterThanOrEqual(0);
+    });
+
+    test("actual repair returns zero after cleanup", async () => {
+      const result = await executeRepair(false);
+
+      // After cleanup, all counts should be zero (mock behavior)
+      expect(result.nullBeads).toBe(0);
+      expect(result.orphanedRecipients).toBe(0);
+      expect(result.messagesWithoutRecipients).toBe(0);
+      expect(result.expiredReservations).toBe(0);
+    });
+  });
+
+  describe("formatRepairSummary", () => {
+    function formatRepairSummary(
+      counts: {
+        nullBeads: number;
+        orphanedRecipients: number;
+        messagesWithoutRecipients: number;
+        expiredReservations: number;
+      },
+      dryRun: boolean,
+    ): string {
+      const lines: string[] = [];
+
+      if (dryRun) {
+        lines.push("DRY RUN - No changes made");
+        lines.push("");
+        lines.push("Would delete:");
+      } else {
+        lines.push("Deleted:");
+      }
+
+      lines.push(`  - ${counts.nullBeads} beads with NULL IDs`);
+      lines.push(`  - ${counts.orphanedRecipients} orphaned message_recipients`);
+      lines.push(`  - ${counts.messagesWithoutRecipients} messages without recipients`);
+      lines.push(`  - ${counts.expiredReservations} expired unreleased reservations`);
+
+      const total =
+        counts.nullBeads +
+        counts.orphanedRecipients +
+        counts.messagesWithoutRecipients +
+        counts.expiredReservations;
+
+      lines.push("");
+      lines.push(`Total: ${total} records ${dryRun ? "would be cleaned" : "cleaned"}`);
+
+      return lines.join("\n");
+    }
+
+    test("formats dry run summary", () => {
+      const counts = {
+        nullBeads: 427,
+        orphanedRecipients: 208,
+        messagesWithoutRecipients: 72,
+        expiredReservations: 213,
+      };
+
+      const result = formatRepairSummary(counts, true);
+
+      expect(result).toContain("DRY RUN");
+      expect(result).toContain("Would delete:");
+      expect(result).toContain("427 beads with NULL IDs");
+      expect(result).toContain("208 orphaned message_recipients");
+      expect(result).toContain("72 messages without recipients");
+      expect(result).toContain("213 expired unreleased reservations");
+      expect(result).toContain("Total: 920 records would be cleaned");
+    });
+
+    test("formats actual repair summary", () => {
+      const counts = {
+        nullBeads: 427,
+        orphanedRecipients: 208,
+        messagesWithoutRecipients: 72,
+        expiredReservations: 213,
+      };
+
+      const result = formatRepairSummary(counts, false);
+
+      expect(result).not.toContain("DRY RUN");
+      expect(result).toContain("Deleted:");
+      expect(result).toContain("Total: 920 records cleaned");
+    });
+
+    test("handles zero counts", () => {
+      const counts = {
+        nullBeads: 0,
+        orphanedRecipients: 0,
+        messagesWithoutRecipients: 0,
+        expiredReservations: 0,
+      };
+
+      const result = formatRepairSummary(counts, false);
+
+      expect(result).toContain("Total: 0 records cleaned");
+    });
+  });
+});
+

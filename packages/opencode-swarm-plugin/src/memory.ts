@@ -201,17 +201,18 @@ async function maybeAutoMigrate(db: DatabaseAdapter): Promise<void> {
 			return;
 		}
 
-		console.log("[memory] Legacy database detected, starting auto-migration...");
+		// Use stderr to avoid polluting JSON output on stdout
+		console.error("[memory] Legacy database detected, starting auto-migration...");
 
 		// Run migration (still uses DatabaseAdapter)
 		const result = await migrateLegacyMemories({
 			targetDb: db,
 			dryRun: false,
-			onProgress: console.log,
+			onProgress: (msg) => console.error(msg),
 		});
 
 		if (result.migrated > 0) {
-			console.log(
+			console.error(
 				`[memory] Auto-migrated ${result.migrated} memories from legacy database`,
 			);
 		}
@@ -366,14 +367,17 @@ export async function createMemoryAdapter(
 
 		/**
 		 * Find memories by semantic similarity or full-text search
+		 *
+		 * When Ollama is unavailable, automatically falls back to FTS.
 		 */
 		async find(args: FindArgs): Promise<FindResult> {
 			const limit = args.limit ?? 10;
 
 			let results: SearchResult[];
+			let usedFallback = false;
 
 			if (args.fts) {
-				// Full-text search
+				// Full-text search (explicit)
 				results = await store.ftsSearch(args.query, {
 					limit,
 					collection: args.collection,
@@ -385,18 +389,31 @@ export async function createMemoryAdapter(
 					return yield* ollama.embed(args.query);
 				});
 
-				const queryEmbedding = await Effect.runPromise(
-					program.pipe(Effect.provide(ollamaLayer)),
-				);
+				try {
+					const queryEmbedding = await Effect.runPromise(
+						program.pipe(Effect.provide(ollamaLayer)),
+					);
 
-				results = await store.search(queryEmbedding, {
-					limit,
-					threshold: 0.3,
-					collection: args.collection,
-				});
+					results = await store.search(queryEmbedding, {
+						limit,
+						threshold: 0.3,
+						collection: args.collection,
+					});
+				} catch (e) {
+					// Ollama unavailable - fallback to FTS
+					// This happens when Ollama isn't running or can't be reached
+					console.warn(
+						"[hivemind] Ollama unavailable, falling back to full-text search",
+					);
+					usedFallback = true;
+					results = await store.ftsSearch(args.query, {
+						limit,
+						collection: args.collection,
+					});
+				}
 			}
 
-			return {
+			const response: FindResult & { fallback_used?: boolean } = {
 				results: results.map((r) => ({
 					id: r.memory.id,
 					content: args.expand
@@ -409,6 +426,13 @@ export async function createMemoryAdapter(
 				})),
 				count: results.length,
 			};
+
+			// Include fallback indicator so callers know results are FTS-based
+			if (usedFallback) {
+				response.fallback_used = true;
+			}
+
+			return response;
 		},
 
 		/**

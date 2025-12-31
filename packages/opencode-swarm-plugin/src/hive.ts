@@ -565,20 +565,21 @@ async function autoMigrateFromJSONL(adapter: HiveAdapter, projectKey: string): P
     });
 
     if (result.created > 0 || result.updated > 0) {
-      console.log(
+      // Use stderr to avoid polluting JSON output on stdout
+      console.error(
         `[hive] Auto-migrated ${result.created} cells from ${jsonlPath} (${result.skipped} skipped, ${result.errors.length} errors)`
       );
     }
 
     if (result.errors.length > 0) {
-      console.warn(
+      console.error(
         `[hive] Migration errors:`,
         result.errors.slice(0, 5).map((e) => `${e.cellId}: ${e.error}`)
       );
     }
   } catch (error) {
     // Non-fatal - log and continue
-    console.warn(
+    console.error(
       `[hive] Failed to auto-migrate from ${jsonlPath}:`,
       error instanceof Error ? error.message : String(error)
     );

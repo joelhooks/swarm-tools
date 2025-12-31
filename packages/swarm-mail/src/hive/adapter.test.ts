@@ -94,6 +94,65 @@ describe("Beads Adapter", () => {
     expect(beads.length).toBeGreaterThanOrEqual(2);
   });
 
+  // ============================================================================
+  // Bead ID Validation Tests
+  // ============================================================================
+
+  test("createCell - should reject null cell ID via event system", async () => {
+    // Create a cell event with null ID to simulate generateBeadId failure
+    const { appendCellEvent } = await import("./store.js");
+    
+    const badEvent: any = {
+      type: "cell_created",
+      project_key: projectKey,
+      cell_id: null, // This should be rejected
+      timestamp: Date.now(),
+      title: "Bad Bead",
+      issue_type: "task",
+      priority: 2,
+    };
+    
+    await expect(appendCellEvent(badEvent, undefined, db)).rejects.toThrow(
+      /Bead ID cannot be null or empty/
+    );
+  });
+
+  test("createCell - should reject empty cell ID via event system", async () => {
+    const { appendCellEvent } = await import("./store.js");
+    
+    const badEvent: any = {
+      type: "cell_created",
+      project_key: projectKey,
+      cell_id: "", // Empty string should also be rejected
+      timestamp: Date.now(),
+      title: "Bad Bead",
+      issue_type: "task",
+      priority: 2,
+    };
+    
+    await expect(appendCellEvent(badEvent, undefined, db)).rejects.toThrow(
+      /Bead ID cannot be null or empty/
+    );
+  });
+
+  test("createCell - should reject whitespace-only cell ID", async () => {
+    const { appendCellEvent } = await import("./store.js");
+    
+    const badEvent: any = {
+      type: "cell_created",
+      project_key: projectKey,
+      cell_id: "   ", // Whitespace only should be rejected
+      timestamp: Date.now(),
+      title: "Bad Bead",
+      issue_type: "task",
+      priority: 2,
+    };
+    
+    await expect(appendCellEvent(badEvent, undefined, db)).rejects.toThrow(
+      /Bead ID cannot be null or empty/
+    );
+  });
+
   test("updateCell - updates bead fields", async () => {
     const bead = await adapter.createCell(projectKey, {
       title: "Original",

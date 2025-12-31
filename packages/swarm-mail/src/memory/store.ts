@@ -97,12 +97,23 @@ export function createMemoryStore(db: SwarmDb) {
         ? JSON.parse(row.metadata)
         : row.metadata ?? {};
 
+    // Parse created_at, falling back to current time if null/undefined/invalid
+    //  row.created_at can be: null, undefined, valid ISO string, or malformed string
+    // Only use row.created_at if it's a non-empty string that creates a valid Date
+    let createdAt: Date;
+    if (row.created_at && typeof row.created_at === "string") {
+      const parsed = new Date(row.created_at);
+      createdAt = isNaN(parsed.getTime()) ? new Date() : parsed;
+    } else {
+      createdAt = new Date();
+    }
+
     return {
       id: row.id,
       content: row.content,
       metadata,
       collection: row.collection ?? "default",
-      createdAt: new Date(row.created_at ?? Date.now()),
+      createdAt,
       confidence: row.decay_factor ?? 0.7,
     };
   };

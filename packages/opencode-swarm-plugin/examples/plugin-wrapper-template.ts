@@ -2775,8 +2775,9 @@ const SwarmPlugin: Plugin = async (
           has_projection: !!sessionScan.projection?.isSwarm,
         });
 
-        // Hoist snapshot outside try block so it's available in fallback path
+        // Hoist snapshot and queryDuration outside try block so they're available in fallback path
         let snapshot: SwarmStateSnapshot | undefined;
+        let queryDuration = 0; // 0 if using projection, actual duration if using hive query
         
         try {
           // =======================================================================
@@ -2821,7 +2822,7 @@ const SwarmPlugin: Plugin = async (
             // Fallback to hive query (may be stale)
             const queryStart = Date.now();
             snapshot = await querySwarmState(input.sessionID);
-            const queryDuration = Date.now() - queryStart;
+            queryDuration = Date.now() - queryStart;
             
             logCompaction("info", "fallback_to_hive_query", {
               session_id: input.sessionID,
@@ -2965,6 +2966,16 @@ const SwarmPlugin: Plugin = async (
             error_stack: err instanceof Error ? err.stack : undefined,
             falling_back_to: "static_prompt",
           });
+        }
+
+        // Guard: Don't double-inject if LLM prompt was already set
+        // This can happen if the error occurred after setting output.prompt but before return
+        if ("prompt" in output && output.prompt) {
+          logCompaction("info", "skipping_static_fallback_prompt_already_set", {
+            session_id: input.sessionID,
+            prompt_length: output.prompt.length,
+          });
+          return;
         }
 
         // Level 3: Fall back to static context WITH dynamic state from snapshot

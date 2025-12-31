@@ -59,6 +59,70 @@ await adapter.closeCell(cellId, "Done");
 
 **Why?** The `bd` CLI requires a separate installation and isn't available in all environments. The HiveAdapter provides the same functionality programmatically with proper TypeScript types.
 
+---
+
+## CRITICAL: Single Global Database Architecture
+
+**All swarm data lives in ONE database: `~/.config/swarm-tools/swarm.db`**
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║   ✅ GLOBAL DATABASE (the only one):                                      ║
+║      ~/.config/swarm-tools/swarm.db                                       ║
+║                                                                           ║
+║   ❌ LOCAL DATABASES (banned, auto-migrated):                             ║
+║      .opencode/swarm.db                                                   ║
+║      .hive/swarm-mail.db                                                  ║
+║      packages/*/.opencode/swarm.db                                        ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+```
+
+### Why Single Database?
+
+1. **No stray data** - All events, beads, messages in one place
+2. **Cross-project visibility** - `swarm stats` shows everything
+3. **Simpler debugging** - One database to inspect
+4. **No migration headaches** - Data doesn't get lost in project-local DBs
+
+### Runtime Guard
+
+The `getOrCreateAdapter()` function in `swarm-mail` has a runtime guard that throws if code attempts to create a non-global database:
+
+```typescript
+// This will THROW:
+const adapter = await createLibSQLAdapter({ url: "file:./local.db" });
+
+// This is CORRECT (uses global path automatically):
+const swarmMail = await getSwarmMailLibSQL();
+```
+
+### Auto-Migration
+
+When `swarm setup` runs, it:
+1. Detects stray databases in `.opencode/`, `.hive/`, `packages/*/`
+2. Migrates unique data to global database (INSERT OR IGNORE)
+3. Renames strays to `*.db.migrated` to prevent re-migration
+
+### For Tests Only
+
+Tests can use in-memory databases:
+
+```typescript
+// ✅ CORRECT for tests
+const swarmMail = await createInMemorySwarmMailLibSQL("test-123");
+
+// ❌ WRONG - don't create file-based test DBs
+const adapter = await createLibSQLAdapter({ url: "file:./test.db" });
+```
+
+### Audit Report
+
+See `.hive/analysis/stray-database-audit.md` for the full audit of database paths in the codebase.
+
+---
+
 ## Prime Directive: TDD Everything
 
 **All code changes MUST follow Test-Driven Development:**

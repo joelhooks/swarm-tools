@@ -90,27 +90,20 @@ export function hashProjectPath(projectPath: string): string {
 /**
  * Get database file path for a project
  *
- * Returns `file:/<tmpdir>/opencode-<project>-<hash>/streams.db`
- * or `file:/<tmpdir>/opencode-global/streams.db` if no project specified.
+ * @deprecated This function is deprecated. Use `getDatabasePath` from `./streams/index.js` instead.
+ * All databases should use the global path: ~/.config/swarm-tools/swarm.db
+ * 
+ * This function previously created temp databases which caused stray DB proliferation.
+ * It now delegates to the canonical global path function.
  *
- * Creates directory if it doesn't exist.
- *
- * @param projectPath - Optional project path (defaults to global)
- * @returns Database file URL for libSQL
+ * @param projectPath - Optional project path (ignored - always returns global path)
+ * @returns Database file path (global)
  */
 export function getDatabasePath(projectPath?: string): string {
-  const dirName = projectPath
-    ? getProjectTempDirName(projectPath)
-    : "opencode-global";
-
-  const dbDir = join(tmpdir(), dirName);
-
-  // Create directory if needed
-  if (!existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true });
-  }
-
-  return `file:${join(dbDir, "streams.db")}`;
+  // CRITICAL: Always use global database path
+  // See: .hive/analysis/stray-database-audit.md for why local DBs are banned
+  const { getDatabasePath: getGlobalPath } = require("./streams/index.js");
+  return getGlobalPath(projectPath);
 }
 
 /**

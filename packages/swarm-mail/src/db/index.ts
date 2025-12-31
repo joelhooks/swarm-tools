@@ -6,6 +6,7 @@
  * - Database types (SwarmDb)
  * - Drizzle schemas (re-exported from schema/index.ts)
  * - Worktree support (isWorktree, getMainRepoPath, resolveDbPath)
+ * - Database consolidation (detectStrayDatabases, consolidateDatabases, etc.)
  * 
  * @example
  * ```typescript
@@ -23,6 +24,10 @@
  *   const mainPath = getMainRepoPath("/path/to/worktree");
  *   const dbPath = resolveDbPath("/path/to/worktree");
  * }
+ * 
+ * // Database consolidation
+ * import { consolidateDatabases } from "swarm-mail/db";
+ * const report = await consolidateDatabases(projectPath, globalDbPath, { yes: true });
  * ```
  */
 
@@ -37,3 +42,18 @@ export type { DrizzleClient } from "./drizzle.js";
 export * as schema from "./schema/index.js";
 // Worktree support
 export { getMainRepoPath, isWorktree, resolveDbPath } from "./worktree.js";
+// Database consolidation
+export {
+	analyzeStrayDatabase,
+	consolidateDatabases,
+	detectStrayDatabases,
+	migrateToGlobal,
+} from "./consolidate-databases.js";
+export type {
+	ConsolidationOptions,
+	ConsolidationReport,
+	DatabaseAnalysis,
+	MigrationResult,
+	StrayDatabase,
+	StrayLocation,
+} from "./consolidate-databases.js";

@@ -56,6 +56,7 @@ describe("swarm_complete integration", () => {
 			bead_id: beadId,
 			summary: "Test task completed",
 			files_touched: ["test.ts"],
+			start_time: Date.now() - 1000, // 1 second ago
 			skip_verification: true,
 		});
 
@@ -73,6 +74,7 @@ describe("swarm_complete integration", () => {
 			bead_id: "no-deferred-bead",
 			summary: "Task without deferred",
 			files_touched: ["test.ts"],
+			start_time: Date.now() - 1000,
 			skip_verification: true,
 		});
 
@@ -240,6 +242,7 @@ describe("E2E swarm coordination", () => {
 			bead_id: subtask1Id,
 			summary: "Setup completed",
 			files_touched: ["src/setup.ts"],
+			start_time: Date.now() - 2000,
 			skip_verification: true,
 			skip_review: true,
 		});
@@ -254,6 +257,7 @@ describe("E2E swarm coordination", () => {
 			bead_id: subtask2Id,
 			summary: "Implementation completed",
 			files_touched: ["src/impl.ts"],
+			start_time: Date.now() - 3000,
 			skip_verification: true,
 			skip_review: true,
 		});

@@ -552,11 +552,208 @@ describe("hivemind tools integration", () => {
 	});
 });
 
-describe("deprecation aliases", () => {
-	afterAll(async () => {
-		resetHivemindCache();
-		await closeAllSwarmMail();
+	// REGRESSION TEST for Invalid Date bug
+	// Bug: hivemind_find throws "Invalid Date" when memory records have null/undefined dates
+	// Root cause: Line 105 in swarm-mail/src/memory/store.ts uses ?? operator which doesn't catch null
+	// Expected: new Date(null) creates Invalid Date, should use || instead of ??
+	describe("date handling regression tests (RED phase - expected to FAIL)", () => {
+		test("handles memory with null created_at field", async () => {
+			// This test is EXPECTED TO FAIL until the fix is applied
+			// Reproduces: hivemind_find throws "Invalid Date" on all queries
+			
+			const { getSwarmMailLibSQL, toSwarmDb } = await import("swarm-mail");
+			const swarmMail = await getSwarmMailLibSQL();
+			const dbAdapter = await swarmMail.getDatabase();
+			const db = toSwarmDb(dbAdapter);
+			
+			// Insert memory with null created_at directly into database
+			// This simulates legacy data or manual inserts that bypass validation
+			const result = await dbAdapter.query(
+				`INSERT OR REPLACE INTO memories (id, content, metadata, collection, created_at, decay_factor)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				["mem-null-date", "Memory with null date", "{}", "default", null, 0.7],
+			);
+			
+			// BUG REPRODUCTION: This should throw "Invalid Date"
+			// After fix: Should NOT throw, should handle null gracefully
+			const findTool = hivemindTools["hivemind_find"];
+			const findResult = await findTool.execute(
+				{
+					query: "null",
+					limit: 10,
+					fts: true, // Use FTS to avoid embedding timing issues
+				},
+				{ sessionID: "test-session" } as any,
+			);
+			
+			// If we get here without throwing, the bug is fixed!
+			const parsed = JSON.parse(findResult);
+			expect(parsed.results).toBeDefined();
+			
+			// Verify any results with null dates have valid createdAt in output
+			for (const result of parsed.results) {
+				expect(result.createdAt).toBeDefined();
+				expect(result.createdAt).not.toBe("Invalid Date");
+				const parsedDate = new Date(result.createdAt);
+				expect(parsedDate.toString()).not.toBe("Invalid Date");
+			}
+		});
+		
+		test("handles memory with undefined created_at field", async () => {
+			// Undefined should also be handled safely
+			const { getSwarmMailLibSQL, toSwarmDb } = await import("swarm-mail");
+			const swarmMail = await getSwarmMailLibSQL();
+			const dbAdapter = await swarmMail.getDatabase();
+			
+			// Insert memory omitting created_at (will be NULL in database)
+			await dbAdapter.query(
+				`INSERT OR REPLACE INTO memories (id, content, metadata, collection, decay_factor)
+				 VALUES (?, ?, ?, ?, ?)`,
+				["mem-undefined-date", "Memory with undefined date", "{}", "default", 0.7],
+			);
+			
+			// Should NOT throw
+			const findTool = hivemindTools["hivemind_find"];
+			const findResult = await findTool.execute(
+				{
+					query: "undefined",
+					limit: 10,
+					fts: true,
+				},
+				{ sessionID: "test-session" } as any,
+			);
+			
+			const parsed = JSON.parse(findResult);
+			expect(parsed.results).toBeDefined();
+			
+			// Verify all results have valid dates
+			for (const result of parsed.results) {
+				expect(result.createdAt).toBeDefined();
+				const parsedDate = new Date(result.createdAt);
+				expect(parsedDate.toString()).not.toBe("Invalid Date");
+			}
+		});
+		
+		test("handles memory with malformed date string", async () => {
+			// Malformed strings like "not-a-date" should be handled
+			const { getSwarmMailLibSQL } = await import("swarm-mail");
+			const swarmMail = await getSwarmMailLibSQL();
+			const dbAdapter = await swarmMail.getDatabase();
+			
+			// Insert memory with malformed date string
+			await dbAdapter.query(
+				`INSERT OR REPLACE INTO memories (id, content, metadata, collection, created_at, decay_factor)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				["mem-malformed-date", "Memory with malformed date", "{}", "default", "not-a-real-date", 0.7],
+			);
+			
+			// Should NOT throw
+			const findTool = hivemindTools["hivemind_find"];
+			const findResult = await findTool.execute(
+				{
+					query: "malformed",
+					limit: 10,
+					fts: true,
+				},
+				{ sessionID: "test-session" } as any,
+			);
+			
+			const parsed = JSON.parse(findResult);
+			expect(parsed.results).toBeDefined();
+			
+			// Verify all results have valid dates
+			for (const result of parsed.results) {
+				expect(result.createdAt).toBeDefined();
+				const parsedDate = new Date(result.createdAt);
+				expect(parsedDate.toString()).not.toBe("Invalid Date");
+			}
+		});
+		
+		test("handles memory with valid ISO date string (baseline)", async () => {
+			// This should always work - baseline test
+			const { getSwarmMailLibSQL } = await import("swarm-mail");
+			const swarmMail = await getSwarmMailLibSQL();
+			const dbAdapter = await swarmMail.getDatabase();
+			
+			const validDate = new Date("2025-01-01T00:00:00Z");
+			
+			// Insert memory with valid date
+			await dbAdapter.query(
+				`INSERT OR REPLACE INTO memories (id, content, metadata, collection, created_at, decay_factor)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				["mem-valid-date", "Memory with valid date", "{}", "default", validDate.toISOString(), 0.7],
+			);
+			
+			// Should work fine
+			const findTool = hivemindTools["hivemind_find"];
+			const findResult = await findTool.execute(
+				{
+					query: "valid",
+					limit: 10,
+					fts: true,
+				},
+				{ sessionID: "test-session" } as any,
+			);
+			
+			const parsed = JSON.parse(findResult);
+			expect(parsed.results).toBeDefined();
+			
+			// Find our specific memory
+			const validDateMemory = parsed.results.find((r: any) => r.id === "mem-valid-date");
+			if (validDateMemory) {
+				expect(validDateMemory.createdAt).toBe(validDate.toISOString());
+				const parsedDate = new Date(validDateMemory.createdAt);
+				expect(parsedDate.toString()).not.toBe("Invalid Date");
+				expect(parsedDate.getTime()).toBe(validDate.getTime());
+			}
+		});
 	});
+
+	// Test for Ollama fallback behavior
+	// When Ollama is unavailable, hivemind_find should fallback to FTS
+	describe("Ollama fallback to FTS", () => {
+		test("find returns results even when using FTS fallback", async () => {
+			// This test verifies the fallback mechanism works
+			// In production, if Ollama fails, we should still get FTS results
+			
+			// First, store a memory using FTS-friendly content
+			const storeTool = hivemindTools["hivemind_store"];
+			await storeTool.execute(
+				{
+					information: "FALLBACKTEST123 unique content for testing FTS fallback",
+					tags: "test,fallback",
+				},
+				{ sessionID: "test-session" } as any,
+			);
+
+			// Now search with FTS explicitly (simulating what fallback does)
+			const findTool = hivemindTools["hivemind_find"];
+			const result = await findTool.execute(
+				{
+					query: "FALLBACKTEST123",
+					limit: 5,
+					fts: true, // Explicit FTS, same as fallback uses
+				},
+				{ sessionID: "test-session" } as any,
+			);
+
+			const parsed = JSON.parse(result);
+			expect(parsed.results).toBeDefined();
+			expect(parsed.count).toBeGreaterThan(0);
+			
+			// Verify we found our test content
+			const found = parsed.results.some((r: any) =>
+				r.content.includes("FALLBACKTEST123")
+			);
+			expect(found).toBe(true);
+		});
+	});
+
+	describe("deprecation aliases", () => {
+		afterAll(async () => {
+			resetHivemindCache();
+			await closeAllSwarmMail();
+		});
 
 	describe("semantic-memory_* aliases", () => {
 		test("semantic-memory_store maps to hivemind_store", () => {

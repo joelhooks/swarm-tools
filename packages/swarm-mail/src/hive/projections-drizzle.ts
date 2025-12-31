@@ -117,6 +117,16 @@ async function handleBeadCreatedDrizzle(
   db: SwarmDb,
   event: CellEvent,
 ): Promise<void> {
+  // GUARD: Validate bead ID is not null/empty
+  // This prevents the root cause of NULL ID records from migration failures
+  if (!event.cell_id || event.cell_id.trim() === "") {
+    throw new Error(
+      `[Hive] Bead ID cannot be null or empty. ` +
+      `Attempted to create bead with title="${event.title}" in project="${event.project_key}". ` +
+      `This indicates a bug in ID generation (generateBeadId).`
+    );
+  }
+
   await db.insert(beads).values({
     id: event.cell_id,
     project_key: event.project_key,

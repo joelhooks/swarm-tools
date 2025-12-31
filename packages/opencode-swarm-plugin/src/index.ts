@@ -67,6 +67,7 @@ import {
   setCoordinatorContext,
   clearCoordinatorContext,
 } from "./planning-guardrails";
+import { checkCoordinatorGuard } from "./coordinator-guard";
 import { createCompactionHook } from "./compaction-hook";
 
 /**
@@ -240,6 +241,20 @@ const SwarmPlugin: Plugin = async (
       // Uses session-scoped context detection
       if (isInCoordinatorContext(sessionId)) {
         const ctx = getCoordinatorContext(sessionId);
+        
+        // ENFORCE coordinator guard (blocks violations)
+        const guardResult = checkCoordinatorGuard({
+          agentContext: "coordinator",
+          toolName,
+          toolArgs: output.args as Record<string, unknown>,
+        });
+
+        if (guardResult.blocked && guardResult.error) {
+          // REJECT the tool call by throwing
+          throw guardResult.error;
+        }
+
+        // Also capture violations for analytics (warnings only)
         const violation = detectCoordinatorViolation({
           sessionId,
           epicId: ctx.epicId || "unknown",
@@ -1150,6 +1165,28 @@ export {
   type SubtaskStatus,
   type EpicState,
 } from "./swarm-signature";
+
+/**
+ * Coordinator Guard - Runtime Violation Enforcement
+ *
+ * Detects and REJECTS coordinator protocol violations at runtime.
+ * Unlike planning-guardrails (which only warns), the coordinator guard throws errors
+ * to prevent coordinators from performing work that should be delegated to workers.
+ *
+ * Functions:
+ * - checkCoordinatorGuard - Main entry point for guard checks
+ * - isCoordinator - Type guard for coordinator context
+ *
+ * Types:
+ * - CoordinatorGuardError - Custom error with violation details
+ * - GuardCheckResult - Result of guard check
+ */
+export {
+  checkCoordinatorGuard,
+  isCoordinator,
+  CoordinatorGuardError,
+  type GuardCheckResult,
+} from "./coordinator-guard";
 
 /**
  * Re-export CASS tools module

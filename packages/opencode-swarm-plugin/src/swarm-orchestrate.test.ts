@@ -10,7 +10,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
-import { runResearchPhase, extractTechStack, swarm_complete } from "./swarm-orchestrate";
+import { runResearchPhase, extractTechStack, swarm_complete, swarm_record_outcome } from "./swarm-orchestrate";
 import * as evalCapture from "./eval-capture.js";
 import * as fs from "node:fs";
 import { readFileSync } from "fs";
@@ -249,16 +249,17 @@ describe("captureSubtaskOutcome integration", () => {
     const epicData = JSON.parse(epicResult);
     const beadId = epicData.subtasks[0].id;
 
-    // Call without planned_files or start_time
+    // Call without planned_files
     const result = await swarm_complete.execute(
       {
         project_key: testProjectPath,
         agent_name: "TestAgent",
         bead_id: beadId,
         summary: "Fixed the bug",
+        start_time: Date.now() - 1000,
         skip_verification: true,
         skip_review: true,
-        // No planned_files, start_time
+        // No planned_files
       },
       mockContext,
     );
@@ -616,5 +617,59 @@ describe("ADR-011: hivemind migration compliance", () => {
     expect(fileContents).toContain(
       "Each technology has documentation in hivemind"
     );
+  });
+});
+
+// ============================================================================
+// Duration Tracking Tests
+// ============================================================================
+
+describe("eval_records duration tracking", () => {
+  test("duration should be calculated correctly from start_time", () => {
+    // This is a unit test for the duration calculation logic
+    // After fix: start_time is REQUIRED, so we always calculate duration
+    
+    const startTime = Date.now() - 5000; // 5 seconds ago
+    const completionDurationMs = Date.now() - startTime;
+    
+    // Should be approximately 5000ms
+    expect(completionDurationMs).toBeGreaterThan(4500);
+    expect(completionDurationMs).toBeLessThan(5500);
+  });
+  
+  test("swarm_complete requires start_time parameter", () => {
+    // After fix: start_time is no longer optional
+    const { args } = swarm_complete;
+    
+    // Verify start_time is in the schema
+    expect(args).toHaveProperty("start_time");
+    
+    // Try to parse undefined - should fail since it's required now
+    try {
+      args.start_time.parse(undefined);
+      // If we get here, start_time is optional (which would be wrong)
+      expect(true).toBe(false); // Force fail
+    } catch (error) {
+      // Good - start_time is required
+      expect(error).toBeDefined();
+    }
+  });
+  
+  test("swarm_record_outcome schema requires duration_ms", () => {
+    // Verify the tool schema marks duration_ms as required
+    const { args } = swarm_record_outcome;
+    
+    // The schema should have duration_ms as a required field
+    expect(args).toHaveProperty("duration_ms");
+    
+    // Try to parse without duration_ms - should fail
+    try {
+      args.duration_ms.parse(undefined);
+      // If we get here, duration_ms is not required (bad)
+      expect(true).toBe(false); // Force fail
+    } catch (error) {
+      // Good - duration_ms is required
+      expect(error).toBeDefined();
+    }
   });
 });

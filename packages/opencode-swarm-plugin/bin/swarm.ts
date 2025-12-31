@@ -50,6 +50,8 @@ import {
   resolvePartialId,
   createDurableStreamAdapter,
   createDurableStreamServer,
+  consolidateDatabases,
+  getGlobalDbPath,
 } from "swarm-mail";
 import { execSync, spawn } from "child_process";
 import { tmpdir } from "os";
@@ -92,6 +94,9 @@ import {
   formatHealthDashboard,
 } from "../src/observability-health.js";
 
+// Swarm insights
+import { getRejectionAnalytics } from "../src/swarm-insights.js";
+
 // Eval tools
 import { getPhase, getScoreHistory, recordEvalRun, getEvalHistoryPath } from "../src/eval-history.js";
 import { DEFAULT_THRESHOLDS, checkGate } from "../src/eval-gates.js";
@@ -102,8 +107,11 @@ import { detectRegressions } from "../src/regression-detection.js";
 import { allTools } from "../src/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// When bundled to dist/bin/swarm.js, need to go up two levels to find package.json
-const pkgPath = join(__dirname, "..", "..", "package.json");
+// When running from bin/swarm.ts, go up one level to find package.json
+// When bundled to dist/bin/swarm.js, go up two levels
+const pkgPath = existsSync(join(__dirname, "..", "package.json"))
+  ? join(__dirname, "..", "package.json")
+  : join(__dirname, "..", "..", "package.json");
 const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 const VERSION: string = pkg.version;
 
@@ -2163,6 +2171,85 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     p.log.message(dim('  No OpenCode config found (skipping MCP check)'));
   }
 
+  // Check for stray databases and consolidate to global database
+  p.log.step("Checking for stray databases...");
+  const globalDbPath = getGlobalDbPath();
+  
+  try {
+    const report = await consolidateDatabases(cwd, globalDbPath, {
+      yes: nonInteractive,
+      interactive: !nonInteractive,
+    });
+
+    if (report.straysFound > 0) {
+      if (report.totalRowsMigrated > 0) {
+        p.log.success(
+          `Migrated ${report.totalRowsMigrated} records from ${report.straysMigrated} stray database(s)`
+        );
+        for (const migration of report.migrations) {
+          const { migrated, skipped } = migration.result;
+          if (migrated > 0 || skipped > 0) {
+            p.log.message(
+              dim(
+                `  ${migration.path}: ${migrated} migrated, ${skipped} skipped`
+              )
+            );
+          }
+        }
+      } else {
+        p.log.message(
+          dim("  All data already in global database (no migration needed)")
+        );
+      }
+    } else {
+      p.log.message(dim("  No stray databases found"));
+    }
+
+    if (report.errors.length > 0) {
+      p.log.warn(`${report.errors.length} error(s) during consolidation`);
+      for (const error of report.errors) {
+        p.log.message(dim(`  ${error}`));
+      }
+    }
+  } catch (error) {
+    p.log.warn("Database consolidation check failed");
+    if (error instanceof Error) {
+      p.log.message(dim(`  ${error.message}`));
+    }
+    // Don't fail setup - this is non-critical
+  }
+
+  // Run database repair after consolidation
+  p.log.step("Running database integrity check...");
+  try {
+    const repairResult = await runDbRepair({ dryRun: false });
+    
+    if (repairResult.totalCleaned === 0) {
+      p.log.success("Database integrity verified - no issues found");
+    } else {
+      p.log.success(`Cleaned ${repairResult.totalCleaned} orphaned/invalid records`);
+      
+      if (repairResult.nullBeads > 0) {
+        p.log.message(dim(`  - ${repairResult.nullBeads} beads with NULL IDs`));
+      }
+      if (repairResult.orphanedRecipients > 0) {
+        p.log.message(dim(`  - ${repairResult.orphanedRecipients} orphaned message recipients`));
+      }
+      if (repairResult.messagesWithoutRecipients > 0) {
+        p.log.message(dim(`  - ${repairResult.messagesWithoutRecipients} messages without recipients`));
+      }
+      if (repairResult.expiredReservations > 0) {
+        p.log.message(dim(`  - ${repairResult.expiredReservations} expired reservations`));
+      }
+    }
+  } catch (error) {
+    p.log.warn("Database repair check failed (non-critical)");
+    if (error instanceof Error) {
+      p.log.message(dim(`  ${error.message}`));
+    }
+    // Don't fail setup - this is non-critical
+  }
+
   // Model defaults: opus for coordinator, sonnet for worker, haiku for lite
   const DEFAULT_COORDINATOR = "anthropic/claude-opus-4-5";
   const DEFAULT_WORKER = "anthropic/claude-sonnet-4-5";
@@ -3274,6 +3361,7 @@ ${cyan("Stats & History:")}
   swarm stats                          Show swarm health metrics powered by swarm-insights (last 7 days)
   swarm stats --since 24h              Show stats for custom time period
   swarm stats --regressions            Show eval regressions (>10% score drops)
+  swarm stats --rejections             Show rejection reason analytics
   swarm stats --json                   Output as JSON for scripting
   swarm o11y                           Show observability health dashboard (hook coverage, events, sessions)
   swarm o11y --since 7d                Custom time period for event stats (default: 7 days)
@@ -4532,7 +4620,178 @@ async function logs() {
  * 
  * Helps debug which database is being used and its schema state.
  */
+/**
+ * Run database repair programmatically
+ * Returns counts of cleaned records
+ */
+async function runDbRepair(options: { dryRun: boolean }): Promise<{
+  nullBeads: number;
+  orphanedRecipients: number;
+  messagesWithoutRecipients: number;
+  expiredReservations: number;
+  totalCleaned: number;
+}> {
+  const { dryRun } = options;
+  const globalDbPath = getGlobalDbPath();
+  const swarmMail = await getSwarmMailLibSQL(globalDbPath);
+  const db = await swarmMail.getDatabase();
+
+  // Count records before cleanup
+  const nullBeadsResult = await db.query<{ count: number }>("SELECT COUNT(*) as count FROM beads WHERE id IS NULL");
+  const nullBeads = Number(nullBeadsResult[0]?.count ?? 0);
+
+  const orphanedRecipientsResult = await db.query<{ count: number }>(
+    "SELECT COUNT(*) as count FROM message_recipients WHERE NOT EXISTS (SELECT 1 FROM agents WHERE agents.name = message_recipients.agent_name)"
+  );
+  const orphanedRecipients = Number(orphanedRecipientsResult[0]?.count ?? 0);
+
+  const messagesWithoutRecipientsResult = await db.query<{ count: number }>(
+    "SELECT COUNT(*) as count FROM messages WHERE NOT EXISTS (SELECT 1 FROM message_recipients WHERE message_recipients.message_id = messages.id)"
+  );
+  const messagesWithoutRecipients = Number(messagesWithoutRecipientsResult[0]?.count ?? 0);
+
+  const expiredReservationsResult = await db.query<{ count: number }>(
+    "SELECT COUNT(*) as count FROM reservations WHERE released_at IS NULL AND expires_at < strftime('%s', 'now') * 1000"
+  );
+  const expiredReservations = Number(expiredReservationsResult[0]?.count ?? 0);
+
+  const totalCleaned = nullBeads + orphanedRecipients + messagesWithoutRecipients + expiredReservations;
+
+  // If dry run or nothing to clean, return early
+  if (dryRun || totalCleaned === 0) {
+    return {
+      nullBeads,
+      orphanedRecipients,
+      messagesWithoutRecipients,
+      expiredReservations,
+      totalCleaned,
+    };
+  }
+
+  // Execute cleanup queries
+  if (nullBeads > 0) {
+    await db.query("DELETE FROM beads WHERE id IS NULL");
+  }
+
+  if (orphanedRecipients > 0) {
+    await db.query(
+      "DELETE FROM message_recipients WHERE NOT EXISTS (SELECT 1 FROM agents WHERE agents.name = message_recipients.agent_name)"
+    );
+  }
+
+  if (messagesWithoutRecipients > 0) {
+    await db.query(
+      "DELETE FROM messages WHERE NOT EXISTS (SELECT 1 FROM message_recipients WHERE message_recipients.message_id = messages.id)"
+    );
+  }
+
+  if (expiredReservations > 0) {
+    await db.query(
+      "UPDATE reservations SET released_at = strftime('%s', 'now') * 1000 WHERE released_at IS NULL AND expires_at < strftime('%s', 'now') * 1000"
+    );
+  }
+
+  return {
+    nullBeads,
+    orphanedRecipients,
+    messagesWithoutRecipients,
+    expiredReservations,
+    totalCleaned,
+  };
+}
+
+/**
+ * Database repair command (CLI interface)
+ * Executes cleanup SQL to remove orphaned/invalid data
+ */
+async function dbRepair() {
+  const args = process.argv.slice(4); // Skip 'swarm', 'db', 'repair'
+  let dryRun = false;
+
+  // Parse --dry-run flag
+  for (const arg of args) {
+    if (arg === "--dry-run") {
+      dryRun = true;
+    }
+  }
+
+  p.intro(dryRun ? "swarm db repair (DRY RUN)" : "swarm db repair");
+
+  const s = p.spinner();
+  s.start("Analyzing database...");
+
+  try {
+    // Use shared helper for analysis
+    const result = await runDbRepair({ dryRun: true });
+    
+    s.stop("Analysis complete");
+
+    // Show counts
+    p.log.step(dryRun ? "Would delete:" : "Deleting:");
+    if (result.nullBeads > 0) {
+      p.log.message(`  - ${result.nullBeads} beads with NULL IDs`);
+    }
+    if (result.orphanedRecipients > 0) {
+      p.log.message(`  - ${result.orphanedRecipients} orphaned message_recipients`);
+    }
+    if (result.messagesWithoutRecipients > 0) {
+      p.log.message(`  - ${result.messagesWithoutRecipients} messages without recipients`);
+    }
+    if (result.expiredReservations > 0) {
+      p.log.message(`  - ${result.expiredReservations} expired unreleased reservations`);
+    }
+
+    if (result.totalCleaned === 0) {
+      p.outro(green("✓ Database is clean! No records to delete."));
+      return;
+    }
+
+    console.log();
+    p.log.message(dim(`Total: ${result.totalCleaned} records ${dryRun ? "would be" : "will be"} cleaned`));
+    console.log();
+
+    // If dry run, stop here
+    if (dryRun) {
+      p.outro(dim("Run without --dry-run to execute cleanup"));
+      return;
+    }
+
+    // Confirm before actual deletion
+    const confirmed = await p.confirm({
+      message: `Delete ${result.totalCleaned} records?`,
+      initialValue: false,
+    });
+
+    if (p.isCancel(confirmed) || !confirmed) {
+      p.cancel("Cleanup cancelled");
+      return;
+    }
+
+    // Execute cleanup
+    const cleanupSpinner = p.spinner();
+    cleanupSpinner.start("Cleaning database...");
+
+    await runDbRepair({ dryRun: false });
+
+    cleanupSpinner.stop("Cleanup complete");
+
+    p.outro(green(`✓ Successfully cleaned ${result.totalCleaned} records`));
+  } catch (error) {
+    s.stop("Error");
+    p.log.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 async function db() {
+  const args = process.argv.slice(3);
+  
+  // Check for 'repair' subcommand
+  if (args[0] === "repair") {
+    await dbRepair();
+    return;
+  }
+  
   const projectPath = process.cwd();
   const projectName = basename(projectPath);
   const hash = hashLibSQLProjectPath(projectPath);
@@ -4801,6 +5060,7 @@ async function stats() {
 	let period = "7d"; // default to 7 days
 	let format: "text" | "json" = "text";
 	let showRegressions = false;
+	let showRejections = false;
 
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] === "--since" || args[i] === "-s") {
@@ -4810,6 +5070,8 @@ async function stats() {
 			format = "json";
 		} else if (args[i] === "--regressions") {
 			showRegressions = true;
+		} else if (args[i] === "--rejections") {
+			showRejections = true;
 		}
 	}
 
@@ -4965,6 +5227,42 @@ async function stats() {
 				} else {
 					console.log("✅ No eval regressions detected (>10% threshold)\n");
 				}
+			}
+		} else if (showRejections) {
+			// If --rejections flag, show rejection analytics
+			const rejectionAnalytics = await getRejectionAnalytics(swarmMail);
+			
+			if (format === "json") {
+				console.log(JSON.stringify(rejectionAnalytics, null, 2));
+			} else {
+				console.log();
+				const boxWidth = 61;
+				const pad = (text: string) => text + " ".repeat(Math.max(0, boxWidth - text.length));
+				
+				console.log("┌─────────────────────────────────────────────────────────────┐");
+				console.log("│" + pad("  REJECTION ANALYSIS (last " + period + ")") + "│");
+				console.log("├─────────────────────────────────────────────────────────────┤");
+				console.log("│" + pad("  Total Reviews: " + rejectionAnalytics.totalReviews) + "│");
+				
+				const rejectionRate = rejectionAnalytics.totalReviews > 0 
+					? (100 - rejectionAnalytics.approvalRate).toFixed(0) 
+					: "0";
+				console.log("│" + pad("  Approved: " + rejectionAnalytics.approved + " (" + rejectionAnalytics.approvalRate.toFixed(0) + "%)") + "│");
+				console.log("│" + pad("  Rejected: " + rejectionAnalytics.rejected + " (" + rejectionRate + "%)") + "│");
+				console.log("│" + pad("") + "│");
+				
+				if (rejectionAnalytics.topReasons.length > 0) {
+					console.log("│" + pad("  Top Rejection Reasons:") + "│");
+					for (const reason of rejectionAnalytics.topReasons) {
+						const line = "  ├── " + reason.category + ": " + reason.count + " (" + reason.percentage.toFixed(0) + "%)";
+						console.log("│" + pad(line) + "│");
+					}
+				} else {
+					console.log("│" + pad("  No rejections in this period") + "│");
+				}
+				
+				console.log("└─────────────────────────────────────────────────────────────┘");
+				console.log();
 			}
 		} else {
 			// Normal stats output

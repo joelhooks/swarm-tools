@@ -273,6 +273,9 @@ export async function getThreadMessagesDrizzle(
 
 /**
  * Get active (non-expired, non-released) reservations using Drizzle
+ * 
+ * DEFENSIVE: Auto-releases expired reservations before returning results.
+ * This ensures eventual cleanup even if agents crash without releasing.
  */
 export async function getActiveReservationsDrizzle(
   db: SwarmDb,
@@ -280,6 +283,18 @@ export async function getActiveReservationsDrizzle(
   agentName?: string,
 ): Promise<Reservation[]> {
   const now = Date.now();
+
+  // CLEANUP: Auto-release expired reservations before querying
+  await db
+    .update(reservationsTable)
+    .set({ released_at: now })
+    .where(
+      and(
+        eq(reservationsTable.project_key, projectKey),
+        sql`${reservationsTable.released_at} IS NULL`,
+        sql`${reservationsTable.expires_at} < ${now}`,
+      ),
+    );
 
   const conditions = [
     eq(reservationsTable.project_key, projectKey),

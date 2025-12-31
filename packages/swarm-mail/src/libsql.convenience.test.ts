@@ -163,4 +163,67 @@ describe("libSQL convenience layer", () => {
       expect(events.length).toBeGreaterThan(0);
     });
   });
+
+  describe("foreign key constraints", () => {
+    test("FK constraints are enforced on connection initialization", async () => {
+      // Create an isolated test instance
+      const adapter = await createInMemorySwarmMailLibSQL("fk-test");
+      const db = await adapter.getDatabase();
+
+      // Verify FK constraints are enabled via PRAGMA
+      // NOTE: libSQL enables FK by default, but we set it explicitly for:
+      // - Defensive programming (guards against future changes)
+      // - Self-documenting code (explicit contract)
+      // - Consistency with standard SQLite patterns
+      const pragmaResult = await db.query("PRAGMA foreign_keys");
+      expect(pragmaResult.rows[0]).toHaveProperty("foreign_keys", 1);
+
+      await adapter.close();
+    });
+
+    test("FK violations are prevented to avoid orphaned references", async () => {
+      // This test validates the fix for the 208 orphaned message_recipients
+      // found in the database integrity audit
+      const adapter = await createInMemorySwarmMailLibSQL("fk-violation-test");
+      const db = await adapter.getDatabase();
+
+      // Create parent and child tables with FK relationship
+      await db.exec(`
+        CREATE TABLE parent_test (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL
+        )
+      `);
+
+      await db.exec(`
+        CREATE TABLE child_test (
+          id INTEGER PRIMARY KEY,
+          parent_id INTEGER NOT NULL,
+          value TEXT,
+          FOREIGN KEY (parent_id) REFERENCES parent_test(id)
+        )
+      `);
+
+      // Insert a valid parent
+      await db.exec("INSERT INTO parent_test (id, name) VALUES (1, 'parent1')");
+
+      // Attempt to insert child with INVALID FK reference (parent_id=999 doesn't exist)
+      // This MUST fail to prevent orphaned references
+      let caughtError = false;
+      try {
+        await db.exec("INSERT INTO child_test (id, parent_id, value) VALUES (1, 999, 'orphan')");
+      } catch (error) {
+        caughtError = true;
+        // Verify it's a FK constraint violation
+        expect(error).toBeDefined();
+        expect(String(error)).toMatch(/foreign key constraint/i);
+      }
+
+      // CRITICAL: FK violation MUST be caught
+      // This prevents future orphaned references in production
+      expect(caughtError).toBe(true);
+
+      await adapter.close();
+    });
+  });
 });

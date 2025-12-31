@@ -161,6 +161,12 @@ export const CellTreeSchema = z.object({
     description: z.string().optional().default(""),
   }),
   subtasks: z.array(SubtaskSpecSchema).min(1),
+  strategy: z
+    .enum(["file-based", "feature-based", "risk-based", "research-based"])
+    .optional()
+    .describe(
+      "Decomposition strategy from swarm_select_strategy. If not provided, defaults to feature-based.",
+    ),
 });
 export type CellTree = z.infer<typeof CellTreeSchema>;
 

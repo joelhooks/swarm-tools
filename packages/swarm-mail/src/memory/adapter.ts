@@ -860,12 +860,21 @@ export function createMemoryAdapter(db: SwarmDb, config: MemoryConfig) {
         const metadata =
           typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata ?? {};
 
+        // Parse created_at, handling null/undefined/invalid dates
+        let createdAt: Date;
+        if (row.created_at && typeof row.created_at === "string") {
+          const parsed = new Date(row.created_at);
+          createdAt = isNaN(parsed.getTime()) ? new Date() : parsed;
+        } else {
+          createdAt = new Date();
+        }
+
         const memory: Memory = {
           id: row.id,
           content: row.content,
           metadata,
           collection: row.collection ?? "default",
-          createdAt: new Date(row.created_at ?? Date.now()),
+          createdAt,
           confidence: row.decay_factor ?? 0.7,
         };
 
@@ -971,12 +980,21 @@ export function createMemoryAdapter(db: SwarmDb, config: MemoryConfig) {
         const metadata =
           typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata ?? {};
 
+        // Parse created_at, handling null/undefined/invalid dates
+        let createdAt: Date;
+        if (row.created_at && typeof row.created_at === "string") {
+          const parsed = new Date(row.created_at);
+          createdAt = isNaN(parsed.getTime()) ? new Date() : parsed;
+        } else {
+          createdAt = new Date();
+        }
+
         const memory: Memory = {
           id: row.id,
           content: row.content,
           metadata,
           collection: row.collection ?? "default",
-          createdAt: new Date(row.created_at ?? Date.now()),
+          createdAt,
           confidence: row.decay_factor ?? 0.7,
         };
 
@@ -1020,12 +1038,21 @@ export function createMemoryAdapter(db: SwarmDb, config: MemoryConfig) {
         const metadata =
           typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata ?? {};
 
+        // Parse created_at, handling null/undefined/invalid dates
+        let createdAt: Date;
+        if (row.created_at && typeof row.created_at === "string") {
+          const parsed = new Date(row.created_at);
+          createdAt = isNaN(parsed.getTime()) ? new Date() : parsed;
+        } else {
+          createdAt = new Date();
+        }
+
         const memory: Memory = {
           id: row.id,
           content: row.content,
           metadata,
           collection: row.collection ?? "default",
-          createdAt: new Date(row.created_at ?? Date.now()),
+          createdAt,
           confidence: row.decay_factor ?? 0.7,
         };
 

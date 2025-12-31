@@ -337,6 +337,22 @@ export { withSqliteRetry } from "./db/retry";
 export { toDrizzleDb, toSwarmDb } from "./libsql.convenience";
 
 // ============================================================================
+// Database Consolidation (stray database detection and migration)
+// ============================================================================
+
+export {
+	analyzeStrayDatabase,
+	consolidateDatabases,
+	detectStrayDatabases,
+	migrateToGlobal,
+} from "./db/consolidate-databases";
+export type {
+	ConsolidationOptions,
+	ConsolidationReport,
+	StrayDatabase,
+} from "./db/consolidate-databases";
+
+// ============================================================================
 // Session Management (CASS inhousing)
 // ============================================================================
 
@@ -371,3 +387,18 @@ export {
 	warnPGliteDeprecation,
 	wrapPGlite,
 } from "./pglite";
+
+// ============================================================================
+// Legacy Hive Schema Migration (issues → beads)
+// ============================================================================
+
+export {
+	transformIssue,
+	transformEvent,
+	transformDependency,
+	migrateLegacyHive,
+	type LegacyIssue,
+	type LegacyEvent,
+	type LegacyDependency,
+	type MigrationSummary as LegacyHiveMigrationSummary,
+} from "./migrations/legacy-hive-transformer";

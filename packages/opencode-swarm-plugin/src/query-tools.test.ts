@@ -16,6 +16,7 @@ import {
 	createInMemorySwarmMailLibSQL,
 	type SwarmMailAdapter,
 	type DatabaseAdapter,
+	getGlobalDbPath,
 } from "swarm-mail";
 
 // Import from non-existent file (will fail until GREEN phase)
@@ -25,6 +26,7 @@ import {
 	formatAsTable,
 	formatAsCSV,
 	formatAsJSON,
+	getDbPath,
 	type PresetQueryName,
 	type QueryResult,
 } from "./query-tools";
@@ -631,6 +633,22 @@ describe("Query Tools - RED Phase Tests", () => {
 			expect(result.rows).toBeDefined();
 			expect(result.rowCount).toBeDefined();
 			expect(result.executionTimeMs).toBeDefined();
+		});
+	});
+
+	describe("getDbPath - Global Database Path", () => {
+		test("returns correct global database path from swarm-mail", () => {
+			const expectedPath = getGlobalDbPath();
+			const actualPath = getDbPath();
+
+			expect(actualPath).toBe(expectedPath);
+			expect(actualPath).toContain(".config/swarm-tools/swarm.db");
+		});
+
+		test("does not use legacy .swarm-tools path", () => {
+			const path = getDbPath();
+
+			expect(path).not.toContain(".swarm-tools");
 		});
 	});
 });

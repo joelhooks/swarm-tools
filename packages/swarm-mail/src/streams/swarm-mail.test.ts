@@ -318,6 +318,72 @@ describe("swarm-mail", () => {
     });
   });
 
+  describe("TTL-based reservation cleanup", () => {
+    test("should auto-release expired reservation when reserving same path", async () => {
+      // Agent A reserves a file with very short TTL (100ms)
+      await initSwarmAgent({
+        projectPath: TEST_PROJECT,
+        agentName: "TTLAgentA",
+        dbOverride: db,
+      });
+      
+      const reserveA = await reserveSwarmFiles({
+        projectPath: TEST_PROJECT,
+        agentName: "TTLAgentA",
+        paths: ["src/ttl-test.ts"],
+        reason: "Short TTL test",
+        exclusive: true,
+        ttlSeconds: 0.1, // 100ms
+        dbOverride: db,
+      });
+      
+      expect(reserveA.granted.length).toBe(1);
+      const reservationId = reserveA.granted[0].id;
+      
+      // Wait for expiry (200ms to be safe)
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Check database - reservation should exist but be expired (released_at IS NULL)
+      const beforeCleanup = await db.query(
+        "SELECT id, released_at, expires_at FROM reservations WHERE id = ?",
+        [reservationId]
+      );
+      expect(beforeCleanup.rows.length).toBe(1);
+      expect(beforeCleanup.rows[0].released_at).toBeNull();
+      expect(beforeCleanup.rows[0].expires_at).toBeLessThan(Date.now());
+      
+      // Agent B tries to reserve same path - this should trigger cleanup
+      await initSwarmAgent({
+        projectPath: TEST_PROJECT,
+        agentName: "TTLAgentB",
+        dbOverride: db,
+      });
+      
+      const reserveB = await reserveSwarmFiles({
+        projectPath: TEST_PROJECT,
+        agentName: "TTLAgentB",
+        paths: ["src/ttl-test.ts"],
+        reason: "Taking over expired reservation",
+        exclusive: true,
+        dbOverride: db,
+      });
+      
+      // Should succeed without conflicts
+      expect(reserveB.conflicts.length).toBe(0);
+      expect(reserveB.granted.length).toBe(1);
+      
+      // CRITICAL: Check that expired reservation was ACTUALLY released (released_at set)
+      const afterCleanup = await db.query(
+        "SELECT id, released_at, expires_at FROM reservations WHERE id = ?",
+        [reservationId]
+      );
+      expect(afterCleanup.rows.length).toBe(1);
+      // This will FAIL until we implement cleanup - released_at should now be set
+      expect(afterCleanup.rows[0].released_at).not.toBeNull();
+      expect(afterCleanup.rows[0].released_at).toBeGreaterThan(0);
+    });
+  });
+
   describe("getSwarmInbox - schema initialization", () => {
     test("should not fail with 'no such table' error when using raw adapter", async () => {
       // Import raw adapter creator to simulate cold start WITHOUT getSwarmMailLibSQL

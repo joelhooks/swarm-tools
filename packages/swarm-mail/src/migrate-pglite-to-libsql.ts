@@ -314,6 +314,15 @@ async function migrateBeads(
         continue;
       }
 
+      // GUARD: Validate bead ID before migration
+      if (!row.id || (typeof row.id === 'string' && row.id.trim() === '')) {
+        throw new Error(
+          `Invalid bead ID: Cannot migrate bead with null or empty ID. ` +
+          `Title="${row.title}", project="${row.project_key}". ` +
+          `This record will be skipped - investigate source data.`
+        );
+      }
+
       // Keep timestamps as integers (bigint) - schema expects INTEGER
       const createdAt = row.created_at ? Number(row.created_at) : Date.now();
       const updatedAt = row.updated_at ? Number(row.updated_at) : createdAt;

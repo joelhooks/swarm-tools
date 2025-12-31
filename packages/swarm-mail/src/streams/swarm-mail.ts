@@ -469,6 +469,9 @@ export async function readSwarmMessage(
  *
  * Always grants reservations (even with conflicts) - conflicts are warnings, not blockers.
  * This matches the test expectations and allows agents to proceed with awareness.
+ * 
+ * DEFENSIVE: Cleans up expired reservations before checking conflicts.
+ * This ensures expired reservations don't block new reservations.
  *
  * Future: Use DurableLock.acquire() for distributed mutex with automatic expiry
  */
@@ -485,7 +488,29 @@ export async function reserveSwarmFiles(
     dbOverride,
   } = options;
 
-  // Check for conflicts first
+  // CLEANUP: Auto-release expired reservations BEFORE checking conflicts
+  // This prevents false conflicts from expired but unreleased reservations
+  const { getOrCreateAdapter } = await import("./store-drizzle");
+  const { toDrizzleDb } = await import("../libsql.convenience");
+  const { reservationsTable } = await import("../db/schema/streams");
+  const { eq, and, sql } = await import("drizzle-orm");
+  
+  const adapter = await getOrCreateAdapter(projectPath, dbOverride);
+  const swarmDb = toDrizzleDb(adapter);
+  const now = Date.now();
+  
+  await swarmDb
+    .update(reservationsTable)
+    .set({ released_at: now })
+    .where(
+      and(
+        eq(reservationsTable.project_key, projectPath),
+        sql`${reservationsTable.released_at} IS NULL`,
+        sql`${reservationsTable.expires_at} < ${now}`,
+      ),
+    );
+
+  // Check for conflicts (after cleanup)
   const conflicts = await checkConflicts(
     projectPath,
     agentName,
@@ -539,6 +564,9 @@ export async function reserveSwarmFiles(
 
 /**
  * Release file reservations
+ * 
+ * DEFENSIVE: Also releases ALL expired reservations (opportunistic cleanup).
+ * This is a good opportunity to clean up the database when an agent is explicitly releasing.
  *
  * Future: Use DurableLock.release() for automatic cleanup
  */
@@ -546,6 +574,28 @@ export async function releaseSwarmFiles(
   options: ReleaseSwarmFilesOptions,
 ): Promise<ReleaseSwarmFilesResult> {
   const { projectPath, agentName, paths, reservationIds, dbOverride } = options;
+
+  // OPPORTUNISTIC CLEANUP: Release ALL expired reservations (not just this agent's)
+  // This is a good place to do global cleanup since we're already releasing
+  const { getOrCreateAdapter } = await import("./store-drizzle");
+  const { toDrizzleDb } = await import("../libsql.convenience");
+  const { reservationsTable } = await import("../db/schema/streams");
+  const { eq, and, sql } = await import("drizzle-orm");
+  
+  const adapter = await getOrCreateAdapter(projectPath, dbOverride);
+  const swarmDb = toDrizzleDb(adapter);
+  const now = Date.now();
+  
+  await swarmDb
+    .update(reservationsTable)
+    .set({ released_at: now })
+    .where(
+      and(
+        eq(reservationsTable.project_key, projectPath),
+        sql`${reservationsTable.released_at} IS NULL`,
+        sql`${reservationsTable.expires_at} < ${now}`,
+      ),
+    );
 
   // Get current reservations to count what we're releasing
   const currentReservations = await getActiveReservations(

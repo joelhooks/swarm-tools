@@ -8,9 +8,7 @@
  */
 
 import type { DatabaseAdapter } from "swarm-mail";
-import { createLibSQLAdapter } from "swarm-mail";
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { createLibSQLAdapter, getGlobalDbPath } from "swarm-mail";
 
 // ============================================================================
 // TYPES
@@ -210,11 +208,10 @@ export const presetQueries: Record<PresetQueryName, string> = {
 
 /**
  * Get database path from project path.
- * Uses global database (~/.swarm-tools/swarm-mail.db)
+ * Uses global database (~/.config/swarm-tools/swarm.db)
  */
-function getDbPath(): string {
-	const home = homedir();
-	return join(home, ".swarm-tools", "swarm-mail.db");
+export function getDbPath(): string {
+	return getGlobalDbPath();
 }
 
 /**

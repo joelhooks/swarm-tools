@@ -1179,8 +1179,7 @@ export const swarm_complete = tool({
       .describe("Files that were originally planned to be modified"),
     start_time: tool.schema
       .number()
-      .optional()
-      .describe("Task start timestamp (Unix ms) for duration calculation"),
+      .describe("Task start timestamp (Unix ms) for duration calculation - REQUIRED for accurate analytics"),
     error_count: tool.schema
       .number()
       .optional()
@@ -1527,7 +1526,8 @@ This will be recorded as a negative learning signal.`;
       }
 
       // Emit SubtaskOutcomeEvent for learning system
-      const completionDurationMs = args.start_time ? Date.now() - args.start_time : 0;
+      // start_time is now required, so we can calculate duration directly
+      const completionDurationMs = Date.now() - args.start_time;
       
       // Determine epic ID: use parent_id if available, otherwise fall back to extracting from bead_id
       // (New hive cell IDs don't follow epicId.subtaskNum pattern - they're independent IDs)

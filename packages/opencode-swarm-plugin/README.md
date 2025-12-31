@@ -505,14 +505,17 @@ See **[evals/README.md](./evals/README.md)** for full architecture, scorer detai
 ### Setup & Configuration
 
 ```bash
-swarm setup     # Interactive installer for all dependencies
-swarm doctor    # Check dependency health (CASS, UBS, Ollama)
-swarm init      # Initialize hive in current project
-swarm config    # Show config file paths
-swarm update    # Update swarm plugin and bundled skills
-swarm migrate   # Migrate from legacy PGLite to libSQL
-swarm version   # Show version info
+swarm setup        # Interactive installer for all dependencies
+swarm setup -y     # Non-interactive mode (auto-migrate stray databases)
+swarm doctor       # Check dependency health (CASS, UBS, Ollama)
+swarm init         # Initialize hive in current project
+swarm config       # Show config file paths
+swarm update       # Update swarm plugin and bundled skills
+swarm migrate      # Migrate from legacy PGLite to libSQL
+swarm version      # Show version info
 ```
+
+**Database Consolidation**: `swarm setup` automatically detects and migrates stray databases (`.opencode/swarm.db`, `.hive/swarm-mail.db`, nested package databases) to the global database at `~/.config/swarm-tools/swarm.db`. Use `-y` flag to migrate without prompting.
 
 ### Observability Commands
 

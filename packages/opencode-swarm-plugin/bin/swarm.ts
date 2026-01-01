@@ -1680,7 +1680,7 @@ async function doctor(debug = false) {
   // Check skills
   p.log.step("Skills:");
   const configDir = join(homedir(), ".config", "opencode");
-  const globalSkillsPath = join(configDir, "skills");
+  const globalSkillsPath = join(configDir, "skill");
   const bundledSkillsPath = join(__dirname, "..", "global-skills");
 
   // Global skills directory

@@ -11,6 +11,7 @@
  */
 
 import type { SwarmMailAdapter } from "swarm-mail";
+import { getMemoryAdapter } from "./memory-tools.js";
 
 // ============================================================================
 // Types
@@ -232,30 +233,70 @@ export async function getFileInsights(
 }
 
 /**
- * Get gotchas for a file from semantic memory.
+ * Truncate text to specified max length with ellipsis.
  *
- * In a full implementation, this would query the semantic memory
- * for file-specific learnings. For now, returns empty array.
+ * @param text - Text to truncate
+ * @param maxLength - Maximum length (default 100)
+ * @returns Truncated text with "..." suffix if needed
+ */
+function truncateText(text: string, maxLength = 100): string {
+	if (text.length <= maxLength) {
+		return text;
+	}
+	return text.slice(0, maxLength) + "...";
+}
+
+/**
+ * Get file-specific gotchas from semantic memory (hivemind).
  *
- * @param _swarmMail - SwarmMail adapter (currently unused)
- * @param _file - File path to query learnings for
- * @returns Promise resolving to array of gotcha strings (currently empty, TODO)
+ * Queries semantic memory for learnings related to a specific file.
+ * Used in worker prompts to surface historical issues/warnings.
+ *
+ * Strategy:
+ * 1. Query hivemind with file path + "gotcha pitfall warning" keywords
+ * 2. Filter results to only include memories that mention the specific file
+ * 3. Return top 3 learnings, truncated to ~100 chars each for context efficiency
+ *
+ * @param _swarmMail - SwarmMail adapter (unused, kept for API consistency)
+ * @param file - File path to query learnings for
+ * @returns Promise resolving to array of gotcha strings (max 3)
  *
  * @example
  * ```typescript
  * const gotchas = await getFileGotchas(swarmMail, "src/auth.ts");
- * // TODO: Will return semantic memory learnings like:
- * // ["OAuth tokens need 5min buffer", "Always validate refresh token expiry"]
+ * // Returns semantic memory learnings like:
+ * // ["OAuth tokens need 5min buffer before expiry to avoid race conditions in src/auth.ts", ...]
  * ```
  */
-async function getFileGotchas(
+export async function getFileGotchas(
 	_swarmMail: SwarmMailAdapter,
-	_file: string,
+	file: string,
 ): Promise<string[]> {
-	// TODO: Query semantic memory for file-specific learnings
-	// const memories = await semanticMemoryFind({ query: `file:${file}`, limit: 3 });
-	// return memories.map(m => m.summary);
-	return [];
+	try {
+		const memoryAdapter = await getMemoryAdapter();
+		
+		// Query hivemind with file path as context
+		const result = await memoryAdapter.find({
+			query: `${file} gotcha pitfall warning`,
+			limit: 10, // Get more results to filter by file match
+		});
+		
+		if (result.count === 0) {
+			return [];
+		}
+		
+		// Filter for results that actually mention the specific file, take top 3
+		const fileSpecific = result.results
+			.filter(memory => memory.content.includes(file))
+			.slice(0, 3);
+		
+		// Truncate each gotcha to ~100 chars for context efficiency
+		return fileSpecific.map(memory => truncateText(memory.content, 100));
+	} catch (error) {
+		// Gracefully handle errors - return empty array on failure
+		console.warn(`Failed to query file gotchas for ${file}:`, error);
+		return [];
+	}
 }
 
 /**

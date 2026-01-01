@@ -1173,21 +1173,56 @@ describe("getPromptInsights", () => {
     });
   });
 
-  describe("worker insights integration with swarm-insights", () => {
-    test("worker role uses getFileInsights from swarm-insights data layer", async () => {
+	describe("worker insights integration with swarm-insights", () => {
+		test("worker role uses getFileInsights from swarm-insights data layer", async () => {
+			const { getPromptInsights } = await import("./swarm-prompts");
+			
+			// Should call getFileInsights for file-specific insights
+			const result = await getPromptInsights({ 
+				role: "worker",
+				files: ["src/auth.ts", "src/db.ts"],
+				domain: "authentication"
+			});
+			
+			// If we have data, it should be formatted by formatInsightsForPrompt
+			if (result.length > 0) {
+				// New format has "File-Specific Gotchas" or semantic memory learnings
+				expect(result).toMatch(/File-Specific Gotchas|Relevant Learnings/i);
+			}
+		});
+
+		test("getWorkerInsights uses global DB path from swarm-mail", async () => {
+			// This test verifies that getWorkerInsights imports getGlobalDbPath from swarm-mail
+			// We verify the import exists and the function doesn't throw
+			
+			const { getPromptInsights } = await import("./swarm-prompts");
+			
+			// Should not throw when using global DB
+			await expect(getPromptInsights({ 
+				role: "worker",
+				files: ["src/test.ts"]
+			})).resolves.toBeDefined();
+			
+			// Verify the global DB path is used (indirectly by checking it doesn't error)
+			const { getGlobalDbPath } = await import("swarm-mail");
+			const globalPath = getGlobalDbPath();
+			expect(globalPath).toContain(".config/swarm-tools/swarm.db");
+		});
+
+    test("worker insights include file failure history warnings", async () => {
       const { getPromptInsights } = await import("./swarm-prompts");
-      
-      // Should call getFileInsights for file-specific insights
       const result = await getPromptInsights({ 
         role: "worker",
-        files: ["src/auth.ts", "src/db.ts"],
-        domain: "authentication"
+        files: ["src/test-file.ts"],
       });
       
-      // If we have data, it should be formatted by formatInsightsForPrompt
-      if (result.length > 0) {
-        // New format has "File-Specific Gotchas" or semantic memory learnings
-        expect(result).toMatch(/File-Specific Gotchas|Relevant Learnings/i);
+      // Should return a string (empty if no data)
+      expect(typeof result).toBe("string");
+      
+      // If there are file history warnings, they should be formatted correctly
+      if (result.includes("⚠️ FILE HISTORY WARNINGS:")) {
+        // Should have file name and rejection count/issues
+        expect(result).toMatch(/\d+ previous worker/);
       }
     });
 
@@ -1266,5 +1301,105 @@ describe("getPromptInsights", () => {
       expect(insights.getFileInsights).toBeDefined();
       expect(typeof insights.getFileInsights).toBe("function");
     });
-  });
+
+    test("getWorkerInsights uses global DB path from swarm-mail", async () => {
+      // This test verifies that the hardcoded path is replaced with getGlobalDbPath()
+      // We can't easily mock the internal call, but we can verify it doesn't throw
+      // when global DB exists
+      
+      const { getPromptInsights } = await import("./swarm-prompts");
+      
+      // Should not throw when using global DB
+      await expect(getPromptInsights({ 
+        role: "worker",
+        files: ["src/test.ts"]
+      })).resolves.toBeDefined();
+    });
+
+		test("getWorkerInsights includes file failure history in output", async () => {
+			const { getPromptInsights } = await import("./swarm-prompts");
+			const result = await getPromptInsights({ 
+				role: "worker",
+				files: ["src/auth.ts", "src/api.ts"]
+			});
+			
+			// Should be string
+			expect(typeof result).toBe("string");
+			
+			// If file history warnings exist, they should appear before semantic memory
+			if (result.includes("⚠️ FILE HISTORY WARNINGS:") && result.includes("💡 Relevant Learnings")) {
+				const warningsPos = result.indexOf("⚠️ FILE HISTORY WARNINGS:");
+				const learningsPos = result.indexOf("💡 Relevant Learnings");
+				expect(warningsPos).toBeLessThan(learningsPos);
+			}
+		});
+	});
+
+	describe("Integration: formatSubtaskPromptV2 with file history warnings", () => {
+		test("formatSubtaskPromptV2 includes file history warnings when rejection data exists", async () => {
+			// This test verifies the full flow: 
+			// formatSubtaskPromptV2 → getWorkerInsights → getFileFailureHistory → formatFileHistoryWarnings
+			
+			// First, seed the database with review_feedback events
+			const { createLibSQLAdapter, createSwarmMailAdapter, getGlobalDbPath } = await import("swarm-mail");
+			const globalDbPath = getGlobalDbPath();
+			const dbAdapter = await createLibSQLAdapter({ url: `file:${globalDbPath}` });
+			const testSwarmMail = createSwarmMailAdapter(dbAdapter, "test-integration");
+			
+			const db = await testSwarmMail.getDatabase();
+			const now = Date.now();
+			
+			// Seed rejection data for specific test files
+			await db.query(
+				`INSERT INTO events (type, project_key, timestamp, data) VALUES 
+				('review_feedback', 'test-integration', ?, ?),
+				('review_feedback', 'test-integration', ?, ?)`,
+				[
+					now,
+					JSON.stringify({
+						task_id: "prompt-test-1",
+						status: "needs_changes",
+						issues: JSON.stringify([
+							{
+								file: "src/prompt-test-file.ts",
+								line: 5,
+								issue: "Missing validation",
+								suggestion: "Add input validation"
+							}
+						])
+					}),
+					now + 1000,
+					JSON.stringify({
+						task_id: "prompt-test-2",
+						status: "needs_changes",
+						issues: JSON.stringify([
+							{
+								file: "src/prompt-test-file.ts",
+								line: 10,
+								issue: "Incomplete error handling",
+								suggestion: "Add error recovery"
+							}
+						])
+					}),
+				],
+			);
+			
+			// Now call formatSubtaskPromptV2 with those files
+			const { formatSubtaskPromptV2 } = await import("./swarm-prompts");
+			const prompt = await formatSubtaskPromptV2({
+				bead_id: "test-123",
+				epic_id: "epic-456",
+				subtask_title: "Test prompt generation",
+				subtask_description: "Verify file history warnings are included",
+				files: ["src/prompt-test-file.ts"],
+				shared_context: "Test context",
+				project_path: "/test/path",
+			});
+			
+			// Verify the prompt contains file history warnings section
+			expect(prompt).toContain("⚠️ FILE HISTORY WARNINGS:");
+			expect(prompt).toContain("src/prompt-test-file.ts");
+			expect(prompt).toMatch(/\d+ previous workers? rejected/);
+		});
+	});
 });

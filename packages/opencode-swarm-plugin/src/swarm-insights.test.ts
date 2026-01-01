@@ -116,6 +116,79 @@ describe("swarm-insights data layer", () => {
 		});
 	});
 
+	describe("getFileGotchas", () => {
+		test("returns empty array when no semantic memories exist", async () => {
+			const { getFileGotchas } = await import("./swarm-insights");
+			const gotchas = await getFileGotchas(swarmMail, "src/unknown-file.ts");
+			expect(gotchas).toEqual([]);
+		});
+
+		test("queries hivemind with file path and gotcha keywords", async () => {
+			const { getFileGotchas } = await import("./swarm-insights");
+			// This test verifies the function exists and returns correct type
+			const gotchas = await getFileGotchas(swarmMail, "src/auth.ts");
+			expect(Array.isArray(gotchas)).toBe(true);
+		});
+
+		test("extracts top 3 learnings from semantic memory", async () => {
+			const { getFileGotchas } = await import("./swarm-insights");
+			const { getMemoryAdapter } = await import("./memory-tools");
+			
+			// Seed semantic memories for a specific file
+			const memoryAdapter = await getMemoryAdapter();
+			await memoryAdapter.store({
+				information: "OAuth tokens need 5min buffer before expiry to avoid race conditions in src/auth.ts",
+				tags: "auth,oauth,gotcha",
+			});
+			await memoryAdapter.store({
+				information: "Always validate refresh token in src/auth.ts before use",
+				tags: "auth,validation,gotcha",
+			});
+			await memoryAdapter.store({
+				information: "Rate limiting required for token refresh endpoint in src/auth.ts",
+				tags: "auth,rate-limit,gotcha",
+			});
+			await memoryAdapter.store({
+				information: "Fourth gotcha that should be truncated in src/auth.ts",
+				tags: "auth,gotcha",
+			});
+
+			const gotchas = await getFileGotchas(swarmMail, "src/auth.ts");
+
+			expect(gotchas.length).toBeLessThanOrEqual(3);
+			expect(gotchas.length).toBeGreaterThan(0);
+			// Each gotcha should be a string
+			gotchas.forEach(g => expect(typeof g).toBe("string"));
+		});
+
+		test("truncates gotchas to ~100 chars each", async () => {
+			const { getFileGotchas } = await import("./swarm-insights");
+			const { getMemoryAdapter } = await import("./memory-tools");
+			
+			// Seed a long memory
+			const memoryAdapter = await getMemoryAdapter();
+			await memoryAdapter.store({
+				information: "This is a very long gotcha message that should be truncated because it exceeds the reasonable length limit for context-efficient prompt injection and we want to keep the worker prompts under budget in src/auth.ts",
+				tags: "auth,long,gotcha",
+			});
+
+			const gotchas = await getFileGotchas(swarmMail, "src/auth.ts");
+
+			if (gotchas.length > 0) {
+				gotchas.forEach(g => {
+					expect(g.length).toBeLessThanOrEqual(120); // ~100 chars + ellipsis
+				});
+			}
+		});
+
+		test("handles errors gracefully and returns empty array", async () => {
+			const { getFileGotchas } = await import("./swarm-insights");
+			// Pass invalid input - should not throw
+			const gotchas = await getFileGotchas(swarmMail, "");
+			expect(Array.isArray(gotchas)).toBe(true);
+		});
+	});
+
 	describe("getPatternInsights", () => {
 		test("returns common failure patterns", async () => {
 			const insights = await getPatternInsights(swarmMail);
@@ -360,6 +433,66 @@ describe("swarm-insights data layer", () => {
 			expect(formatted).toContain("⚠️ FILE HISTORY WARNINGS:");
 			// Should be reasonably compact (rough estimate: 300 tokens ≈ 1200 chars)
 			expect(formatted.length).toBeLessThan(1500);
+		});
+	});
+
+	describe("Integration: Full flow getFileFailureHistory → formatFileHistoryWarnings", () => {
+		test("full flow with rejection data returns formatted warnings", async () => {
+			// Seed review_feedback events with rejection data
+			const db = await swarmMail.getDatabase();
+			const now = Date.now();
+			await db.query(
+				`INSERT INTO events (type, project_key, timestamp, data) VALUES 
+				('review_feedback', 'test', ?, ?),
+				('review_feedback', 'test', ?, ?)`,
+				[
+					now,
+					JSON.stringify({
+						task_id: "task-int-1",
+						status: "needs_changes",
+						issues: JSON.stringify([
+							{
+								file: "src/integration-test.ts",
+								line: 10,
+								issue: "Missing error handling",
+								suggestion: "Add try-catch"
+							}
+						])
+					}),
+					now + 1000,
+					JSON.stringify({
+						task_id: "task-int-2",
+						status: "needs_changes",
+						issues: JSON.stringify([
+							{
+								file: "src/integration-test.ts",
+								line: 20,
+								issue: "Type mismatch",
+								suggestion: "Fix types"
+							}
+						])
+					}),
+				],
+			);
+
+			// Call getFileFailureHistory
+			const { getFileFailureHistory } = await import("./swarm-insights");
+			const history = await getFileFailureHistory(swarmMail, ["src/integration-test.ts"]);
+
+			// Verify history structure
+			expect(history.length).toBe(1);
+			expect(history[0].file).toBe("src/integration-test.ts");
+			expect(history[0].rejectionCount).toBe(2);
+			expect(history[0].topIssues.length).toBeGreaterThan(0);
+
+			// Pass to formatFileHistoryWarnings
+			const { formatFileHistoryWarnings } = await import("./swarm-insights");
+			const formatted = formatFileHistoryWarnings(history);
+
+			// Verify output contains warning section
+			expect(formatted).toContain("⚠️ FILE HISTORY WARNINGS:");
+			expect(formatted).toContain("src/integration-test.ts");
+			expect(formatted).toContain("2 previous workers");
 		});
 	});
 

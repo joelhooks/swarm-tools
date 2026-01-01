@@ -1258,11 +1258,12 @@ export async function getPromptInsights(
 async function getCoordinatorInsights(project_key?: string): Promise<string> {
   try {
     // Import swarm-mail and swarm-insights modules
-    const { createLibSQLAdapter, createSwarmMailAdapter } = await import("swarm-mail");
+    const { createLibSQLAdapter, createSwarmMailAdapter, getGlobalDbPath } = await import("swarm-mail");
     const { getStrategyInsights, getPatternInsights, formatInsightsForPrompt } = await import("./swarm-insights.js");
     
-    // Create libSQL database adapter
-    const dbAdapter = await createLibSQLAdapter({ url: "file:./.swarm-mail/streams.db" });
+    // Create libSQL database adapter using global DB path
+    const globalDbPath = getGlobalDbPath();
+    const dbAdapter = await createLibSQLAdapter({ url: `file:${globalDbPath}` });
     
     // Create swarm-mail adapter with database
     const adapter = createSwarmMailAdapter(dbAdapter, project_key || "default");
@@ -1309,8 +1310,8 @@ async function getWorkerInsights(
 ): Promise<string> {
   try {
     // Import swarm-mail and swarm-insights modules
-    const { createLibSQLAdapter, createSwarmMailAdapter } = await import("swarm-mail");
-    const { getFileInsights, formatInsightsForPrompt } = await import("./swarm-insights.js");
+    const { createLibSQLAdapter, createSwarmMailAdapter, getGlobalDbPath } = await import("swarm-mail");
+    const { getFileInsights, getFileFailureHistory, formatInsightsForPrompt, formatFileHistoryWarnings } = await import("./swarm-insights.js");
     const memoryAdapter = await getMemoryAdapter();
     
     // Build query from files and domain
@@ -1328,16 +1329,31 @@ async function getWorkerInsights(
     }
     
     // Query BOTH event store (via swarm-insights) AND semantic memory
-    const [fileInsights, memoryResult] = await Promise.all([
+    const [fileInsights, fileFailureHistory, memoryResult] = await Promise.all([
       // Get file-specific insights from event store
       (async () => {
         if (!files || files.length === 0) return [];
         try {
-          const dbAdapter = await createLibSQLAdapter({ url: "file:./.swarm-mail/streams.db" });
+          const globalDbPath = getGlobalDbPath();
+          const dbAdapter = await createLibSQLAdapter({ url: `file:${globalDbPath}` });
           const swarmMail = createSwarmMailAdapter(dbAdapter, "default");
           return await getFileInsights(swarmMail, files);
         } catch (e) {
           console.warn("Failed to get file insights from event store:", e);
+          return [];
+        }
+      })(),
+      
+      // Get file failure history from review_feedback events
+      (async () => {
+        if (!files || files.length === 0) return [];
+        try {
+          const globalDbPath = getGlobalDbPath();
+          const dbAdapter = await createLibSQLAdapter({ url: `file:${globalDbPath}` });
+          const swarmMail = createSwarmMailAdapter(dbAdapter, "default");
+          return await getFileFailureHistory(swarmMail, files);
+        } catch (e) {
+          console.warn("Failed to get file failure history from event store:", e);
           return [];
         }
       })(),
@@ -1357,6 +1373,9 @@ async function getWorkerInsights(
     // Format file insights using swarm-insights formatter
     const formattedFileInsights = formatInsightsForPrompt(bundle, { maxTokens: 300 });
     
+    // Format file failure history warnings
+    const formattedWarnings = formatFileHistoryWarnings(fileFailureHistory);
+    
     // Format semantic memory learnings
     let formattedMemory = "";
     if (memoryResult.count > 0) {
@@ -1374,8 +1393,8 @@ ${learnings.join("\n")}
 **Check hivemind for full details if needed.**`;
     }
     
-    // Combine both sources
-    const sections = [formattedFileInsights, formattedMemory].filter(s => s.length > 0);
+    // Combine all sources: file insights, warnings (before semantic memory), semantic memory
+    const sections = [formattedFileInsights, formattedWarnings, formattedMemory].filter(s => s.length > 0);
     
     if (sections.length === 0) {
       return "";

@@ -1,6 +1,6 @@
 {
   "name": "opencode-swarm-plugin",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Multi-agent swarm coordination for OpenCode with learning capabilities, beads integration, and Agent Mail",
   "type": "module",
   "main": "./dist/index.js",

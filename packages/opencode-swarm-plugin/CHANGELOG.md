@@ -1,5 +1,26 @@
 # opencode-swarm-plugin
 
+## 0.54.2
+
+### Patch Changes
+
+- [`42ac262`](https://github.com/joelhooks/swarm-tools/commit/42ac26268d4ac97ce814f7ecf80108efc5d72e73) Thanks [@joelhooks](https://github.com/joelhooks)! - ## Fix: Remove stale `created_at` column references
+
+  Fixes `SQLITE_ERROR: table events has no column named created_at` that occurred during database migrations.
+
+  **What happened:** The events table schema was updated to remove `created_at`, but migration code and schema checks still referenced it.
+
+  **Fixed locations:**
+
+  - `auto-migrate.ts` - migration column checks
+  - `libsql-schema.ts` - required columns validation
+  - `streams.ts` - schema definitions
+
+  No data migration needed - the column never existed in production databases.
+
+- Updated dependencies [[`42ac262`](https://github.com/joelhooks/swarm-tools/commit/42ac26268d4ac97ce814f7ecf80108efc5d72e73)]:
+  - swarm-mail@1.9.3
+
 ## 0.54.1
 
 ### Patch Changes

@@ -1,5 +1,29 @@
 # swarm-mail
 
+## 1.10.0
+
+### Minor Changes
+
+- [`8959148`](https://github.com/joelhooks/swarm-tools/commit/89591483bbc83d1cacd539666e4ceeee015d0007) Thanks [@joelhooks](https://github.com/joelhooks)! - > "In addition, there is a huge variation in quality and productivity among programmers, but we have made little attempt to understand what makes the best programmers so much better or to teach those skills in our classes." — John Ousterhout, _A Philosophy of Software Design_
+
+              .-.
+             (o o)   "Release the hive."
+             | O |
+              '-'
+
+  ## 🐝 Coordinator Reservation Overrides
+
+  - Add `releaseAllSwarmFiles` + `releaseSwarmFilesForAgent` admin paths for coordinator recovery.
+  - Extend `file_released` events with `release_all` and `target_agent` for precise cleanup.
+  - Expose `swarmmail_release_all` and `swarmmail_release_agent` in plugin + wrapper template.
+
+  ## 🧹 UBS Reference Cleanup
+
+  - Remove UBS references from prompts, doctor guidance, and docs.
+  - Drop UBS availability checks from swarm init/tool availability.
+
+  **Backward compatible:** existing `swarmmail_release` behavior is unchanged for workers.
+
 ## 1.9.3
 
 ### Patch Changes

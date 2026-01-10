@@ -1,5 +1,33 @@
 # opencode-swarm-plugin
 
+## 0.57.0
+
+### Minor Changes
+
+- [`a6ae4e5`](https://github.com/joelhooks/swarm-tools/commit/a6ae4e5a6f83f26051c2c058114bae33ef38089d) Thanks [@joelhooks](https://github.com/joelhooks)! - > "Smart defaults can help people answer questions by putting default selections in place that serve the interests of most people."
+
+  > — Web Form Design: Filling in the Blanks
+
+  ## Default model switch to openai/gpt-5.2-codex
+
+  Opencode now defaults to `openai/gpt-5.2-codex` for swarm coordination instead of the previous model. The goal is a more consistent out-of-the-box baseline for OpenCode users, aligned with current model availability and performance.
+
+  **Impact**: New sessions that do not explicitly set a model will start with `openai/gpt-5.2-codex` as the default.
+
+  **Compatibility**: Any existing configuration that pins a different model continues to take precedence; no migration is required.
+
+- [`a6ae4e5`](https://github.com/joelhooks/swarm-tools/commit/a6ae4e5a6f83f26051c2c058114bae33ef38089d) Thanks [@joelhooks](https://github.com/joelhooks)! - > "They can be applied again and again in similar situations to help you achieve your goals."
+
+  > — Principles: Life and Work
+
+  ## Enforce reservation TTLs and release-all guardrails
+
+  Swarm reservations now require explicit `ttl_seconds` and release-on-done behavior via `swarm_complete()` to prevent stale locks.
+
+  **Impact**: Workers must pass `ttl_seconds` when reserving files and should rely on completion cleanup; `swarmmail_release_all` is restricted to coordinators for orphaned lock recovery.
+
+  **Compatibility**: Existing calls without `ttl_seconds` must be updated; other workflows are unaffected.
+
 ## 0.56.1
 
 ### Patch Changes

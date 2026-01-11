@@ -1,5 +1,27 @@
 # swarm-mail
 
+## 1.10.1
+
+### Patch Changes
+
+- [`07391fc`](https://github.com/joelhooks/swarm-tools/commit/07391fc2c664b800aeb41159f7815eea40210878) Thanks [@joelhooks](https://github.com/joelhooks)! - > "When you improve code, you have to test to verify that it still works." — Martin Fowler, _Refactoring_
+
+  ## 📦 Tarball Reliability Bump
+
+  We’re bumping `swarm-mail` to ship the tarball integrity checks and avoid stale package metadata.
+
+  **What changed**
+
+  - Tarball packaging checks added to catch version drift early
+
+  **Why it matters**
+
+  - Prevents publishing packages with mismatched metadata
+
+  **Compatibility**
+
+  - No API changes
+
 ## 1.10.0
 
 ### Minor Changes

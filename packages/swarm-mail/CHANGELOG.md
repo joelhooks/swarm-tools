@@ -1,5 +1,29 @@
 # swarm-mail
 
+## 1.10.2
+
+### Patch Changes
+
+- [`95a0d33`](https://github.com/joelhooks/swarm-tools/commit/95a0d33398c5336f52daf107d515c24e3b7f51a9) Thanks [@joelhooks](https://github.com/joelhooks)! - > "This book is about writing cost-effective, maintainable, and pleasing code." — Sandi Metz & Katrina Owen, _99 Bottles of OOP_
+
+  ## 🧪 Version Alignment Guard
+
+  The swarm-mail release now keeps the `SWARM_MAIL_VERSION` constant aligned with `package.json`, and the tarball packaging test asserts that alignment to catch drift early.
+
+  **What changed**
+
+  - Version constant stays in lockstep with `package.json`
+  - Tarball test fails fast if versions diverge
+
+  **Why it matters**
+
+  - Prevents shipping tarballs with stale version metadata
+  - Keeps runtime diagnostics consistent with published versions
+
+  **Compatibility**
+
+  - No API changes; internal consistency and tests only
+
 ## 1.10.1
 
 ### Patch Changes

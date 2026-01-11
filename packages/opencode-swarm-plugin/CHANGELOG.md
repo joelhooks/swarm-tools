@@ -1,5 +1,32 @@
 # opencode-swarm-plugin
 
+## 0.57.3
+
+### Patch Changes
+
+- [`95a0d33`](https://github.com/joelhooks/swarm-tools/commit/95a0d33398c5336f52daf107d515c24e3b7f51a9) Thanks [@joelhooks](https://github.com/joelhooks)! - > "All you do is create each of these parts in turn which makes it easier to complete." — Jim Edwards, _Copywriting Secrets: How Everyone Can Use the Power of Words to Get More Clicks, Sales, and Profits_
+
+  ## 🧭 MCP Launcher Fix
+
+  The MCP launcher now targets the bundled server artifact at runtime so marketplace installs no longer depend on repo-relative paths.
+
+  **What changed**
+
+  - Launcher resolves the `dist/mcp` bundle for MCP server startup
+  - Missing bundle errors surface earlier during setup
+
+  **Why it matters**
+
+  - Claude Code marketplace installs start MCP tools reliably
+  - Fewer "missing file" failures after upgrading
+
+  **Compatibility**
+
+  - No API changes
+
+- Updated dependencies [[`95a0d33`](https://github.com/joelhooks/swarm-tools/commit/95a0d33398c5336f52daf107d515c24e3b7f51a9)]:
+  - swarm-mail@1.10.2
+
 ## 0.57.2
 
 ### Patch Changes

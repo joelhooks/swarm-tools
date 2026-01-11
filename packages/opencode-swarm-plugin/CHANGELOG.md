@@ -1,5 +1,30 @@
 # opencode-swarm-plugin
 
+## 0.57.1
+
+### Patch Changes
+
+- [`d5cf909`](https://github.com/joelhooks/swarm-tools/commit/d5cf909947db9a6a778e398c3b71884f0590a588) Thanks [@joelhooks](https://github.com/joelhooks)! - > "When you improve code, you have to test to verify that it still works." — Martin Fowler, Refactoring
+
+  ## 🛡️ MCP Packaging Hardening
+
+  Marketplace installs now fail fast and loudly when the Claude MCP runtime bundle is missing, and CI validates tarballs before publish.
+
+  **What changed**
+
+  - MCP runtime resolution requires `claude-plugin/dist` (actionable error if missing)
+  - Claude plugin asset copy now guards against missing `dist`
+  - CI/publish verify packed artifacts for `opencode-swarm-plugin` and `swarm-mail`
+
+  **Why it matters**
+
+  - Prevents silent MCP failures in marketplace installs
+  - Catches broken tarballs before release
+
+  **Compatibility**
+
+  - No API changes; existing installs keep working once rebuilt
+
 ## 0.57.0
 
 ### Minor Changes

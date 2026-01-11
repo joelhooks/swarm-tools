@@ -123,6 +123,7 @@ const ALWAYS_ON_ROLE_GUIDANCE: Record<AlwaysOnGuidanceRole, string> = {
   coordinator: `### Coordinator Enforcement
 - Coordinator role: orchestrate, decompose, spawn workers
 - **Never** edit files or reserve locks directly
+- **After every \`swarm_spawn_subtask\`, immediately call \`Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")\`**
 - Coordinator override: use \`swarmmail_release_all\` only for stale/orphaned reservations (announce in Swarm Mail)
 - Review work with \`swarm_review\` before accepting`,
   worker: `### Worker Enforcement

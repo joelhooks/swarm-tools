@@ -640,7 +640,7 @@ Your role is **ONLY** to:
 ║   - Clarify task scope (ask questions, understand requirements)          ║
 ║   - Read package.json/tsconfig.json for structure (metadata only)        ║
 ║   - Decompose into subtasks (swarm_plan_prompt, validate_decomposition)  ║
-║   - Spawn workers (swarm_spawn_subtask, Task(subagent_type="worker"))    ║
+║   - Spawn workers (swarm_spawn_subtask → Task(subagent_type="swarm-worker", prompt=<from swarm_spawn_subtask>)) ║
 ║   - Monitor progress (swarmmail_inbox, swarm_status)                     ║
 ║   - Review completed work (swarm_review, swarm_review_feedback)          ║
 ║   - Verify final state (check all workers completed, hive_sync)          ║
@@ -684,7 +684,7 @@ swarm_spawn_subtask(
   files=["src/auth/login.ts", "src/auth/login.test.ts"],
   shared_context="Bug: login fails when username is null"
 )
-Task(subagent_type="swarm-worker", prompt="<from above>")
+Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")
 \`\`\`
 
 ### Coordinator Override: Release Stale Reservations
@@ -841,24 +841,26 @@ swarm_validate_decomposition(response="<CellTree JSON>")
 > - Parallel tasks: Spawn ALL in a single message
 > - Sequential tasks: Spawn one, wait for completion, spawn next
 
+**After every swarm_spawn_subtask, immediately call Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")**
+
 **For parallel work:**
 \`\`\`
 // Single message with multiple Task calls
 swarm_spawn_subtask(bead_id_1, epic_id, title_1, files_1, shared_context, project_path="{project_path}")
-Task(subagent_type="swarm-worker", prompt="<from above>")
+Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")
 swarm_spawn_subtask(bead_id_2, epic_id, title_2, files_2, shared_context, project_path="{project_path}")
-Task(subagent_type="swarm-worker", prompt="<from above>")
+Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")
 \`\`\`
 
 **For sequential work:**
 \`\`\`
 // Spawn worker 1, wait for completion
 swarm_spawn_subtask(bead_id_1, ...)
-const result1 = await Task(subagent_type="swarm-worker", prompt="<from above>")
+const result1 = await Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")
 
 // THEN spawn worker 2 with context from worker 1
 swarm_spawn_subtask(bead_id_2, ..., shared_context="Worker 1 completed: " + result1)
-const result2 = await Task(subagent_type="swarm-worker", prompt="<from above>")
+const result2 = await Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")
 \`\`\`
 
 **NEVER do the work yourself.** Even if it seems faster, spawn a worker.

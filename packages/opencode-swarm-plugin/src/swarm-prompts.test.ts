@@ -159,6 +159,12 @@ describe("COORDINATOR_PROMPT", () => {
     expect(sectionMatch[0]).toMatch(/coordinator|override/i);
     expect(sectionMatch[0]).toMatch(/only|limited|exception/i);
   });
+
+  test("requires Task call after swarm_spawn_subtask", () => {
+    expect(COORDINATOR_PROMPT).toMatch(/after every.*swarm_spawn_subtask/i);
+    expect(COORDINATOR_PROMPT).toMatch(/Task\(subagent_type="swarm-worker"/);
+    expect(COORDINATOR_PROMPT).toMatch(/prompt.*swarm_spawn_subtask/i);
+  });
 });
 
 describe("formatSubtaskPromptV2", () => {
@@ -909,6 +915,11 @@ describe("COORDINATOR_PROMPT", () => {
     expect(COORDINATOR_PROMPT).toContain("MANDATORY Review Loop");
     expect(COORDINATOR_PROMPT).toContain("swarm_review");
     expect(COORDINATOR_PROMPT).toContain("swarm_review_feedback");
+  });
+
+  test("requires Task() after every swarm_spawn_subtask", () => {
+    expect(COORDINATOR_PROMPT).toMatch(/after every\s+swarm_spawn_subtask/i);
+    expect(COORDINATOR_PROMPT).toMatch(/Task\(subagent_type="swarm-worker"/);
   });
 
   test("does not reference deprecated cass or semantic-memory tools", () => {

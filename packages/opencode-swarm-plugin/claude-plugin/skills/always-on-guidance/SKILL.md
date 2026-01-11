@@ -19,6 +19,7 @@ related_skills:
 - Follow instruction priority: system → developer → user → AGENTS.
 - Use swarm plugin tools (`hive_*`, `swarm_*`, `swarmmail_*`, `hivemind_*`); avoid deprecated `bd`/`cass` references.
 - Stay within assigned files; reserve before edits with `ttl_seconds`; release reservations on done; finish swarm work with `swarm_complete`.
+- After every `swarm_spawn_subtask`, immediately call `Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")`.
 - `swarmmail_release_all` is coordinator-only for stale/orphaned reservations.
 - Keep outputs concise and action-oriented.
 

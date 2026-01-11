@@ -28,9 +28,11 @@
   },
   "files": [
     "dist",
+    "dist/mcp",
     "bin",
     "claude-plugin",
     "claude-plugin/dist",
+    "claude-plugin/dist/mcp",
     "examples",
     "global-skills",
     "README.md"

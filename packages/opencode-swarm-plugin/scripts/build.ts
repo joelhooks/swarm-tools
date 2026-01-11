@@ -20,6 +20,10 @@ const LIBRARY_ENTRIES: BuildEntry[] = [
   { input: "./src/compaction-prompt-scoring.ts", outfile: "./dist/compaction-prompt-scoring.js" },
   { input: "./src/hive.ts", outfile: "./dist/hive.js" },
   { input: "./src/swarm-prompts.ts", outfile: "./dist/swarm-prompts.js" },
+  {
+    input: "./claude-plugin/bin/swarm-mcp-server.ts",
+    outfile: "./dist/mcp/swarm-mcp-server.js",
+  },
 ];
 
 // Phase 2: Build CLI (depends on dist/swarm-prompts.js, dist/hive.js, etc.)

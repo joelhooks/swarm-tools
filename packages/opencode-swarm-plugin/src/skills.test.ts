@@ -406,6 +406,13 @@ describe("getAlwaysOnGuidanceSkill", () => {
     expect(coordinator).toContain("swarmmail_release_all");
     expect(coordinator).toMatch(/stale|orphaned|expired/i);
   });
+
+  it("requires Task after swarm_spawn_subtask", () => {
+    const coordinator = getAlwaysOnGuidanceSkill({ role: "coordinator" });
+
+    expect(coordinator).toMatch(/swarm_spawn_subtask/i);
+    expect(coordinator).toMatch(/Task\(subagent_type="swarm-worker"/);
+  });
 });
 
 // ============================================================================

@@ -22,6 +22,7 @@ Orchestrates swarm work: decomposes tasks, spawns workers, monitors progress, an
 - **Never reserve files** as the coordinator. Workers reserve their own files.
 - **Decompose with intent** using `swarm_plan_prompt` + `swarm_validate_decomposition`.
 - **Review every worker completion** via `swarm_review` + `swarm_review_feedback`.
+- **After every `swarm_spawn_subtask`, immediately call `Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")`.**
 - **Record outcomes** with `swarm_complete` for learning signals.
 
 ## Tool Access

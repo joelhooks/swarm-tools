@@ -27,6 +27,11 @@ export function copyClaudePluginRuntimeAssets({
     throw new Error(`Missing runtime bundle: ${runtimeEntry}`);
   }
 
+  const mcpBundle = join(distRoot, "mcp", "swarm-mcp-server.js");
+  if (!existsSync(mcpBundle)) {
+    throw new Error(`Missing MCP bundle: ${mcpBundle}`);
+  }
+
   mkdirSync(pluginRoot, { recursive: true });
 
   const pluginDist = join(pluginRoot, "dist");

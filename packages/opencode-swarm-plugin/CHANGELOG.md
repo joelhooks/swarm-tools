@@ -1,5 +1,65 @@
 # opencode-swarm-plugin
 
+## 0.57.6
+
+### Patch Changes
+
+- [`9ce3e70`](https://github.com/joelhooks/swarm-tools/commit/9ce3e70a614c75119fd1847ce3dde56bf8f7f2d4) Thanks [@joelhooks](https://github.com/joelhooks)! - ## MCP Server: CommonJS Build for Claude Code Compatibility
+
+  Switched MCP server entrypoint from `.js` to `.cjs` for reliable CommonJS execution in Claude Code's plugin runtime.
+
+  **Changes:**
+
+  - Build outputs `swarm-mcp-server.cjs` instead of `.js`
+  - Plugin manifest points to `.cjs` entrypoint
+  - Build script supports `format: "cjs"` option per entry
+  - Plugin version synced to package version (0.57.5)
+
+  **New utilities:**
+
+  - `scripts/sync-plugin-versions.ts` - keeps plugin.json version in sync
+  - `scripts/recover-memories.ts` - memory recovery tooling
+  - `scripts/regenerate-embeddings.ts` - embedding regeneration
+
+  **Why it matters:** Ensures the MCP server runs correctly when Claude Code spawns it, regardless of the host environment's module resolution.
+
+- [`7f88a03`](https://github.com/joelhooks/swarm-tools/commit/7f88a0394a8d433b32cba8480423c4eb2397a1a8) Thanks [@joelhooks](https://github.com/joelhooks)! - > "The easiest and cheapest way to prevent bad neighborhoods from getting worse is to fix broken windows in abandoned buildings." — _Rails as She Is Spoke_
+
+      \_/
+
+  (o o) "Entry point on disk."
+  /|\_|\
+
+  ## 🐝 MCP Entrypoint Ships in Repo
+
+  Committed the built JavaScript MCP entrypoint so GitHub clone installs can run the MCP server without a build step.
+
+  **Why it matters:** prevents missing-file errors when OpenCode launches MCP tooling from a fresh clone.
+
+  **Impact:** smoother onboarding and reliable `swarm mcp` runs in local dev.
+
+  **Backward compatible:** existing npm installs and configs continue to work.
+
+- [`7f88a03`](https://github.com/joelhooks/swarm-tools/commit/7f88a0394a8d433b32cba8480423c4eb2397a1a8) Thanks [@joelhooks](https://github.com/joelhooks)! - > "When you improve code, you have to test to verify that it still works." — Martin Fowler, _Refactoring_
+
+  ## 🧩 MCP JS Entrypoint for Git Clone Installs
+
+  The Claude marketplace now launches a committed JS MCP entrypoint from `claude-plugin/bin`, so GitHub-cloned installs work without a build step.
+
+  **What changed**
+
+  - Bundled JS entrypoint committed at `claude-plugin/bin/swarm-mcp-server.js`
+  - Build script keeps the JS entrypoint in sync
+  - Tests updated to assert the manifest uses the JS entrypoint
+
+  **Why it matters**
+
+  - Fixes MCP startup when marketplace clones the repo (no `dist/`)
+
+  **Compatibility**
+
+  - No API changes; existing installs keep working
+
 ## 0.57.3
 
 ### Patch Changes

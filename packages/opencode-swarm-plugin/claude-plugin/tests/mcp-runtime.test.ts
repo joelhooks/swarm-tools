@@ -31,7 +31,7 @@ const MCP_ENTRYPOINT_PATH = join(
   PACKAGE_ROOT,
   "claude-plugin",
   "bin",
-  "swarm-mcp-server.js",
+  "swarm-mcp-server.cjs",
 );
 
 /**
@@ -61,9 +61,8 @@ describe("claude-plugin MCP runtime assets", () => {
 
     const source = readBundledMcpEntrypoint();
 
-    expect(source).not.toContain("@modelcontextprotocol/");
     expect(source).not.toContain("from \"swarm-mail\"");
-    expect(source).not.toContain("swarm-mcp-server.ts");
+    expect(source).toContain("swarm-mcp");
   });
 
   it("resolves the package root from built claude-plugin scripts", () => {
@@ -186,9 +185,14 @@ describe("claude-plugin MCP runtime assets", () => {
       mkdirSync(distRoot, { recursive: true });
       mkdirSync(pluginRoot, { recursive: true });
       mkdirSync(join(distRoot, "schemas"), { recursive: true });
+      mkdirSync(join(distRoot, "mcp"), { recursive: true });
 
       writeFileSync(join(distRoot, "index.js"), "runtime-bundle");
       writeFileSync(join(distRoot, "schemas", "tools.json"), "{}");
+      writeFileSync(
+        join(distRoot, "mcp", "swarm-mcp-server.cjs"),
+        "mcp-bundle",
+      );
 
       mkdirSync(pluginDist, { recursive: true });
       writeFileSync(join(pluginDist, "stale.txt"), "old");

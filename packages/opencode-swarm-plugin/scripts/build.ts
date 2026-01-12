@@ -10,6 +10,7 @@ interface BuildEntry {
   input: string;
   outdir?: string;  // Use outdir for index.ts
   outfile?: string; // Use outfile for single-file outputs
+  format?: "cjs" | "esm";
 }
 
 // Phase 1: Build library entries (can run in parallel)
@@ -22,8 +23,17 @@ const LIBRARY_ENTRIES: BuildEntry[] = [
   { input: "./src/swarm-prompts.ts", outfile: "./dist/swarm-prompts.js" },
   {
     input: "./claude-plugin/bin/swarm-mcp-server.ts",
-    outfile: "./dist/mcp/swarm-mcp-server.js",
+    outfile: "./dist/mcp/swarm-mcp-server.cjs",
+    format: "cjs",
   },
+];
+
+// Phase 1.5: Marketplace-specific bundle (bundles swarm-mail since no node_modules)
+interface MarketplaceBuildEntry extends BuildEntry {
+  bundleSwarmMail: true;
+}
+const MARKETPLACE_ENTRIES: MarketplaceBuildEntry[] = [
+  { input: "./src/index.ts", outfile: "./dist/marketplace/index.js", bundleSwarmMail: true },
 ];
 
 // Phase 2: Build CLI (depends on dist/swarm-prompts.js, dist/hive.js, etc.)
@@ -54,19 +64,37 @@ const CLI_EXTERNALS = [
   "@libsql/client",  // Native module, must be external
 ];
 
-async function buildEntry(entry: BuildEntry, useCliExternals = false): Promise<void> {
-  const externalsList = useCliExternals ? CLI_EXTERNALS : EXTERNALS;
+// Marketplace externals - swarm-mail is BUNDLED since marketplace has no node_modules
+const MARKETPLACE_EXTERNALS = [
+  "@electric-sql/pglite",
+  "evalite",
+  "@clack/prompts",
+  "@clack/core",
+  "picocolors",
+  "sisteransi",
+  "@libsql/client",
+];
+
+type ExternalsType = "library" | "cli" | "marketplace";
+
+async function buildEntry(entry: BuildEntry, externalsType: ExternalsType = "library"): Promise<void> {
+  const externalsList = externalsType === "cli"
+    ? CLI_EXTERNALS
+    : externalsType === "marketplace"
+      ? MARKETPLACE_EXTERNALS
+      : EXTERNALS;
   const externals = externalsList.map(e => `--external ${e}`).join(" ");
-  const output = entry.outdir 
-    ? `--outdir ${entry.outdir}` 
+  const output = entry.outdir
+    ? `--outdir ${entry.outdir}`
     : `--outfile ${entry.outfile}`;
-  
-  const cmd = `bun build ${entry.input} ${output} --target node ${externals}`;
+  const format = entry.format ? `--format ${entry.format}` : "";
+
+  const cmd = `bun build ${entry.input} ${output} ${format} --target node ${externals}`;
   const proc = Bun.spawn(["sh", "-c", cmd], {
     stdout: "inherit",
     stderr: "inherit",
   });
-  
+
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
     throw new Error(`Build failed for ${entry.input}`);
@@ -86,10 +114,10 @@ import {
 function syncClaudePluginRuntimeAssets(packageRoot: string): void {
   console.log("\n🧰 Syncing Claude plugin runtime bundle...");
   copyClaudePluginRuntimeAssets({ packageRoot });
-  const mcpBundleSource = join(packageRoot, "dist", "mcp", "swarm-mcp-server.js");
+  const mcpBundleSource = join(packageRoot, "dist", "mcp", "swarm-mcp-server.cjs");
   const mcpBundleTargetDir = join(packageRoot, "claude-plugin", "bin");
   mkdirSync(mcpBundleTargetDir, { recursive: true });
-  cpSync(mcpBundleSource, join(mcpBundleTargetDir, "swarm-mcp-server.js"));
+  cpSync(mcpBundleSource, join(mcpBundleTargetDir, "swarm-mcp-server.cjs"));
   console.log("   Copied dist to claude-plugin/dist");
   console.log("   Copied MCP bundle to claude-plugin/bin");
 }
@@ -118,13 +146,27 @@ async function main() {
     process.exit(1);
   }
   
+  // Phase 1.5: Build marketplace-specific bundle (bundles swarm-mail)
+  console.log("\n📦 Phase 1.5: Building marketplace bundle (bundling swarm-mail)...");
+  mkdirSync("./dist/marketplace", { recursive: true });
+  const marketplaceResults = await Promise.allSettled(
+    MARKETPLACE_ENTRIES.map(entry => buildEntry(entry, "marketplace"))
+  );
+
+  const marketplaceFailures = marketplaceResults.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (marketplaceFailures.length > 0) {
+    console.error("\n❌ Marketplace build failed:");
+    marketplaceFailures.forEach(f => console.error(`  - ${f.reason}`));
+    process.exit(1);
+  }
+
   // Phase 2: Build CLI (depends on library outputs)
   // CLI uses CLI_EXTERNALS which bundles swarm-mail to avoid version mismatch
   console.log("\n🔧 Phase 2: Building CLI (bundling swarm-mail)...");
   const cliResults = await Promise.allSettled(
-    CLI_ENTRIES.map(entry => buildEntry(entry, true))
+    CLI_ENTRIES.map(entry => buildEntry(entry, "cli"))
   );
-  
+
   // Check for CLI failures
   const cliFailures = cliResults.filter((r): r is PromiseRejectedResult => r.status === "rejected");
   if (cliFailures.length > 0) {
@@ -132,8 +174,8 @@ async function main() {
     cliFailures.forEach(f => console.error(`  - ${f.reason}`));
     process.exit(1);
   }
-  
-  const totalEntries = LIBRARY_ENTRIES.length + CLI_ENTRIES.length;
+
+  const totalEntries = LIBRARY_ENTRIES.length + MARKETPLACE_ENTRIES.length + CLI_ENTRIES.length;
   console.log(`\n✅ Built ${totalEntries} entries`);
   
   // Run tsc for declarations

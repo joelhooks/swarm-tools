@@ -526,7 +526,16 @@ swarmmail_release()  # Manually release reservations
 
 **Note:** \`swarm_complete\` automatically releases reservations. Only use manual release if aborting work.
 
-## [OTHER TOOLS]
+## [FULL WORKER TOOLKIT]
+
+This agent is configured with \`tools: ["*"]\` to allow full tool access per user choice.
+
+### Core Swarm Tools (Already Documented Above)
+- \`swarmmail_init\`, \`swarmmail_reserve\`, \`swarmmail_send\`, \`swarmmail_inbox\`, \`swarmmail_read_message\`, \`swarmmail_release\`
+- \`hivemind_find\`, \`hivemind_store\`
+- \`swarm_progress\`, \`swarm_checkpoint\`, \`swarm_complete\`
+- \`swarm_spawn_researcher\` (if you need on-demand research)
+
 ### Hive - You Have Autonomy to File Issues
 You can create new cells against this epic when you discover:
 - **Bugs**: Found a bug while working? File it.
@@ -547,13 +556,14 @@ hive_create(
 **Don't silently ignore issues.** File them so they get tracked and addressed.
 
 Other cell operations:
-- hive_update(id, status) - Mark blocked if stuck
-- hive_query(status="open") - See what else needs work
+- \`hive_update(id, status)\` - Mark blocked if stuck
+- \`hive_close(id, summary)\` - Close completed issues (but use \`swarm_complete\` for your main task)
+- \`hive_query(status="open")\` - See what else needs work
 
 ### Skills
-- skills_list() - Discover available skills
-- skills_use(name) - Activate skill for specialized guidance
-- skills_create(name) - Create new skill (if you found a reusable pattern)
+- \`skills_list()\` - Discover available skills
+- \`skills_use(name)\` - Activate skill for specialized guidance
+- \`skills_create(name)\` - Create new skill (if you found a reusable pattern)
 
 ## [CRITICAL REQUIREMENTS]
 
@@ -725,6 +735,33 @@ The following tools are **FORBIDDEN** for coordinators to call:
 - Stores full details in hivemind
 - Returns a condensed summary for shared_context
 
+## Available Tools
+
+You have access to the following swarm CLI tools:
+
+### Hivemind (Query & Store Learnings)
+- \`hivemind_find\` - Query past learnings and patterns **BEFORE decomposing** (MANDATORY)
+- \`hivemind_store\` - Store discovered patterns and decisions for future coordinators
+
+### Swarm Coordination
+- \`swarm_decompose\`, \`swarm_spawn_subtask\`, \`swarm_spawn_researcher\` - Task decomposition and spawning
+- \`swarm_review\`, \`swarm_review_feedback\` - Review worker output (MANDATORY after each worker)
+- \`swarm_status\` - Monitor overall swarm progress
+
+### Hive (Issue Tracking)
+- \`hive_create_epic\` - Create epic with child cells
+- \`hive_query\` - Query cells by status/type
+- \`hive_ready\` - Find ready-to-work cells
+- \`hive_sync\` - Sync cells to git
+
+### Swarm Mail (Communication)
+- \`swarmmail_init\` - Initialize coordination (MANDATORY FIRST)
+- \`swarmmail_inbox\` - Check for messages from workers
+- \`swarmmail_send\` - Send messages to workers
+- \`swarmmail_release_all\` - Release stale reservations (coordinator override only)
+
+**CRITICAL: Use \`hivemind_find\` BEFORE starting decomposition to avoid repeating past mistakes.**
+
 ## Workflow
 
 ### Phase 0: Socratic Planning (INTERACTIVE - unless --fast)
@@ -823,15 +860,32 @@ const researchFindings = await Task(subagent_type="swarm-researcher", prompt="<f
 - Full findings stored in hivemind (searchable by future agents)
 - Condensed 3-5 bullet summary returned for shared_context
 
-### Phase 2: Knowledge Gathering (MANDATORY)
+### Phase 2: Knowledge Gathering (MANDATORY - Query Hivemind FIRST)
 
-**Before decomposing, query ALL knowledge sources:**
+**⚠️ CRITICAL: Query hivemind BEFORE decomposing to learn from past agents.**
 
 \`\`\`
-hivemind_find(query="<task keywords>", limit=5)                              # Past learnings
-hivemind_find(query="<task description>", limit=5, collection="sessions")    # Similar past tasks  
-skills_list()                                                                # Available skills
+# Query past learnings about this task type
+hivemind_find(query="<task keywords>", limit=5, expand=true)
+
+# Query similar past swarm sessions (strategy patterns, decomposition decisions)
+hivemind_find(query="<task description> strategy decomposition", limit=5, expand=true)
+
+# List available skills for specialized guidance
+skills_list()
 \`\`\`
+
+**Why this is MANDATORY:**
+- Past coordinators may have already decomposed similar tasks
+- Avoid repeating failed decomposition strategies
+- Discover project-specific constraints and gotchas
+- Learn which strategies work for this codebase
+
+**Search Query Examples by Task Type:**
+- **Refactor**: "refactor <pattern-name> migration strategy"
+- **New feature**: "<domain> feature decomposition approach"
+- **Bug fix**: "<error-message> root cause fix strategy"
+- **Integration**: "<library> integration pattern decomposition"
 
 Synthesize findings into shared_context for workers.
 
@@ -924,7 +978,24 @@ const result2 = await Task(subagent_type="swarm-worker", prompt="<prompt returne
 - Scope creep → approve or reject expansion
 - Review fails 3x → mark task blocked, escalate to human
 
-### Phase 8: Complete
+### Phase 8: Store Learnings & Complete
+
+**If you discovered something valuable during coordination, STORE IT:**
+
+\`\`\`
+hivemind_store(
+  information="<what you learned about this task type, decomposition strategy, or coordination pattern>",
+  tags="coordination, <strategy-name>, <domain>"
+)
+\`\`\`
+
+**Storage triggers for coordinators:**
+- Decomposition strategy worked particularly well (or failed badly)
+- Discovered project-specific architectural constraints
+- Found a better way to split work for this domain
+- Learned which file groupings cause conflicts
+- Identified patterns in worker failures
+
 \`\`\`
 # After all workers complete and reviews pass:
 hive_sync()                                    # Sync all cells to git

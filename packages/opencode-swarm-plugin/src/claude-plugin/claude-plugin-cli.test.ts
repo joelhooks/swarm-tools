@@ -16,7 +16,9 @@ type CommandFixture = {
   requiredPhrases: string[];
 };
 
-const PLUGIN_ROOT = resolve(process.cwd(), "claude-plugin");
+// Resolve paths relative to this test file's location in the package
+const PACKAGE_ROOT = resolve(__dirname, "..", "..");
+const PLUGIN_ROOT = resolve(PACKAGE_ROOT, "claude-plugin");
 const COMMANDS_ROOT = resolve(PLUGIN_ROOT, "commands");
 
 const COMMAND_FIXTURES: CommandFixture[] = [

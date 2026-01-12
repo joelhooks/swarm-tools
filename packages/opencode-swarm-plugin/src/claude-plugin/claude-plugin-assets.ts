@@ -11,7 +11,7 @@ export type ClaudePluginAssetCopyOptions = {
   pluginRoot?: string;
 };
 
-const MCP_BUNDLE_RELATIVE_PATH = join("mcp", "swarm-mcp-server.js");
+const MCP_BUNDLE_RELATIVE_PATH = join("mcp", "swarm-mcp-server.cjs");
 
 /**
  * Create a stable SHA-256 hash for a file on disk.
@@ -49,6 +49,9 @@ export function assertClaudePluginMcpEntrypointSynced({
 
 /**
  * Copy compiled runtime assets into the Claude plugin root.
+ *
+ * For the marketplace plugin, we use dist/marketplace/index.js which bundles
+ * swarm-mail since the marketplace has no node_modules.
  */
 export function copyClaudePluginRuntimeAssets({
   packageRoot,
@@ -59,9 +62,10 @@ export function copyClaudePluginRuntimeAssets({
     throw new Error(`Missing runtime dist directory: ${distRoot}`);
   }
 
-  const runtimeEntry = join(distRoot, "index.js");
-  if (!existsSync(runtimeEntry)) {
-    throw new Error(`Missing runtime bundle: ${runtimeEntry}`);
+  // Use marketplace bundle which has swarm-mail bundled
+  const marketplaceBundle = join(distRoot, "marketplace", "index.js");
+  if (!existsSync(marketplaceBundle)) {
+    throw new Error(`Missing marketplace bundle: ${marketplaceBundle}`);
   }
 
   const mcpBundle = join(distRoot, MCP_BUNDLE_RELATIVE_PATH);
@@ -74,5 +78,16 @@ export function copyClaudePluginRuntimeAssets({
   const pluginDist = join(pluginRoot, "dist");
   rmSync(pluginDist, { recursive: true, force: true });
   mkdirSync(pluginDist, { recursive: true });
-  cpSync(distRoot, pluginDist, { recursive: true });
+
+  // Copy marketplace bundle as the main index.js
+  cpSync(marketplaceBundle, join(pluginDist, "index.js"));
+
+  // Copy other needed assets from dist (excluding the regular index.js)
+  const assetsToCopy = ["mcp", "schemas", "utils"];
+  for (const asset of assetsToCopy) {
+    const src = join(distRoot, asset);
+    if (existsSync(src)) {
+      cpSync(src, join(pluginDist, asset), { recursive: true });
+    }
+  }
 }

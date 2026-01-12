@@ -21,13 +21,15 @@ type PackageManifest = {
   files?: string[];
 };
 
-const BUILD_SCRIPT_PATH = join(process.cwd(), "scripts", "build.ts");
+// Resolve paths relative to this test file's location in the package
+const PACKAGE_ROOT = join(__dirname, "..", "..");
+const BUILD_SCRIPT_PATH = join(PACKAGE_ROOT, "scripts", "build.ts");
 
 /**
  * Reads the package manifest for published file assertions.
  */
 function readPackageManifest(): PackageManifest {
-  const manifestPath = join(process.cwd(), "package.json");
+  const manifestPath = join(PACKAGE_ROOT, "package.json");
   return JSON.parse(readFileSync(manifestPath, "utf-8")) as PackageManifest;
 }
 
@@ -67,13 +69,13 @@ describe("claude-plugin runtime assets", () => {
 
       expect(() =>
         copyClaudePluginRuntimeAssets({ packageRoot: workspaceRoot }),
-      ).toThrowError(/Missing runtime bundle/);
+      ).toThrowError(/Missing marketplace bundle/);
     } finally {
       rmSync(workspaceRoot, { recursive: true, force: true });
     }
   });
 
-  it("throws if the MCP bundle is missing", () => {
+  it("throws if the marketplace bundle is missing", () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "swarm-plugin-"));
 
     try {
@@ -84,7 +86,7 @@ describe("claude-plugin runtime assets", () => {
 
       expect(() =>
         copyClaudePluginRuntimeAssets({ packageRoot: workspaceRoot }),
-      ).toThrowError(/Missing MCP bundle/);
+      ).toThrowError(/Missing marketplace bundle/);
     } finally {
       rmSync(workspaceRoot, { recursive: true, force: true });
     }
@@ -101,8 +103,8 @@ describe("claude-plugin runtime assets", () => {
       mkdirSync(join(distRoot, "mcp"), { recursive: true });
       mkdirSync(pluginDist, { recursive: true });
 
-      writeFileSync(join(distRoot, "mcp", "swarm-mcp-server.js"), "latest");
-      writeFileSync(join(pluginDist, "swarm-mcp-server.js"), "stale");
+      writeFileSync(join(distRoot, "mcp", "swarm-mcp-server.cjs"), "latest");
+      writeFileSync(join(pluginDist, "swarm-mcp-server.cjs"), "stale");
 
       expect(() =>
         assertClaudePluginMcpEntrypointSynced({ packageRoot: workspaceRoot }),
@@ -123,8 +125,8 @@ describe("claude-plugin runtime assets", () => {
       mkdirSync(join(distRoot, "mcp"), { recursive: true });
       mkdirSync(pluginDist, { recursive: true });
 
-      writeFileSync(join(distRoot, "mcp", "swarm-mcp-server.js"), "matched");
-      writeFileSync(join(pluginDist, "swarm-mcp-server.js"), "matched");
+      writeFileSync(join(distRoot, "mcp", "swarm-mcp-server.cjs"), "matched");
+      writeFileSync(join(pluginDist, "swarm-mcp-server.cjs"), "matched");
 
       expect(() =>
         assertClaudePluginMcpEntrypointSynced({ packageRoot: workspaceRoot }),
@@ -144,13 +146,14 @@ describe("claude-plugin runtime assets", () => {
 
       mkdirSync(distRoot, { recursive: true });
       mkdirSync(pluginRoot, { recursive: true });
+      mkdirSync(join(distRoot, "marketplace"), { recursive: true });
       mkdirSync(join(distRoot, "schemas"), { recursive: true });
       mkdirSync(join(distRoot, "mcp"), { recursive: true });
 
-      writeFileSync(join(distRoot, "index.js"), "runtime-bundle");
+      writeFileSync(join(distRoot, "marketplace", "index.js"), "marketplace-bundle");
       writeFileSync(join(distRoot, "schemas", "tools.json"), "{}");
       writeFileSync(
-        join(distRoot, "mcp", "swarm-mcp-server.js"),
+        join(distRoot, "mcp", "swarm-mcp-server.cjs"),
         "mcp-bundle",
       );
 
@@ -161,14 +164,14 @@ describe("claude-plugin runtime assets", () => {
 
       expect(existsSync(join(pluginRoot, "dist", "index.js"))).toBe(true);
       expect(readFileSync(join(pluginRoot, "dist", "index.js"), "utf-8")).toBe(
-        "runtime-bundle",
+        "marketplace-bundle",
       );
       expect(existsSync(join(pluginRoot, "dist", "schemas", "tools.json"))).toBe(
         true,
       );
       expect(
         readFileSync(
-          join(pluginRoot, "dist", "mcp", "swarm-mcp-server.js"),
+          join(pluginRoot, "dist", "mcp", "swarm-mcp-server.cjs"),
           "utf-8",
         ),
       ).toBe("mcp-bundle");

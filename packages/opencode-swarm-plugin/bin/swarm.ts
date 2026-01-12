@@ -659,6 +659,27 @@ function resolveClaudeProjectPath(input: ClaudeHookInput | null): string {
 
 /**
  * Format hook output for Claude Code context injection.
+ * Uses the proper JSON format with hookSpecificOutput for structured feedback.
+ */
+function writeClaudeHookOutput(
+  hookEventName: string,
+  additionalContext: string,
+  options?: { suppressOutput?: boolean }
+): void {
+  if (!additionalContext.trim()) return;
+  process.stdout.write(
+    `${JSON.stringify({
+      suppressOutput: options?.suppressOutput,
+      hookSpecificOutput: {
+        hookEventName,
+        additionalContext,
+      },
+    })}\n`,
+  );
+}
+
+/**
+ * @deprecated Use writeClaudeHookOutput for proper hook-specific JSON format
  */
 function writeClaudeHookContext(additionalContext: string): void {
   if (!additionalContext.trim()) return;
@@ -2969,7 +2990,13 @@ async function claudeInit() {
 }
 
 /**
- * Claude hook: start a session and emit context for Claude Code.
+ * Claude hook: start a session and emit comprehensive context for Claude Code.
+ *
+ * Gathers:
+ * - Session info + previous handoff notes
+ * - In-progress cells (work that was mid-flight)
+ * - Open epics with their children
+ * - Recent activity summary
  */
 async function claudeSessionStart() {
   try {
@@ -2982,27 +3009,87 @@ async function claudeSessionStart() {
     await adapter.runMigrations();
 
     const session = await adapter.startSession(projectPath, {});
-    const contextLines = [
-      `Swarm session started: ${session.id}`,
-    ];
+    const contextLines: string[] = [];
 
-    if (session.active_cell_id) {
-      contextLines.push(`Active cell: ${session.active_cell_id}`);
-    }
+    // Session basics
+    contextLines.push(`## Swarm Session: ${session.id}`);
+    contextLines.push(`Source: ${(input as { source?: string }).source || "startup"}`);
+    contextLines.push("");
 
+    // Previous handoff notes (critical for continuation)
     if (session.previous_handoff_notes) {
-      contextLines.push("Previous handoff notes:");
+      contextLines.push("## Previous Handoff Notes");
       contextLines.push(session.previous_handoff_notes);
+      contextLines.push("");
     }
 
-    writeClaudeHookContext(contextLines.join("\n"));
+    // Active cell from previous session
+    if (session.active_cell_id) {
+      const activeCell = await adapter.getCell(projectPath, session.active_cell_id);
+      if (activeCell) {
+        contextLines.push("## Active Cell (from previous session)");
+        contextLines.push(`- **${activeCell.id}**: ${activeCell.title}`);
+        contextLines.push(`  Status: ${activeCell.status}, Priority: ${activeCell.priority}`);
+        if (activeCell.description) {
+          contextLines.push(`  ${activeCell.description.slice(0, 200)}...`);
+        }
+        contextLines.push("");
+      }
+    }
+
+    // In-progress cells (work that was mid-flight)
+    const inProgressCells = await adapter.getInProgressCells(projectPath);
+    if (inProgressCells.length > 0) {
+      contextLines.push("## In-Progress Work");
+      for (const cell of inProgressCells.slice(0, 5)) {
+        contextLines.push(`- **${cell.id}**: ${cell.title} (${cell.type}, P${cell.priority})`);
+        if (cell.description) {
+          contextLines.push(`  ${cell.description.slice(0, 150)}`);
+        }
+      }
+      if (inProgressCells.length > 5) {
+        contextLines.push(`  ... and ${inProgressCells.length - 5} more`);
+      }
+      contextLines.push("");
+    }
+
+    // Open epics (high-level context)
+    const openEpics = await adapter.queryCells(projectPath, {
+      status: "open",
+      type: "epic",
+      limit: 3
+    });
+    if (openEpics.length > 0) {
+      contextLines.push("## Open Epics");
+      for (const epic of openEpics) {
+        const children = await adapter.getEpicChildren(projectPath, epic.id);
+        const openChildren = children.filter(c => c.status !== "closed");
+        contextLines.push(`- **${epic.id}**: ${epic.title}`);
+        contextLines.push(`  ${openChildren.length}/${children.length} subtasks remaining`);
+      }
+      contextLines.push("");
+    }
+
+    // Stats summary
+    const stats = await adapter.getCellsStats(projectPath);
+    contextLines.push("## Hive Stats");
+    contextLines.push(`Open: ${stats.open} | In Progress: ${stats.in_progress} | Blocked: ${stats.blocked} | Closed: ${stats.closed}`);
+
+    writeClaudeHookOutput("SessionStart", contextLines.join("\n"));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
   }
 }
 
 /**
- * Claude hook: provide active session context on prompt submission.
+ * Claude hook: provide active context on prompt submission.
+ *
+ * Lightweight hook that runs on every prompt. Provides:
+ * - Active session info
+ * - Current in-progress cell (if any)
+ * - Quick stats for awareness
+ *
+ * Output is suppressed from verbose mode to avoid noise.
  */
 async function claudeUserPrompt() {
   try {
@@ -3017,30 +3104,161 @@ async function claudeUserPrompt() {
     const session = await adapter.getCurrentSession(projectPath);
     if (!session) return;
 
-    const contextLines = [`Active swarm session: ${session.id}`];
+    const contextLines: string[] = [];
+
+    // Current active cell (most relevant context)
     if (session.active_cell_id) {
-      contextLines.push(`Active cell: ${session.active_cell_id}`);
+      const activeCell = await adapter.getCell(projectPath, session.active_cell_id);
+      if (activeCell && activeCell.status !== "closed") {
+        contextLines.push(`**Active**: ${activeCell.id} - ${activeCell.title}`);
+      }
     }
 
-    writeClaudeHookContext(contextLines.join("\n"));
+    // Quick in-progress count for awareness
+    const inProgress = await adapter.getInProgressCells(projectPath);
+    if (inProgress.length > 0) {
+      const titles = inProgress.slice(0, 3).map(c => c.title.slice(0, 40)).join(", ");
+      contextLines.push(`**WIP (${inProgress.length})**: ${titles}${inProgress.length > 3 ? "..." : ""}`);
+    }
+
+    // Only output if there's meaningful context
+    if (contextLines.length > 0) {
+      writeClaudeHookOutput("UserPromptSubmit", contextLines.join(" | "), { suppressOutput: true });
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
   }
 }
 
 /**
- * Claude hook: prepare for compaction (best-effort).
+ * Claude hook: capture comprehensive state before compaction.
+ *
+ * This is the CRITICAL hook for continuation. It captures:
+ * - All in-progress work with details
+ * - Active epic state and progress
+ * - Any pending/blocked cells
+ * - Reserved files
+ * - Session context
+ *
+ * The output becomes part of the compacted summary, enabling
+ * Claude to continue work seamlessly after context window fills.
  */
 async function claudePreCompact() {
   try {
-    const input = await readHookInput<ClaudeHookInput>();
+    const input = await readHookInput<ClaudeHookInput & { trigger?: string; custom_instructions?: string }>();
     const projectPath = resolveClaudeProjectPath(input);
     const swarmMail = await getSwarmMailLibSQL(projectPath);
     const db = await swarmMail.getDatabase(projectPath);
     const adapter = createHiveAdapter(db, projectPath);
 
     await adapter.runMigrations();
-    await adapter.getCurrentSession(projectPath);
+
+    const session = await adapter.getCurrentSession(projectPath);
+    const contextLines: string[] = [];
+
+    contextLines.push("# Swarm State Snapshot (Pre-Compaction)");
+    contextLines.push(`Trigger: ${input.trigger || "auto"}`);
+    if (input.custom_instructions) {
+      contextLines.push(`Instructions: ${input.custom_instructions}`);
+    }
+    contextLines.push("");
+
+    // Session info
+    if (session) {
+      contextLines.push("## Session");
+      contextLines.push(`ID: ${session.id}`);
+      if (session.active_cell_id) {
+        contextLines.push(`Active cell: ${session.active_cell_id}`);
+      }
+    }
+    contextLines.push("");
+
+    // In-progress work (CRITICAL for continuation)
+    const inProgressCells = await adapter.getInProgressCells(projectPath);
+    if (inProgressCells.length > 0) {
+      contextLines.push("## In-Progress Work (CONTINUE THESE)");
+      for (const cell of inProgressCells) {
+        contextLines.push(`### ${cell.id}: ${cell.title}`);
+        contextLines.push(`Type: ${cell.type} | Priority: ${cell.priority} | Status: ${cell.status}`);
+        if (cell.parent_id) {
+          contextLines.push(`Parent: ${cell.parent_id}`);
+        }
+        if (cell.description) {
+          contextLines.push(`Description: ${cell.description}`);
+        }
+        // Get comments for context on progress
+        const comments = await adapter.getComments(projectPath, cell.id);
+        if (comments.length > 0) {
+          const recent = comments.slice(-3);
+          contextLines.push("Recent notes:");
+          for (const comment of recent) {
+            contextLines.push(`- ${comment.body.slice(0, 200)}`);
+          }
+        }
+        contextLines.push("");
+      }
+    }
+
+    // Open epics with children status
+    const openEpics = await adapter.queryCells(projectPath, {
+      status: ["open", "in_progress"],
+      type: "epic",
+      limit: 5
+    });
+    if (openEpics.length > 0) {
+      contextLines.push("## Active Epics");
+      for (const epic of openEpics) {
+        const children = await adapter.getEpicChildren(projectPath, epic.id);
+        const completed = children.filter(c => c.status === "closed").length;
+        const inProgress = children.filter(c => c.status === "in_progress");
+        const open = children.filter(c => c.status === "open");
+
+        contextLines.push(`### ${epic.id}: ${epic.title}`);
+        contextLines.push(`Progress: ${completed}/${children.length} completed`);
+
+        if (inProgress.length > 0) {
+          contextLines.push("In progress:");
+          for (const c of inProgress) {
+            contextLines.push(`- ${c.id}: ${c.title}`);
+          }
+        }
+        if (open.length > 0 && open.length <= 5) {
+          contextLines.push("Remaining:");
+          for (const c of open) {
+            contextLines.push(`- ${c.id}: ${c.title}`);
+          }
+        } else if (open.length > 5) {
+          contextLines.push(`Remaining: ${open.length} tasks`);
+        }
+        contextLines.push("");
+      }
+    }
+
+    // Blocked cells (so Claude knows what's waiting)
+    const blockedCells = await adapter.getBlockedCells(projectPath);
+    if (blockedCells.length > 0) {
+      contextLines.push("## Blocked Work");
+      for (const { cell, blockers } of blockedCells.slice(0, 5)) {
+        contextLines.push(`- ${cell.id}: ${cell.title}`);
+        contextLines.push(`  Blocked by: ${blockers.join(", ")}`);
+      }
+      contextLines.push("");
+    }
+
+    // Ready cells (next work available)
+    const readyCell = await adapter.getNextReadyCell(projectPath);
+    if (readyCell) {
+      contextLines.push("## Next Ready Task");
+      contextLines.push(`${readyCell.id}: ${readyCell.title} (P${readyCell.priority})`);
+      contextLines.push("");
+    }
+
+    // Stats
+    const stats = await adapter.getCellsStats(projectPath);
+    contextLines.push("## Hive Stats");
+    contextLines.push(`Open: ${stats.open} | In Progress: ${stats.in_progress} | Blocked: ${stats.blocked} | Closed: ${stats.closed}`);
+
+    writeClaudeHookOutput("PreCompact", contextLines.join("\n"));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
   }
@@ -4052,11 +4270,100 @@ async function executeTool(toolName: string, argsJson?: string) {
 }
 
 /**
+ * Convert OpenCode plugin schema (Zod standard schema format) to JSON Schema
+ */
+function zodToJsonSchema(args: Record<string, unknown> | undefined): {
+  type: "object";
+  properties: Record<string, unknown>;
+  required?: string[];
+} {
+  if (!args) return { type: "object", properties: {} };
+
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+
+  for (const [key, schema] of Object.entries(args)) {
+    const s = schema as { type?: string; def?: { type?: string; innerType?: unknown; entries?: Record<string, string>; element?: unknown; shape?: Record<string, unknown> } };
+    const def = s.def;
+
+    // Handle optional wrapper
+    const isOptional = def?.type === "optional";
+    const innerSchema = isOptional ? (def?.innerType as typeof s) : s;
+    const innerDef = (innerSchema as typeof s).def;
+
+    if (!isOptional) {
+      required.push(key);
+    }
+
+    // Convert type
+    const schemaType = innerDef?.type || (innerSchema as typeof s).type;
+    switch (schemaType) {
+      case "string":
+        properties[key] = { type: "string" };
+        break;
+      case "number":
+        properties[key] = { type: "number" };
+        break;
+      case "boolean":
+        properties[key] = { type: "boolean" };
+        break;
+      case "enum":
+        properties[key] = {
+          type: "string",
+          enum: Object.keys(innerDef?.entries || {}),
+        };
+        break;
+      case "array": {
+        const element = innerDef?.element as typeof s | undefined;
+        const elementType = element?.def?.type || element?.type;
+        if (elementType === "object") {
+          properties[key] = {
+            type: "array",
+            items: zodToJsonSchema(element?.def?.shape as Record<string, unknown>),
+          };
+        } else {
+          properties[key] = {
+            type: "array",
+            items: { type: elementType || "string" },
+          };
+        }
+        break;
+      }
+      case "object":
+        properties[key] = zodToJsonSchema(innerDef?.shape as Record<string, unknown>);
+        break;
+      default:
+        properties[key] = { type: "string" }; // fallback
+    }
+  }
+
+  return {
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  };
+}
+
+/**
  * List all available tools
  */
-async function listTools() {
+async function listTools(jsonOutput = false) {
   // Static import at top of file
   const tools = Object.keys(allTools).sort();
+
+  // JSON output for MCP server discovery
+  if (jsonOutput) {
+    const toolList = tools.map((name) => {
+      const tool = allTools[name as keyof typeof allTools];
+      return {
+        name,
+        description: tool?.description || `Swarm tool: ${name}`,
+        inputSchema: zodToJsonSchema(tool?.args as Record<string, unknown> | undefined),
+      };
+    });
+    console.log(JSON.stringify(toolList));
+    return;
+  }
 
   console.log(yellow(BANNER));
   console.log(dim("  " + TAGLINE + " v" + VERSION));
@@ -4175,6 +4482,304 @@ Read the file, make the updates, and save it. Create a backup first.`;
   }
 
   p.outro("Done");
+}
+
+// ============================================================================
+// Backup Command - Rolling database backups
+// ============================================================================
+
+const BACKUP_DIR = join(homedir(), ".config", "swarm-tools", "backups");
+const SWARM_DB_PATH = join(homedir(), ".config", "swarm-tools", "swarm.db");
+
+interface BackupInfo {
+  path: string;
+  timestamp: Date;
+  size: number;
+  type: "hourly" | "daily" | "weekly" | "manual";
+}
+
+/**
+ * Get backup file path for a given type and timestamp
+ */
+function getBackupPath(type: "hourly" | "daily" | "weekly" | "manual", date: Date): string {
+  const dateStr = date.toISOString().slice(0, 10); // YYYY-MM-DD
+  const timeStr = date.toISOString().slice(11, 16).replace(":", ""); // HHMM
+  return join(BACKUP_DIR, `swarm-${type}-${dateStr}-${timeStr}.db`);
+}
+
+/**
+ * List all existing backups
+ */
+function listBackups(): BackupInfo[] {
+  if (!existsSync(BACKUP_DIR)) return [];
+
+  const files = readdirSync(BACKUP_DIR).filter(f => f.endsWith(".db"));
+  return files.map(f => {
+    const path = join(BACKUP_DIR, f);
+    const stat = statSync(path);
+    const type = f.includes("-hourly-") ? "hourly" :
+                 f.includes("-daily-") ? "daily" :
+                 f.includes("-weekly-") ? "weekly" : "manual";
+    return {
+      path,
+      timestamp: stat.mtime,
+      size: stat.size,
+      type: type as BackupInfo["type"],
+    };
+  }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+}
+
+/**
+ * Create a backup of the swarm database
+ */
+async function createBackup(type: "hourly" | "daily" | "weekly" | "manual" = "manual"): Promise<string | null> {
+  if (!existsSync(SWARM_DB_PATH)) {
+    console.error("No swarm.db found at", SWARM_DB_PATH);
+    return null;
+  }
+
+  // Ensure backup directory exists
+  if (!existsSync(BACKUP_DIR)) {
+    mkdirSync(BACKUP_DIR, { recursive: true });
+  }
+
+  const now = new Date();
+  const backupPath = getBackupPath(type, now);
+
+  // Copy the database (use sqlite3 backup command for consistency)
+  try {
+    execSync(`sqlite3 "${SWARM_DB_PATH}" ".backup '${backupPath}'"`, {
+      encoding: "utf-8",
+      timeout: 60000,
+    });
+
+    // Verify backup
+    const srcSize = statSync(SWARM_DB_PATH).size;
+    const dstSize = statSync(backupPath).size;
+
+    if (Math.abs(srcSize - dstSize) > 1024) { // Allow 1KB difference for WAL
+      console.error(`Backup size mismatch: source ${srcSize}, backup ${dstSize}`);
+      unlinkSync(backupPath);
+      return null;
+    }
+
+    return backupPath;
+  } catch (error) {
+    console.error("Backup failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Rotate old backups based on retention policy
+ * - Hourly: keep last 24
+ * - Daily: keep last 7
+ * - Weekly: keep last 4
+ * - Manual: keep last 10
+ */
+function rotateBackups(): { deleted: number; kept: number } {
+  const limits: Record<string, number> = {
+    hourly: 24,
+    daily: 7,
+    weekly: 4,
+    manual: 10,
+  };
+
+  const backups = listBackups();
+  const byType: Record<string, BackupInfo[]> = { hourly: [], daily: [], weekly: [], manual: [] };
+
+  for (const b of backups) {
+    byType[b.type].push(b);
+  }
+
+  let deleted = 0;
+  let kept = 0;
+
+  for (const [type, list] of Object.entries(byType)) {
+    const limit = limits[type] || 10;
+    const toKeep = list.slice(0, limit);
+    const toDelete = list.slice(limit);
+
+    kept += toKeep.length;
+
+    for (const b of toDelete) {
+      try {
+        unlinkSync(b.path);
+        deleted++;
+      } catch (error) {
+        console.error(`Failed to delete ${b.path}:`, error);
+      }
+    }
+  }
+
+  return { deleted, kept };
+}
+
+/**
+ * Verify backup integrity by opening and running a simple query
+ */
+async function verifyBackup(backupPath: string): Promise<boolean> {
+  try {
+    const result = execSync(`sqlite3 "${backupPath}" "SELECT COUNT(*) FROM events;"`, {
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+    return result.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Main backup command handler
+ */
+async function backup(action: string) {
+  switch (action) {
+    case "create": {
+      p.intro("swarm backup v" + VERSION);
+
+      const s = p.spinner();
+      s.start("Creating backup...");
+
+      const backupPath = await createBackup("manual");
+      if (backupPath) {
+        const size = statSync(backupPath).size;
+        s.stop(`Backup created: ${backupPath} (${(size / 1024).toFixed(1)} KB)`);
+
+        // Verify
+        s.start("Verifying backup...");
+        const valid = await verifyBackup(backupPath);
+        s.stop(valid ? "Backup verified ✓" : "Backup verification FAILED");
+
+        // Rotate
+        const { deleted, kept } = rotateBackups();
+        if (deleted > 0) {
+          p.log.info(`Rotated: kept ${kept} backups, deleted ${deleted} old backups`);
+        }
+      } else {
+        s.stop("Backup failed");
+      }
+
+      p.outro("Done");
+      break;
+    }
+
+    case "list": {
+      const backups = listBackups();
+      if (backups.length === 0) {
+        console.log("No backups found");
+        return;
+      }
+
+      console.log(`\n${cyan("Backups")} (${BACKUP_DIR}):\n`);
+
+      for (const b of backups) {
+        const age = Math.round((Date.now() - b.timestamp.getTime()) / 1000 / 60);
+        const ageStr = age < 60 ? `${age}m ago` : age < 1440 ? `${Math.round(age/60)}h ago` : `${Math.round(age/1440)}d ago`;
+        const sizeStr = `${(b.size / 1024).toFixed(1)} KB`;
+        console.log(`  ${dim(b.type.padEnd(8))} ${basename(b.path)} ${dim(`(${sizeStr}, ${ageStr})`)}`);
+      }
+      console.log("");
+      break;
+    }
+
+    case "rotate": {
+      const { deleted, kept } = rotateBackups();
+      console.log(`Rotated: kept ${kept} backups, deleted ${deleted} old backups`);
+      break;
+    }
+
+    case "verify": {
+      const backups = listBackups();
+      if (backups.length === 0) {
+        console.log("No backups to verify");
+        return;
+      }
+
+      console.log(`\nVerifying ${backups.length} backups...\n`);
+
+      let passed = 0;
+      let failed = 0;
+
+      for (const b of backups) {
+        const valid = await verifyBackup(b.path);
+        if (valid) {
+          console.log(`  ${green("✓")} ${basename(b.path)}`);
+          passed++;
+        } else {
+          console.log(`  ${red("✗")} ${basename(b.path)}`);
+          failed++;
+        }
+      }
+
+      console.log(`\n${passed} passed, ${failed} failed\n`);
+      break;
+    }
+
+    case "restore": {
+      const backupFile = process.argv[4];
+      if (!backupFile) {
+        console.error("Usage: swarm backup restore <backup-file>");
+        console.error("\nAvailable backups:");
+        const backups = listBackups();
+        for (const b of backups.slice(0, 5)) {
+          console.error(`  ${basename(b.path)}`);
+        }
+        return;
+      }
+
+      const backupPath = backupFile.startsWith("/") ? backupFile : join(BACKUP_DIR, backupFile);
+      if (!existsSync(backupPath)) {
+        console.error(`Backup not found: ${backupPath}`);
+        return;
+      }
+
+      // Verify before restore
+      const valid = await verifyBackup(backupPath);
+      if (!valid) {
+        console.error("Backup verification failed - aborting restore");
+        return;
+      }
+
+      // Create a backup of current db first
+      const preRestoreBackup = await createBackup("manual");
+      console.log(`Created pre-restore backup: ${preRestoreBackup}`);
+
+      // Restore
+      try {
+        copyFileSync(backupPath, SWARM_DB_PATH);
+        console.log(`Restored from: ${backupPath}`);
+      } catch (error) {
+        console.error("Restore failed:", error);
+      }
+      break;
+    }
+
+    case "help":
+    default:
+      console.log(`
+${cyan("swarm backup")} - Database backup management
+
+${bold("Commands:")}
+  create    Create a new backup (default)
+  list      List all backups
+  rotate    Rotate old backups based on retention policy
+  verify    Verify all backups are valid
+  restore   Restore from a backup file
+
+${bold("Retention Policy:")}
+  Hourly:  24 backups
+  Daily:   7 backups
+  Weekly:  4 backups
+  Manual:  10 backups
+
+${bold("Examples:")}
+  swarm backup                    # Create a manual backup
+  swarm backup list               # List all backups
+  swarm backup restore latest.db  # Restore from a backup
+`);
+      break;
+  }
 }
 
 // ============================================================================
@@ -6185,10 +6790,12 @@ async function evalRun() {
 // ============================================================================
 
 /**
- * Start the MCP server over stdio (debug only).
+ * Start the MCP server over stdio.
+ * When run non-interactively (piped stdin), runs silently for MCP protocol.
+ * When run interactively (TTY), shows debug output.
  */
 async function mcpServe() {
-  p.intro("swarm mcp-serve");
+  const isInteractive = process.stdin.isTTY;
 
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || getClaudePluginRoot();
   const candidates = [
@@ -6198,15 +6805,22 @@ async function mcpServe() {
   const serverPath = candidates.find((path) => existsSync(path));
 
   if (!serverPath) {
-    p.log.error("MCP server entrypoint not found");
-    p.log.message(dim(`  Looked for: ${candidates.join(", ")}`));
-    p.log.message(dim("  Claude Code auto-launches MCP via .mcp.json; use for debugging only"));
-    p.outro("Aborted");
+    if (isInteractive) {
+      p.intro("swarm mcp-serve");
+      p.log.error("MCP server entrypoint not found");
+      p.log.message(dim(`  Looked for: ${candidates.join(", ")}`));
+      p.outro("Aborted");
+    } else {
+      console.error("[swarm-mcp] Server entrypoint not found");
+    }
     process.exit(1);
   }
 
-  p.log.step("Starting MCP server...");
-  p.log.message(dim(`  Using: ${serverPath}`));
+  if (isInteractive) {
+    p.intro("swarm mcp-serve");
+    p.log.step("Starting MCP server...");
+    p.log.message(dim(`  Using: ${serverPath}`));
+  }
 
   const proc = spawn("bun", ["run", serverPath], { stdio: "inherit" });
   proc.on("close", (exitCode) => {
@@ -6777,7 +7391,8 @@ switch (command) {
   case "tool": {
     const toolName = process.argv[3];
     if (!toolName || toolName === "--list" || toolName === "-l") {
-      await listTools();
+      const jsonOutput = process.argv.includes("--json");
+      await listTools(jsonOutput);
     } else {
       // Look for --json flag
       const jsonFlagIndex = process.argv.indexOf("--json");
@@ -6795,6 +7410,11 @@ switch (command) {
   case "migrate":
     await migrate();
     break;
+  case "backup": {
+    const backupAction = process.argv[3] || "create";
+    await backup(backupAction);
+    break;
+  }
   case "db":
     await db();
     break;

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { existsSync } from "fs";
@@ -19,20 +19,71 @@ type ToolDefinition = {
 };
 
 /**
+ * Get the plugin root directory at runtime.
+ *
+ * Claude Code sets cwd to ${CLAUDE_PLUGIN_ROOT} when launching MCP servers,
+ * so process.cwd() gives us the plugin root. The bin/ folder is one level down,
+ * so the dist/ folder is a sibling of bin/.
+ *
+ * For dev/test usage, we fall back to stack trace parsing or env var.
+ */
+function getPluginRoot(): string {
+  // Prefer explicit env var if set (useful for testing)
+  if (process.env.CLAUDE_PLUGIN_ROOT) {
+    return process.env.CLAUDE_PLUGIN_ROOT;
+  }
+
+  // Claude Code sets cwd to plugin root when launching MCP servers
+  // Check if dist/index.js exists at cwd - if so, we're running from plugin root
+  const cwdDistPath = resolve(process.cwd(), "dist/index.js");
+  if (existsSync(cwdDistPath)) {
+    return process.cwd();
+  }
+
+  // Fallback: try to find the plugin root relative to the script location
+  // Use Error.stack to get actual runtime path (bundler can't inline this)
+  const err = new Error();
+  const stack = err.stack || "";
+  const match = stack.match(/at\s+(?:Object\.<anonymous>|Module\._compile)\s+\(([^:]+)/);
+  if (match) {
+    // Script is in bin/, plugin root is parent
+    const scriptDir = dirname(match[1]);
+    const pluginRoot = resolve(scriptDir, "..");
+    if (existsSync(resolve(pluginRoot, "dist/index.js"))) {
+      return pluginRoot;
+    }
+  }
+
+  // Last resort: try require.main.filename
+  if (typeof require !== "undefined" && require.main?.filename) {
+    const pluginRoot = resolve(dirname(require.main.filename), "..");
+    if (existsSync(resolve(pluginRoot, "dist/index.js"))) {
+      return pluginRoot;
+    }
+  }
+
+  throw new Error(
+    "[swarm-mcp] Cannot determine plugin root. Set CLAUDE_PLUGIN_ROOT env var or run from plugin directory."
+  );
+}
+
+/**
  * Resolve the tool registry entrypoint for the MCP server.
  */
 export function resolveToolRegistryPath({
-  currentDir = dirname(fileURLToPath(import.meta.url)),
+  pluginRoot,
 }: {
-  currentDir?: string;
+  pluginRoot?: string;
 } = {}): string {
-  const pluginDistPath = resolve(currentDir, "../dist/index.js");
+  const root = pluginRoot ?? getPluginRoot();
+  const pluginDistPath = resolve(root, "dist/index.js");
 
   if (existsSync(pluginDistPath)) {
     return pluginDistPath;
   }
 
-  const sourcePath = resolve(currentDir, "../../src/index.ts");
+  // Dev fallback: try src/index.ts relative to package root
+  const sourcePath = resolve(root, "../src/index.ts");
   if (existsSync(sourcePath)) {
     return sourcePath;
   }
@@ -140,7 +191,12 @@ async function main(): Promise<void> {
   console.error("[swarm-mcp] Server started");
 }
 
-if (import.meta.main) {
+// Support both ESM (import.meta.main) and CJS (require.main === module)
+const isMain = typeof require !== "undefined"
+  ? require.main === module
+  : import.meta.main;
+
+if (isMain) {
   main().catch((error) => {
     console.error("[swarm-mcp] Server failed", error);
     process.exit(1);

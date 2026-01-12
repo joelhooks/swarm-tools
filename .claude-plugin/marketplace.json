@@ -9,9 +9,9 @@
   "plugins": [
     {
       "name": "swarm",
-      "source": "./packages/opencode-swarm-plugin/claude-plugin",
-      "description": "Multi-agent task decomposition and coordination for Claude Code",
-      "version": "0.1.0",
+      "source": "./packages/claude-code-swarm-plugin",
+      "description": "Multi-agent coordination for Claude Code (delegates to swarm CLI)",
+      "version": "0.57.5",
       "author": {
         "name": "Joel Hooks"
       }

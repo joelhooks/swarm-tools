@@ -47,7 +47,30 @@ That's it. The coordinator breaks the task into pieces, spawns parallel workers,
 
 ## Claude Code Plugin
 
-Install from the Claude Code marketplace:
+### Option 1: Custom GitHub Marketplace (Recommended)
+
+Add this repo as a plugin marketplace, then install the swarm plugin via the Claude Code UI:
+
+1. **Add the custom marketplace:**
+   ```
+   /plugin
+   ```
+   Navigate: **Manage marketplaces** → **Add marketplace** → Enter: `joelhooks/opencode-swarm-plugin`
+
+2. **Install the swarm plugin:**
+   ```
+   /plugin
+   ```
+   Navigate: **Manage plugins** → Select the `opencode-swarm-plugin` marketplace → Select **swarm** → **Install**
+
+**What happens:**
+- Claude Code clones the repo to `~/.claude/plugins/`
+- The plugin manifest at `.claude-plugin/marketplace.json` registers the plugin
+- MCP server (`swarm-mcp-server.cjs`) starts automatically when Claude Code launches
+
+### Option 2: Official Marketplace
+
+If available in the official marketplace:
 
 ```
 /plugin
@@ -55,23 +78,20 @@ Install from the Claude Code marketplace:
 
 Then pick **Marketplace → opencode-swarm-plugin → Install**.
 
-**GitHub marketplace (this repo):**
-
-```
-/plugin marketplace add joelhooks/swarm-tools
-/plugin install swarm@swarm-tools
-```
-
-**Global install (npm):**
+### Option 3: Global npm Install
 
 ```bash
-# After `npm install -g opencode-swarm-plugin`
+# Install globally
+npm install -g opencode-swarm-plugin@latest
+
+# Register with Claude Code
 swarm claude install
 ```
 
-**Project-local config (standalone):**
+### Option 4: Project-local Config
 
 ```bash
+# Initialize plugin config in current project
 swarm claude init
 ```
 

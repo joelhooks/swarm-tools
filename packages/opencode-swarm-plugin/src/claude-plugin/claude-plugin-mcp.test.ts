@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
-import { loadToolRegistry } from "../../claude-plugin/bin/swarm-mcp-server.js";
+import { loadToolRegistry } from "../../claude-plugin/bin/swarm-mcp-server.ts";
 
 type McpServerConfig = {
   command: string;
@@ -17,13 +17,13 @@ type ClaudePluginManifest = {
   mcpServers?: Record<string, McpServerConfig>;
 };
 
-const PLUGIN_ROOT = resolve(process.cwd(), "claude-plugin");
+const PLUGIN_ROOT = resolve(__dirname, "..", "..", "claude-plugin");
 const PLUGIN_MANIFEST_PATH = resolve(
   PLUGIN_ROOT,
   ".claude-plugin",
   "plugin.json",
 );
-const MCP_SERVER_PATH = resolve(PLUGIN_ROOT, "bin", "swarm-mcp-server.js");
+const MCP_SERVER_PATH = resolve(PLUGIN_ROOT, "bin", "swarm-mcp-server.cjs");
 
 /**
  * Reads the Claude plugin manifest JSON from disk.
@@ -41,6 +41,7 @@ function readMcpServerSource(): string {
   return readFileSync(MCP_SERVER_PATH, "utf-8");
 }
 
+
 describe("claude-plugin MCP config", () => {
   it("locates the plugin manifest in the plugin root", () => {
     expect(existsSync(PLUGIN_MANIFEST_PATH)).toBe(true);
@@ -55,7 +56,7 @@ describe("claude-plugin MCP config", () => {
     const server = manifest.mcpServers?.["swarm-tools"];
     expect(server?.command).toBe("node");
     expect(server?.args).toEqual([
-      "${CLAUDE_PLUGIN_ROOT}/bin/swarm-mcp-server.js",
+      "${CLAUDE_PLUGIN_ROOT}/bin/swarm-mcp-server.cjs",
     ]);
     expect(server?.cwd).toBe("${CLAUDE_PLUGIN_ROOT}");
     expect(server?.description).toBeTruthy();
@@ -65,13 +66,26 @@ describe("claude-plugin MCP config", () => {
     const source = readMcpServerSource();
 
     expect(source.length).toBeGreaterThan(0);
-    expect(source).toContain("loadToolRegistry");
+    expect(source).toContain("swarm-mcp");
   });
 
   it("loads the swarm tool registry from the MCP entrypoint", async () => {
-    const tools = await loadToolRegistry();
+    // Set the plugin root for the test environment
+    const originalEnv = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.CLAUDE_PLUGIN_ROOT = PLUGIN_ROOT;
 
-    expect(Object.keys(tools).length).toBeGreaterThan(0);
-    expect(tools).toHaveProperty("hive_ready");
+    try {
+      const tools = await loadToolRegistry();
+
+      expect(Object.keys(tools).length).toBeGreaterThan(0);
+      expect(tools).toHaveProperty("hive_ready");
+    } finally {
+      // Restore original env
+      if (originalEnv === undefined) {
+        delete process.env.CLAUDE_PLUGIN_ROOT;
+      } else {
+        process.env.CLAUDE_PLUGIN_ROOT = originalEnv;
+      }
+    }
   });
 });

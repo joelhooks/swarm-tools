@@ -1,16 +1,23 @@
 {
   "name": "swarm",
   "description": "Multi-agent task decomposition and coordination for Claude Code",
-  "version": "0.1.0",
+  "version": "0.57.5",
   "author": {
     "name": "Joel Hooks"
   },
   "repository": "https://github.com/joelhooks/opencode-swarm-plugin",
-  "keywords": ["multi-agent", "coordination", "tasks", "parallel"],
+  "keywords": [
+    "multi-agent",
+    "coordination",
+    "tasks",
+    "parallel"
+  ],
   "mcpServers": {
     "swarm-tools": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/swarm-mcp-server.js"],
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/bin/swarm-mcp-server.cjs"
+      ],
       "cwd": "${CLAUDE_PLUGIN_ROOT}",
       "description": "Swarm multi-agent coordination tools"
     }

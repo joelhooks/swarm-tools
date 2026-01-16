@@ -40,7 +40,10 @@ import { tool } from "@opencode-ai/plugin";
 import { spawn } from "child_process";
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir, platform } from "node:os";
+
+// Platform detection for Windows compatibility
+const isWindows = platform() === "win32";
 
 // =============================================================================
 // Swarm Signature Detection (INLINED - do not import from opencode-swarm-plugin)
@@ -304,7 +307,9 @@ function getSwarmSummary(projection: SwarmProjection): string {
 // Constants
 // =============================================================================
 
-const SWARM_CLI = "swarm";
+// On Windows, use .cmd extension to avoid shell escaping issues with JSON args
+const SWARM_CLI = isWindows ? "swarm.cmd" : "swarm";
+const OPENCODE_CLI = isWindows ? "opencode.cmd" : "opencode";
 
 // =============================================================================
 // File-based Logging (writes to ~/.config/swarm-tools/logs/)
@@ -2058,7 +2063,7 @@ Keep the prompt concise but actionable. Use actual data from the snapshot, not p
     const llmStart = Date.now();
     const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
       (resolve, reject) => {
-        const proc = spawn("opencode", ["run", "-m", liteModel, "--", promptText], {
+        const proc = spawn(OPENCODE_CLI, ["run", "-m", liteModel, "--", promptText], {
           cwd: projectDirectory,
           stdio: ["ignore", "pipe", "pipe"],
           timeout: 30000, // 30 second timeout

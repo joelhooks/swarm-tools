@@ -32,7 +32,7 @@
   "license": "MIT",
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node --external @libsql/client --external @electric-sql/pglite && bunx tsc",
-    "test": "bun test --timeout 60000 src/",
+    "test": "bun test --timeout 60000 ./src/**/*.test.ts --exclude ./src/**/*.integration.test.ts",
     "test:integration": "bun test src/*.integration.test.ts src/**/*.integration.test.ts --timeout 120000",
     "test:all": "bun test src/ --timeout 120000",
     "typecheck": "bunx tsc --noEmit"

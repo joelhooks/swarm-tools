@@ -488,3 +488,52 @@ export async function getDecisionTracesByType(
     return [];
   }
 }
+
+// ============================================================================
+// Outcome Linking
+// ============================================================================
+
+/**
+ * Input for linking an outcome to a decision trace
+ */
+export interface LinkOutcomeInput {
+  projectKey: string;
+  beadId: string;
+  outcomeEventId: number;
+}
+
+/**
+ * Link an outcome event to its decision trace and calculate quality score.
+ *
+ * Finds the most recent decision trace for the bead and links the outcome
+ * event to it, triggering quality score calculation.
+ *
+ * @param input - Outcome linking details
+ * @returns true if linked successfully, false if no trace found or error
+ */
+export async function linkOutcomeToDecisionTrace(
+  input: LinkOutcomeInput,
+): Promise<boolean> {
+  try {
+    const { findDecisionTraceByBead, linkOutcomeToTrace } = await import("swarm-mail");
+    const db = await getTraceDb(input.projectKey);
+
+    // Find the decision trace for this bead
+    const trace = await findDecisionTraceByBead(db, input.beadId);
+
+    if (!trace) {
+      // No trace found - this is normal for tasks without decision traces
+      await db.close?.();
+      return false;
+    }
+
+    // Link the outcome and calculate quality score
+    await linkOutcomeToTrace(db, trace.id, input.outcomeEventId);
+
+    await db.close?.();
+    return true;
+  } catch (error) {
+    console.warn("[decision-trace] Failed to link outcome to trace:", error);
+    return false;
+  }
+}

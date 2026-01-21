@@ -1572,6 +1572,7 @@ This will be recorded as a negative learning signal.`;
         ? args.bead_id.split(".")[0]
         : args.bead_id);
 
+      let outcomeEventId: number | undefined;
       try {
         const event = createEvent("subtask_outcome", {
           project_key: args.project_key,
@@ -1586,13 +1587,32 @@ This will be recorded as a negative learning signal.`;
           scope_violation: contractValidation ? !contractValidation.valid : undefined,
           violation_files: contractValidation?.violations,
         });
-        await appendEvent(event, args.project_key);
+        const savedEvent = await appendEvent(event, args.project_key);
+        outcomeEventId = savedEvent.id;
       } catch (error) {
         // Non-fatal - log and continue
         console.warn(
           "[swarm_complete] Failed to emit SubtaskOutcomeEvent:",
           error,
         );
+      }
+
+      // Link outcome to decision trace for quality scoring
+      if (outcomeEventId) {
+        try {
+          const { linkOutcomeToDecisionTrace } = await import("./decision-trace-integration.js");
+          await linkOutcomeToDecisionTrace({
+            projectKey: args.project_key,
+            beadId: args.bead_id,
+            outcomeEventId,
+          });
+        } catch (error) {
+          // Non-fatal - log and continue
+          console.warn(
+            "[swarm_complete] Failed to link outcome to decision trace:",
+            error,
+          );
+        }
       }
 
       // Emit worker_completed event for dashboard observability

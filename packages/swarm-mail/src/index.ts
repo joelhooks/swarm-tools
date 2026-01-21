@@ -135,6 +135,7 @@ export {
 // Decision trace store for observability
 export {
 	createDecisionTrace,
+	findDecisionTraceByBead,
 	getDecisionTracesByAgent,
 	getDecisionTracesByEpic,
 	getDecisionTracesByType,

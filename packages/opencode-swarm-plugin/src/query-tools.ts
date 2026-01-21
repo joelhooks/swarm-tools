@@ -282,35 +282,33 @@ export async function executePresetQuery(
 /**
  * Execute custom SQL query (CLI wrapper).
  * Creates database adapter automatically.
- * 
+ *
  * @param projectPath - Project path (unused, queries global database)
  * @param sql - SQL query string
- * @returns Raw rows array for CLI formatting
+ * @returns QueryResult for CLI formatting
  */
 export async function executeQueryCLI(
 	projectPath: string,
 	sql: string,
-): Promise<any[]> {
+): Promise<QueryResult> {
 	const db = await createDbAdapter();
-	const result = await executeQuery(db, sql);
-	return result.rows;
+	return executeQuery(db, sql);
 }
 
 /**
  * Execute a preset query by name (CLI wrapper).
  * Creates database adapter automatically.
- * 
+ *
  * @param projectPath - Project path (unused, queries global database)
  * @param presetName - Name of the preset query
- * @returns Raw rows array for CLI formatting
+ * @returns QueryResult for CLI formatting
  */
 export async function executePreset(
 	projectPath: string,
 	presetName: string,
-): Promise<any[]> {
+): Promise<QueryResult> {
 	const db = await createDbAdapter();
-	const result = await executePresetQuery(db, presetName);
-	return result.rows;
+	return executePresetQuery(db, presetName);
 }
 
 // ============================================================================

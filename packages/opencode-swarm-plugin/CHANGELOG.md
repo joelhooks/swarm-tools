@@ -1,5 +1,25 @@
 # opencode-swarm-plugin
 
+## 0.59.0
+
+### Minor Changes
+
+- [`8badfe8`](https://github.com/joelhooks/swarm-tools/commit/8badfe8a13324f278b22e35891590f2e84c9cd0e) Thanks [@joelhooks](https://github.com/joelhooks)! - feat(observability): wire linkOutcomeToTrace for quality_score population
+
+  When workers complete via swarm_complete, the outcome event is now linked
+  back to its decision trace, enabling quality_score calculation. This fixes
+  the 0% success rate previously shown in `swarm stats` and `swarm o11y`.
+
+  New functions:
+
+  - `findDecisionTraceByBead()` - look up decision traces by bead ID
+  - `linkOutcomeToDecisionTrace()` - helper to link outcomes to traces
+
+### Patch Changes
+
+- Updated dependencies [[`8badfe8`](https://github.com/joelhooks/swarm-tools/commit/8badfe8a13324f278b22e35891590f2e84c9cd0e)]:
+  - swarm-mail@1.10.3
+
 ## 0.58.4
 
 ### Patch Changes

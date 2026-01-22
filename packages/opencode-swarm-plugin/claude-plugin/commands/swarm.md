@@ -373,6 +373,100 @@ Task(
 **✅ GOOD:** Spawned all 5 workers in single message → parallel execution
 **❌ BAD:** Spawned workers one-by-one → sequential, slow
 
+### 6.5. Custom Prompts: MANDATORY Sections
+
+> **⚠️ If you write custom prompts instead of using `swarm_spawn_subtask`, they MUST include hivemind steps.**
+
+**Why?** Workers that skip hivemind waste time rediscovering solved problems and lose learnings for future agents.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│         CUSTOM PROMPT CHECKLIST (NON-NEGOTIABLE)            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ✅ [PRIOR LEARNINGS] section with hivemind_find queries    │
+│  ✅ hivemind_find as step 1-2 in MANDATORY STEPS            │
+│  ✅ hivemind_store before completion                        │
+│  ✅ swarmmail_init as first action                          │
+│  ✅ swarm_complete (not hive_close) to finish               │
+│                                                             │
+│  Missing any of these? Your workers will:                   │
+│  - Repeat mistakes from last week                           │
+│  - Lose discoveries that took 30+ min to find               │
+│  - Start from zero every time                               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Minimal Custom Prompt Template:**
+
+```markdown
+You are a swarm agent working on: **{task_title}**
+
+[IDENTITY]
+Agent: {agent_name}
+Cell: {bead_id}
+Epic: {epic_id}
+
+[TASK]
+{task_description}
+
+[CONTEXT]
+{shared_context_from_coordinator}
+
+[PRIOR LEARNINGS - QUERY THESE FIRST]
+Before starting work, check what past agents learned:
+- hivemind_find(query="{task keywords}", limit=5)
+- hivemind_find(query="{technology/domain} gotchas", limit=3)
+
+Use findings to avoid known pitfalls and apply proven patterns.
+
+[MANDATORY STEPS]
+1. swarmmail_init(project_path="{project_path}", agent_name="{agent_name}", task_description="{bead_id}: {task_title}")
+2. hivemind_find - query for relevant prior learnings (see above)
+3. {your actual task steps here}
+4. hivemind_store - if you discovered something valuable, STORE IT:
+   hivemind_store(information="<what you learned>", tags="{domain},{tech}")
+5. swarmmail_send(to=["coordinator"], subject="{completion subject}", body="{findings}")
+6. swarm_complete(project_key="{project_path}", agent_name="{agent_name}", bead_id="{bead_id}", summary="...", files_touched=[])
+
+[STORE YOUR LEARNINGS]
+If you discovered any of these, STORE them before completing:
+- 🐛 Tricky bugs (>15min to solve)
+- 💡 Project-specific patterns
+- ⚠️ Tool/library gotchas
+- 🚫 Approaches that failed
+- 🏗️ Architectural decisions
+```
+
+**Example: Research Task (Fixed)**
+
+Before (missing hivemind):
+```
+[MANDATORY STEPS]
+1. swarmmail_init(...)
+2. Search for patterns...
+3. Document findings...
+4. swarmmail_send(...)
+5. swarm_complete(...)
+```
+
+After (with hivemind):
+```
+[PRIOR LEARNINGS]
+- hivemind_find(query="client bundle hydration RSC", limit=5)
+- hivemind_find(query="course-builder performance patterns", limit=3)
+
+[MANDATORY STEPS]
+1. swarmmail_init(...)
+2. hivemind_find - check for prior learnings about this task
+3. Search for patterns...
+4. Document findings...
+5. hivemind_store - store discoveries for future agents
+6. swarmmail_send(...)
+7. swarm_complete(...)
+```
+
 ### 7. Monitor Inbox (MANDATORY - unless --no-sync)
 
 > **⚠️ CRITICAL: Active monitoring is NOT optional.**
@@ -559,6 +653,7 @@ Not: Do Everything Inline → Run Out of Context → Fail
 - [ ] CellTree validated (no file conflicts)
 - [ ] Epic + subtasks created
 - [ ] **Coordinator did NOT reserve files** (workers do this)
+- [ ] **Custom prompts include hivemind steps** (see 6.5)
 - [ ] **Workers spawned in parallel** (single message, multiple Task calls)
 - [ ] **Inbox monitored every 5-10 min**
 - [ ] **All workers reviewed** with swarm_review

@@ -368,6 +368,27 @@ swarmmail_reserve(
 
 **Workers reserve their own files.** This prevents edit conflicts with other agents.
 
+### ⚠️ CRITICAL: File Path Handling (Next.js/Special Characters)
+
+**DO NOT escape brackets or parentheses in file paths!**
+
+When working with Next.js App Router or any codebase with special characters in paths:
+
+❌ **WRONG** (will fail):
+\`\`\`
+Read: app/\\(content\\)/events/\\[slug\\]/page.tsx
+Glob: src/**/\\[id\\]/**/*.ts
+\`\`\`
+
+✅ **CORRECT** (use raw paths):
+\`\`\`
+Read: app/(content)/events/[slug]/page.tsx
+Glob: src/**/[id]/**/*.ts
+\`\`\`
+
+**The Read and Glob tools handle special characters automatically.**
+Never add backslashes before \`[\`, \`]\`, \`(\`, or \`)\` in file paths.
+
 ### Step 5: Do the Work (TDD MANDATORY)
 
 **Follow RED → GREEN → REFACTOR. No exceptions.**

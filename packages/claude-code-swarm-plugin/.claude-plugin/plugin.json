@@ -1,7 +1,7 @@
 {
   "name": "swarm",
   "description": "Multi-agent task decomposition and coordination for Claude Code",
-  "version": "0.59.2",
+  "version": "0.59.3",
   "author": {
     "name": "Joel Hooks"
   },

@@ -1,5 +1,13 @@
 # swarm-mail
 
+## 1.10.4
+
+### Patch Changes
+
+- fix(store): add defensive null check in ftsSearch for invalid query
+  - Returns empty array instead of crashing on undefined/null query
+  - Last line of defense for hivemind_find TypeError bug
+
 ## 1.10.3
 
 ### Patch Changes

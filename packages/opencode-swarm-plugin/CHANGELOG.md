@@ -1,5 +1,44 @@
 # opencode-swarm-plugin
 
+## 0.59.5
+
+### Patch Changes
+
+- fix(hivemind): add input validation for hivemind_find query parameter
+
+  Fixes TypeError when Claude calls hivemind_find with empty input `{}`.
+
+  **Defense in depth:**
+  - hivemind-tools.ts: Early validation returns user-friendly error JSON
+  - memory.ts: Throws at adapter boundary (fail fast)
+  - store.ts: Returns empty array (graceful degradation)
+
+  Added 3 test cases for missing/empty/whitespace query parameters.
+
+## 0.59.4
+
+### Patch Changes
+
+- docs(swarm): add mandatory hivemind steps for custom worker prompts
+  - Added section 6.5 "Custom Prompts: MANDATORY Sections"
+  - Custom prompts must include hivemind_find queries and hivemind_store steps
+
+## 0.59.3
+
+### Patch Changes
+
+- feat(swarm): require user confirmation for branch/PR creation
+  - Step 3: Confirm feature branch creation
+  - Step 11: Confirm PR creation
+
+## 0.59.2
+
+### Patch Changes
+
+- fix(swarmmail): auto-normalize escaped paths in reserve/release tools
+  - LLMs escaping `[slug]` and `(content)` now auto-corrected
+  - Added worker prompt guidance about Next.js path handling
+
 ## 0.59.1
 
 ### Patch Changes

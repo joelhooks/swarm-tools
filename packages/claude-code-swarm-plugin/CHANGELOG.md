@@ -1,5 +1,31 @@
 # claude-code-swarm-plugin
 
+## 0.59.5
+
+### Patch Changes
+
+- fix(swarmmail): auto-normalize escaped paths in reserve/release tools
+- feat(swarm): require user confirmation for branch/PR creation
+- Sync with opencode-swarm-plugin 0.59.5
+
+## 0.59.4
+
+### Patch Changes
+
+- docs(swarm): add mandatory hivemind steps for custom worker prompts
+
+## 0.59.3
+
+### Patch Changes
+
+- feat(swarm): require user confirmation for branch/PR creation
+
+## 0.59.2
+
+### Patch Changes
+
+- fix(swarmmail): auto-normalize escaped paths in reserve/release tools
+
 ## 0.58.5
 
 ### Patch Changes

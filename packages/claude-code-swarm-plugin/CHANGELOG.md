@@ -1,5 +1,19 @@
 # claude-code-swarm-plugin
 
+## 0.58.5
+
+### Patch Changes
+
+- docs(swarm): comprehensive coordinator instructions with mandatory hivemind usage
+
+  - Added visual boxes for GOOD/BAD coordinator behavior patterns
+  - FORBIDDEN EXCUSES box prevents "too small for swarm" refusals
+  - Mandatory hivemind_find before decomposition, hivemind_store after
+  - Context preservation rules (delegate planning to subagent)
+  - Inbox monitoring every 5-10 min requirement
+  - ASCII art session summary required
+  - Planning modes: --fast, --auto, --confirm-only
+
 ## 0.58.4
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # opencode-swarm-plugin
 
+## 0.59.1
+
+### Patch Changes
+
+- docs(swarm): comprehensive coordinator instructions with mandatory hivemind usage
+
+  - Added visual boxes for GOOD/BAD coordinator behavior patterns
+  - FORBIDDEN EXCUSES box prevents "too small for swarm" refusals
+  - Mandatory hivemind_find before decomposition, hivemind_store after
+  - Context preservation rules (delegate planning to subagent)
+  - Inbox monitoring every 5-10 min requirement
+  - ASCII art session summary required
+  - Planning modes: --fast, --auto, --confirm-only
+
 ## 0.59.0
 
 ### Minor Changes

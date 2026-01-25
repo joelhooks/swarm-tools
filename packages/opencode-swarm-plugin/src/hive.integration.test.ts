@@ -336,6 +336,36 @@ describe("beads integration", () => {
       expect(closedBead!.status).toBe("closed");
     });
 
+    it("closes a bead with result and stores it", async () => {
+      // Create a fresh bead to close with a result
+      const createResult = await hive_create.execute(
+        { title: "Bead with result" },
+        mockContext,
+      );
+      const created = parseResponse<Bead>(createResult);
+
+      const result = await hive_close.execute(
+        {
+          id: created.id,
+          reason: "Task completed",
+          result: "Implemented the feature with full test coverage. Added 3 new endpoints and updated the schema.",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Closed");
+      expect(result).toContain(created.id);
+
+      // Verify the result is stored on the cell
+      const closedBead = await adapter.getCell(TEST_PROJECT_KEY, created.id);
+      expect(closedBead).toBeDefined();
+      expect(closedBead!.status).toBe("closed");
+      expect(closedBead!.result).toBe(
+        "Implemented the feature with full test coverage. Added 3 new endpoints and updated the schema.",
+      );
+      expect(closedBead!.result_at).toBeGreaterThan(0);
+    });
+
     it("throws BeadError for invalid bead ID", async () => {
       await expect(
         hive_close.execute(

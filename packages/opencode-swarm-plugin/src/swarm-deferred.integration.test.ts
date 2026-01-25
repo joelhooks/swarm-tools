@@ -11,7 +11,7 @@ import type { SwarmMailAdapter } from "../../swarm-mail/src/adapter";
 import type { HiveAdapter } from "../../swarm-mail/src/hive/adapter";
 import { createInMemorySwarmMailLibSQL } from "../../swarm-mail/src/libsql.convenience";
 import { createHiveAdapter } from "../../swarm-mail/src/hive/adapter";
-import { beadsMigrationLibSQL, cellsViewMigrationLibSQL } from "../../swarm-mail/src/hive/migrations";
+import { beadsMigrationLibSQL, cellsViewMigrationLibSQL, beadsResultColumnsMigrationLibSQL } from "../../swarm-mail/src/hive/migrations";
 import { DurableDeferred, DurableDeferredLive } from "../../swarm-mail/src/streams/effect/deferred";
 import { swarm_complete } from "./swarm-orchestrate";
 
@@ -30,6 +30,7 @@ describe("swarm_complete DurableDeferred integration", () => {
     // Run hive migrations to create beads tables
     await db.exec(beadsMigrationLibSQL.up);
     await db.exec(cellsViewMigrationLibSQL.up);
+    await db.exec(beadsResultColumnsMigrationLibSQL.up);
 
     // Register test agent using swarm-mail adapter
     await swarmMail.registerAgent(projectKey, "TestWorker");

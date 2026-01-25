@@ -61,6 +61,8 @@ export interface Cell {
   deleted_by: string | null;
   delete_reason: string | null;
   created_by: string | null;
+  result: string | null;
+  result_at: number | null;
 }
 
 /**
@@ -176,6 +178,8 @@ export interface CellAdapter {
       closed_by?: string;
       files_touched?: string[];
       duration_ms?: number;
+      /** Implementation summary (what was actually done, like a PR description) */
+      result?: string;
     },
     projectPath?: string,
   ): Promise<Cell>;

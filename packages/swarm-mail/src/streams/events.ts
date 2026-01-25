@@ -250,6 +250,12 @@ export const SubtaskOutcomeEventSchema = BaseEventSchema.extend({
   scope_violation: z.boolean().optional(),
   /** Files that violated the contract */
   violation_files: z.array(z.string()).optional(),
+  /** Git commit info linked to this completion */
+  commit: z.object({
+    sha: z.string().optional(),
+    message: z.string().optional(),
+    branch: z.string().optional(),
+  }).optional(),
 });
 
 export const HumanFeedbackEventSchema = BaseEventSchema.extend({

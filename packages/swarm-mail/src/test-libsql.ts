@@ -369,6 +369,8 @@ export async function createTestLibSQLDb(): Promise<{
       deleted_by TEXT,
       delete_reason TEXT,
       created_by TEXT,
+      result TEXT,
+      result_at INTEGER,
       CHECK ((status = 'closed') = (closed_at IS NOT NULL)),
       FOREIGN KEY (parent_id) REFERENCES beads(id) ON DELETE SET NULL
     )
@@ -483,7 +485,8 @@ export async function createTestLibSQLDb(): Promise<{
         NEW.id, NEW.project_key, NEW.type, NEW.status, NEW.title,
         NEW.description, NEW.priority, NEW.parent_id, NEW.assignee,
         NEW.created_at, NEW.updated_at, NEW.closed_at, NEW.closed_reason,
-        NEW.deleted_at, NEW.deleted_by, NEW.delete_reason, NEW.created_by
+        NEW.deleted_at, NEW.deleted_by, NEW.delete_reason, NEW.created_by,
+        NEW.result, NEW.result_at
       );
     END
   `);

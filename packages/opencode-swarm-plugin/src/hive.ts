@@ -1108,6 +1108,7 @@ export const hive_close = tool({
   args: {
     id: tool.schema.string().describe("Cell ID or partial hash"),
     reason: tool.schema.string().describe("Completion reason"),
+    result: tool.schema.string().optional().describe("Implementation summary - what was actually done (like a PR description)"),
   },
   async execute(args, ctx) {
     const validated = CellCloseArgsSchema.parse(args);
@@ -1126,6 +1127,7 @@ export const hive_close = tool({
         projectKey,
         cellId,
         validated.reason,
+        validated.result ? { result: validated.result } : undefined,
       );
 
       await adapter.markDirty(projectKey, cellId);

@@ -13,14 +13,16 @@
 
 import * as p from "@clack/prompts";
 import { getSwarmMailLibSQL, createHiveAdapter } from "swarm-mail";
-import type { Cell } from "swarm-mail";
+import type { Cell, HiveAdapter } from "swarm-mail";
 import {
   buildTreeStructure,
   renderTree,
+  ansi,
+  type BlockerMap,
+  type TreeRenderOptions,
 } from "../../src/utils/tree-renderer.js";
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 
 export interface TreeOptions {
   status?: string;
@@ -47,6 +49,33 @@ export function parseTreeArgs(args: string[]): TreeOptions {
   }
 
   return options;
+}
+
+/**
+ * Build blocker map for all blocked cells in the list
+ */
+async function buildBlockerMap(
+  adapter: HiveAdapter,
+  projectPath: string,
+  cells: Cell[],
+): Promise<BlockerMap> {
+  const blockerMap: BlockerMap = new Map();
+
+  // Only query blockers for cells that are actually blocked
+  const blockedCells = cells.filter((c) => c.status === "blocked");
+
+  for (const cell of blockedCells) {
+    try {
+      const blockers = await adapter.getBlockers(projectPath, cell.id);
+      if (blockers.length > 0) {
+        blockerMap.set(cell.id, blockers);
+      }
+    } catch {
+      // If blocker lookup fails, skip silently - the cell still shows [!]
+    }
+  }
+
+  return blockerMap;
 }
 
 /**
@@ -114,13 +143,20 @@ export async function tree(args: string[] = []) {
       return;
     }
 
+    // Build blocker map for blocked cells
+    const blockers = await buildBlockerMap(adapter, projectPath, cells);
+
     // Output
     if (options.json) {
       const tree = buildTreeStructure(cells);
       console.log(JSON.stringify(tree, null, 2));
     } else {
       const tree = buildTreeStructure(cells);
-      const output = renderTree(tree);
+      const renderOptions: TreeRenderOptions = {
+        blockers,
+        terminalWidth: process.stdout.columns || 80,
+      };
+      const output = renderTree(tree, renderOptions);
       console.log(output);
     }
   } catch (error) {

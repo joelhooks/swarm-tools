@@ -446,6 +446,43 @@ export const beadsMigrationLibSQL: Migration = {
 };
 
 /**
+ * Migration v10: Add result and result_at columns to beads table
+ *
+ * Captures implementation summaries when cells are completed.
+ * - result: TEXT - What was actually done (like a PR description)
+ * - result_at: INTEGER (Unix ms) - When the result was recorded
+ * Both nullable (only set on completion).
+ */
+export const beadsResultColumnsMigration: Migration = {
+  version: 10,
+  description: "Add result and result_at columns to beads table",
+  up: `
+    ALTER TABLE beads ADD COLUMN result TEXT;
+    ALTER TABLE beads ADD COLUMN result_at INTEGER;
+  `,
+  down: `
+    ALTER TABLE beads DROP COLUMN result;
+    ALTER TABLE beads DROP COLUMN result_at;
+  `,
+};
+
+/**
+ * LibSQL-compatible version of v10 migration
+ */
+export const beadsResultColumnsMigrationLibSQL: Migration = {
+  version: 10,
+  description: "Add result and result_at columns to beads table (LibSQL)",
+  up: `
+    ALTER TABLE beads ADD COLUMN result TEXT;
+    ALTER TABLE beads ADD COLUMN result_at INTEGER;
+  `,
+  down: `
+    -- SQLite doesn't support DROP COLUMN until 3.35.0
+    -- Columns can be left as NULL if downgrade is needed
+  `,
+};
+
+/**
  * Export individual migrations
  */
 export const beadsMigrations: Migration[] = [beadsMigration];
@@ -453,7 +490,7 @@ export const beadsMigrations: Migration[] = [beadsMigration];
 /**
  * All hive migrations in order (PGLite version)
  */
-export const hiveMigrations: Migration[] = [beadsMigration, cellsViewMigration];
+export const hiveMigrations: Migration[] = [beadsMigration, cellsViewMigration, beadsResultColumnsMigration];
 
 /**
  * Migration v9: Add sessions table for handoff notes
@@ -499,4 +536,5 @@ export const hiveMigrationsLibSQL: Migration[] = [
 	beadsMigrationLibSQL,
 	cellsViewMigrationLibSQL,
 	sessionsMigrationLibSQL,
+	beadsResultColumnsMigrationLibSQL,
 ];

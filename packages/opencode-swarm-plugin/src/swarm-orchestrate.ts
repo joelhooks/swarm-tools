@@ -83,6 +83,7 @@ import {
   isReviewApproved,
   getReviewStatus,
 } from "./swarm-review";
+import { getGitCommitInfo } from "./utils/git-commit-info";
 import { captureCoordinatorEvent, type EvalRecord } from "./eval-capture.js";
 import { formatResearcherPrompt } from "./swarm-prompts";
 import {
@@ -1014,6 +1015,18 @@ export const swarm_complete = tool({
       .describe(
         "Skip review gate check (default: false). Use only for tasks that don't require coordinator review.",
       ),
+    commit_sha: tool.schema
+      .string()
+      .optional()
+      .describe("Git commit SHA (auto-detected if not provided)"),
+    commit_message: tool.schema
+      .string()
+      .optional()
+      .describe("Commit message (auto-detected if not provided)"),
+    commit_branch: tool.schema
+      .string()
+      .optional()
+      .describe("Git branch (auto-detected if not provided)"),
   },
   async execute(args, _ctx) {
     // Validate required parameters with helpful error messages
@@ -1089,6 +1102,17 @@ export const swarm_complete = tool({
         );
       }
     }
+
+    // Auto-detect git commit info (non-blocking, best-effort)
+    const gitInfo = getGitCommitInfo(args.project_key) || {} as Partial<import("./utils/git-commit-info").GitCommitInfo>;
+    const commitSha = args.commit_sha || gitInfo.sha;
+    const commitMessage = args.commit_message || gitInfo.message;
+    const commitBranch = args.commit_branch || gitInfo.branch;
+
+    // Build result text with optional commit info
+    const resultText = commitSha
+      ? `${args.summary}\n\nCommit: ${commitSha.slice(0, 8)} (${commitBranch || "unknown"}) - ${commitMessage || "no message"}`
+      : args.summary;
 
     try {
       // Validate bead_id exists and is not already closed (EARLY validation)
@@ -1274,8 +1298,11 @@ This will be recorded as a negative learning signal.`;
       }
 
       // Close the cell using HiveAdapter (not bd CLI)
+      // Pass resultText (summary + commit info) as both reason and result
       try {
-        await adapter.closeCell(args.project_key, args.bead_id, args.summary);
+        await adapter.closeCell(args.project_key, args.bead_id, args.summary, {
+          result: resultText,
+        });
       } catch (closeError) {
         const errorMessage = closeError instanceof Error ? closeError.message : String(closeError);
         return JSON.stringify(
@@ -1390,6 +1417,7 @@ This will be recorded as a negative learning signal.`;
           success: true,
           scope_violation: contractValidation ? !contractValidation.valid : undefined,
           violation_files: contractValidation?.violations,
+          commit: commitSha ? { sha: commitSha, message: commitMessage, branch: commitBranch } : undefined,
         });
         const savedEvent = await appendEvent(event, args.project_key);
         outcomeEventId = savedEvent.id;
@@ -1678,6 +1706,8 @@ This will be recorded as a negative learning signal.`;
         success: true,
         bead_id: args.bead_id,
         closed: true,
+        result: resultText,
+        commit: commitSha ? { sha: commitSha, message: commitMessage, branch: commitBranch } : undefined,
         reservations_released: reservationsReleased,
         reservations_released_count: reservationsReleasedCount,
         reservations_release_error: reservationsReleaseError,

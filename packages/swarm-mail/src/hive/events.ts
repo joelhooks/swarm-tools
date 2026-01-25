@@ -94,6 +94,8 @@ export interface CellClosedEvent extends BaseCellEvent {
   closed_by?: string;
   files_touched?: string[];
   duration_ms?: number;
+  /** Implementation summary - what was actually done (like a PR description) */
+  result?: string;
 }
 
 export interface CellReopenedEvent extends BaseCellEvent {

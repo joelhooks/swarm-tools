@@ -52,6 +52,8 @@ export const beads = sqliteTable(
     deleted_by: text("deleted_by"),
     delete_reason: text("delete_reason"),
     created_by: text("created_by"),
+    result: text("result"), // Implementation summary (set on completion)
+    result_at: integer("result_at"), // BIGINT (Unix ms) - when result was recorded
   },
   (table) => ({
     projectIdx: index("idx_beads_project").on(table.project_key),

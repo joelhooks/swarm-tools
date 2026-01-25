@@ -91,6 +91,7 @@ import {
 import { tree } from "./commands/tree.js";
 import { session } from "./commands/session.js";
 import { log } from "./commands/log.js";
+import { status } from "./commands/status.js";
 import {
   querySwarmHistory,
   formatSwarmHistory,
@@ -4341,10 +4342,16 @@ async function help() {
   console.log(magenta("  " + getRandomMessage()));
   console.log(`
 ${cyan("Commands:")}
+  swarm                 Status dashboard (default when no subcommand)
+  swarm status          Status dashboard (same as running swarm with no args)
+    --json              Machine-readable JSON output
   swarm setup           Interactive installer - checks and installs dependencies
     --reinstall, -r     Skip prompt, go straight to reinstall
     --yes, -y           Non-interactive with defaults (opus/sonnet/haiku)
   swarm doctor          Health check - shows status of all dependencies
+    --deep              Deep DB health checks (integrity, orphans, cycles, zombies)
+    --deep --fix        Auto-repair fixable issues
+    --deep --json       Machine-readable JSON output
   swarm init      Initialize beads in current project
   swarm config    Show paths to generated config files
   swarm claude    Claude Code integration (path/install/uninstall/init/hooks)
@@ -7702,8 +7709,14 @@ switch (command) {
     break;
   }
   case "doctor": {
-    const debugFlag = process.argv.includes("--debug") || process.argv.includes("-d");
-    await doctor(debugFlag);
+    const deepFlag = process.argv.includes("--deep");
+    if (deepFlag) {
+      const { doctorDeep } = await import("./commands/doctor.js");
+      await doctorDeep(process.argv.slice(3));
+    } else {
+      const debugFlag = process.argv.includes("--debug") || process.argv.includes("-d");
+      await doctor(debugFlag);
+    }
     break;
   }
   case "init":
@@ -7803,6 +7816,9 @@ switch (command) {
   case "session":
     await session();
     break;
+  case "status":
+    await status(process.argv.slice(3));
+    break;
   case "version":
   case "--version":
   case "-v":
@@ -7814,7 +7830,7 @@ switch (command) {
     await help();
     break;
   case undefined:
-    await setup();
+    await status(process.argv.slice(3));
     break;
   default:
     console.error("Unknown command: " + command);

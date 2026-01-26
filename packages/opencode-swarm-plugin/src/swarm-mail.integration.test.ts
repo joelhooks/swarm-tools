@@ -17,6 +17,7 @@ import {
   clearAdapterCache,
   closeAllSwarmMailLibSQL,
 } from "swarm-mail";
+import { resetMemoryCache } from "./memory-tools";
 import {
   swarmmail_init,
   swarmmail_send,
@@ -89,15 +90,24 @@ beforeEach(async () => {
   TEST_DB_PATH = trackPath(testDbPath());
   // Create directory for test database
   await mkdir(TEST_DB_PATH, { recursive: true });
-  // Close ALL adapters (both instances Map AND store cache) to ensure clean state.
-  // clearAdapterCache() alone only clears the store.ts cache, not the
-  // libsql.convenience.ts instances Map — leaving stale/closed adapters.
+  // Point getDatabasePath() to a per-test temp DB to avoid global DB pollution
+  process.env.SWARM_DB_PATH = join(TEST_DB_PATH, "test-swarm.db");
+  // Clear BOTH caches: store.ts adapter cache AND libsql.convenience.ts instances.
+  // Both must be cleared to prevent stale/cross-test DB connections.
+  clearAdapterCache();
   await closeAllSwarmMailLibSQL();
+  // Also clear memory adapter cache which may hold refs to now-closed DB adapters
+  resetMemoryCache();
 });
 
 afterEach(async () => {
-  // Close ALL adapters to prevent CLIENT_CLOSED errors in subsequent tests
+  // Clear BOTH caches to prevent cross-test pollution
+  clearAdapterCache();
   await closeAllSwarmMailLibSQL();
+  // Reset DB path override
+  delete process.env.SWARM_DB_PATH;
+  // Also clear memory adapter cache
+  resetMemoryCache();
   
   // Clean up all test database directories
   for (const path of testPaths) {

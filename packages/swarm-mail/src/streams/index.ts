@@ -89,6 +89,10 @@ export async function withTiming<T>(
  * @returns Path to global database file
  */
 export function getDatabasePath(projectPath?: string): string {
+	// Allow override for testing - use a separate DB to avoid polluting production data
+	if (process.env.SWARM_DB_PATH) {
+		return process.env.SWARM_DB_PATH;
+	}
 	const globalDir = join(homedir(), ".config", "swarm-tools");
 	if (!existsSync(globalDir)) {
 		mkdirSync(globalDir, { recursive: true });

@@ -83,14 +83,27 @@ async function buildEntry(entry: BuildEntry, externalsType: ExternalsType = "lib
     : externalsType === "marketplace"
       ? MARKETPLACE_EXTERNALS
       : EXTERNALS;
-  const externals = externalsList.map(e => `--external ${e}`).join(" ");
-  const output = entry.outdir
-    ? `--outdir ${entry.outdir}`
-    : `--outfile ${entry.outfile}`;
-  const format = entry.format ? `--format ${entry.format}` : "";
+  
+  // Build args array for cross-platform compatibility (no shell needed)
+  const args = [
+    "build",
+    entry.input,
+    entry.outdir ? "--outdir" : "--outfile",
+    entry.outdir || entry.outfile || "",
+    "--target",
+    "node",
+  ];
+  
+  if (entry.format) {
+    args.push("--format", entry.format);
+  }
+  
+  // Add externals as separate args
+  for (const ext of externalsList) {
+    args.push("--external", ext);
+  }
 
-  const cmd = `bun build ${entry.input} ${output} ${format} --target node ${externals}`;
-  const proc = Bun.spawn(["sh", "-c", cmd], {
+  const proc = Bun.spawn(["bun", ...args], {
     stdout: "inherit",
     stderr: "inherit",
   });
@@ -180,7 +193,7 @@ async function main() {
   
   // Run tsc for declarations
   console.log("\n📝 Generating type declarations...");
-  const tsc = Bun.spawn(["tsc"], { stdout: "inherit", stderr: "inherit" });
+  const tsc = Bun.spawn(["bunx", "tsc"], { stdout: "inherit", stderr: "inherit" });
   const tscExit = await tsc.exited;
   if (tscExit !== 0) {
     console.error("❌ TypeScript compilation failed");

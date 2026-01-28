@@ -545,6 +545,7 @@ async function checkCommand(
     try {
       const proc = spawn(cmd, args, {
         stdio: ["ignore", "pipe", "pipe"],
+        shell: true,  // Required on Windows to find .cmd/.ps1 wrappers
       });
       
       let stdout = "";
@@ -573,8 +574,11 @@ async function checkCommand(
 async function runInstall(command: string): Promise<boolean> {
   return new Promise((resolve) => {
     try {
-      const proc = spawn("bash", ["-c", command], {
+      // On Windows, use cmd.exe /c; on Unix, use sh -c
+      // shell: true handles this automatically
+      const proc = spawn(command, {
         stdio: "inherit",
+        shell: true,
       });
       
       proc.on("error", () => {
@@ -2660,7 +2664,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
   p.log.message(dim(`  Skills directory: ${skillsDir}`));
 
   // Show bundled skills info (and optionally sync to global skills dir)
-  const bundledSkillsPath = join(__dirname, "..", "global-skills");
+  const bundledSkillsPath = join(PACKAGE_ROOT, "global-skills");
   const bundledSkills = listDirectoryNames(bundledSkillsPath);
   if (existsSync(bundledSkillsPath)) {
     if (bundledSkills.length > 0) {

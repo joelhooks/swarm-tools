@@ -57,19 +57,20 @@ describe("Strategy Selection - Current Broken Behavior", () => {
     });
   });
 
-  describe("CellTreeSchema MISSING strategy field (BUG)", () => {
-    test("CellTreeSchema does NOT include strategy field", () => {
+  describe("CellTreeSchema strategy field (FIXED)", () => {
+    // NOTE: The bug described here has been FIXED. CellTreeSchema now includes
+    // an optional strategy field. See strategy-selection-fixed.test.ts for the
+    // comprehensive tests of the fixed behavior.
+    test("CellTreeSchema NOW includes strategy field (bug was fixed)", () => {
       const schema = CellTreeSchema.shape;
       
-      // This is the BUG - strategy field is missing
-      expect(schema.strategy).toBeUndefined();
-      
-      // Only epic and subtasks are present
+      // Bug is fixed - strategy field is now present as optional
+      expect(schema.strategy).toBeDefined();
       expect(schema.epic).toBeDefined();
       expect(schema.subtasks).toBeDefined();
     });
 
-    test("CellTreeSchema parse succeeds WITHOUT strategy", () => {
+    test("CellTreeSchema parse succeeds WITHOUT strategy (optional)", () => {
       const cellTree = {
         epic: {
           title: "Fix critical security bug",
@@ -78,15 +79,14 @@ describe("Strategy Selection - Current Broken Behavior", () => {
         subtasks: [
           { title: "Write regression test", files: [] }
         ]
-        // No strategy field
+        // No strategy field - should still pass since it's optional
       };
 
-      // Should parse successfully (this is the problem - should require strategy)
       const result = CellTreeSchema.safeParse(cellTree);
       expect(result.success).toBe(true);
     });
 
-    test("CellTreeSchema allows extra properties (including strategy)", () => {
+    test("CellTreeSchema preserves strategy when provided", () => {
       const cellTree = {
         epic: {
           title: "Fix critical security bug",
@@ -95,18 +95,15 @@ describe("Strategy Selection - Current Broken Behavior", () => {
         subtasks: [
           { title: "Write regression test", files: [] }
         ],
-        strategy: "risk-based"  // Extra property - Zod allows by default
+        strategy: "risk-based"
       };
 
-      // Zod allows extra properties by default (doesn't fail)
-      // But the parsed result won't include 'strategy'
       const result = CellTreeSchema.safeParse(cellTree);
       expect(result.success).toBe(true);
       
-      // The issue is that strategy is LOST in parsing
+      // Bug is fixed - strategy is now preserved in parsing
       if (result.success) {
-        // @ts-expect-error - strategy not in type
-        expect(result.data.strategy).toBeUndefined();  // Lost!
+        expect((result.data as any).strategy).toBe("risk-based");
       }
     });
   });

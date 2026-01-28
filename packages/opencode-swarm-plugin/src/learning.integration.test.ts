@@ -1171,6 +1171,7 @@ import {
   getStorage,
   setStorage,
   resetStorage,
+  resetAvailabilityCache,
   InMemoryStorage,
   SemanticMemoryStorage,
   isSemanticMemoryAvailable,

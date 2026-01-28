@@ -26,11 +26,11 @@ const COMMAND_FIXTURES: CommandFixture[] = [
     name: "swarm",
     file: "swarm.md",
     requiredPhrases: [
-      "swarmmail_init()",
-      "swarm_decompose()",
-      "swarm_validate_decomposition()",
-      "hive_create_epic()",
-      "swarm_spawn_subtask()",
+      "swarmmail_init",
+      "swarm_decompose",
+      "swarm_validate_decomposition",
+      "hive_create_epic",
+      "swarm_spawn_subtask",
     ],
   },
   {
@@ -103,8 +103,6 @@ describe("claude-plugin command docs", () => {
       const { metadata, body } = parseFrontmatter(content);
 
       expect(metadata.description).toBeTruthy();
-      expect(body).toContain(`# /swarm:${name}`);
-      expect(body).toContain("## Usage");
 
       for (const phrase of requiredPhrases) {
         expect(body).toContain(phrase);

@@ -1039,7 +1039,7 @@ describe("skills_execute tool", () => {
     await skills_add_script.execute({
       skill: "timeout-test",
       script_name: "slow.sh",
-      content: '#!/bin/bash\nsleep 120', // 2 minutes (longer than 60s timeout)
+      content: '#!/bin/bash\nsleep 10', // 10s (longer than 2s timeout)
     });
 
     const scriptPath = join(SKILLS_DIR, "timeout-test", "scripts", "slow.sh");
@@ -1048,11 +1048,12 @@ describe("skills_execute tool", () => {
     const result = await skills_execute.execute({
       skill: "timeout-test",
       script: "slow.sh",
+      timeout_ms: 2000,
     });
 
     expect(result).toContain("timed out");
-    expect(result).toContain("60 seconds");
-  }, 65000); // Allow 65s for test itself
+    expect(result).toContain("2 seconds");
+  }, 5000); // Allow 5s for test itself
 });
 
 // =============================================================================

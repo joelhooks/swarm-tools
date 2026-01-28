@@ -207,6 +207,7 @@ export function createHiveAdapter(
         closed_by: options?.closed_by || null,
         files_touched: options?.files_touched || null,
         duration_ms: options?.duration_ms || null,
+        result: options?.result || null,
       } as any;
 
       await appendCellEvent(event, projectPath, db);

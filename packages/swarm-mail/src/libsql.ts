@@ -262,6 +262,10 @@ class LibSQLAdapter implements DatabaseAdapter {
 	async close(): Promise<void> {
 		this.client.close();
 	}
+
+	async checkpoint(): Promise<void> {
+		await this.client.execute("PRAGMA wal_checkpoint(TRUNCATE)");
+	}
 }
 
 /**
@@ -329,6 +333,11 @@ export async function createLibSQLAdapter(
 	// This is especially beneficial for multi-agent coordination where multiple
 	// agents may be reading/writing events simultaneously
 	await client.execute("PRAGMA journal_mode = WAL");
+
+	// Checkpoint any abandoned WAL frames from prior process crashes
+	// This ensures data written by a previous short-lived process (e.g., swarm CLI)
+	// is flushed to the main DB file before we start reading
+	await client.execute("PRAGMA wal_checkpoint(TRUNCATE)");
 
 	return new LibSQLAdapter(client);
 }

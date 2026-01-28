@@ -43,6 +43,54 @@ export interface MemoryConfig {
 }
 
 /**
+ * Known embedding dimensions for Ollama models.
+ * Map model name to embedding dimension.
+ */
+const MODEL_DIMENSIONS: Record<string, number> = {
+	"mxbai-embed-large": 1024,
+	"nomic-embed-text": 768,
+	"all-minilm": 384,
+	"snowflake-arctic-embed": 1024,
+};
+
+/**
+ * Get embedding dimension for a model.
+ * Checks env var first (OLLAMA_EMBED_DIM), then MODEL_DIMENSIONS map.
+ * Falls back to 1024 (mxbai-embed-large default) for unknown models.
+ *
+ * @param model - Model name (e.g., "mxbai-embed-large", "nomic-embed-text")
+ * @returns Embedding dimension
+ *
+ * @example
+ * ```ts
+ * getEmbeddingDimension("mxbai-embed-large") // => 1024
+ * getEmbeddingDimension("nomic-embed-text")  // => 768
+ * getEmbeddingDimension("unknown-model")     // => 1024 (default)
+ * ```
+ */
+export function getEmbeddingDimension(model: string): number {
+	// Env var override
+	const envDim = process.env.OLLAMA_EMBED_DIM;
+	if (envDim) {
+		const parsed = Number.parseInt(envDim, 10);
+		if (!Number.isNaN(parsed) && parsed > 0) {
+			return parsed;
+		}
+	}
+
+	// Known model dimensions
+	return MODEL_DIMENSIONS[model] ?? 1024;
+}
+
+/**
+ * Embedding dimension based on configured model.
+ * Exported for use in store.ts
+ */
+export const EMBEDDING_DIM = getEmbeddingDimension(
+	process.env.OLLAMA_MODEL || "mxbai-embed-large",
+);
+
+/**
  * Ollama operation failure
  */
 export class OllamaError extends Schema.TaggedError<OllamaError>()(

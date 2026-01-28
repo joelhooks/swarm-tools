@@ -2237,6 +2237,7 @@ describe("Contract Validation", () => {
           summary: "Testing project_key handling",
           skip_verification: true,
           skip_review: true,
+          start_time: Date.now(),
         },
         mockContext,
       );
@@ -2277,6 +2278,7 @@ describe("Contract Validation", () => {
           summary: "Nested path test",
           skip_verification: true,
           skip_review: true,
+          start_time: Date.now(),
         },
         mockContext,
       );
@@ -2313,6 +2315,7 @@ describe("Contract Validation", () => {
           summary: "Done",
           files_touched: ["test.ts"],
           skip_verification: true,
+          start_time: Date.now(),
           // skip_review intentionally omitted - defaults to false
         },
         mockContext,
@@ -2365,6 +2368,7 @@ describe("Contract Validation", () => {
           summary: "Done",
           files_touched: ["test.ts"],
           skip_verification: true,
+          start_time: Date.now(),
         },
         mockContext,
       );
@@ -2412,6 +2416,7 @@ describe("Contract Validation", () => {
           files_touched: ["test.ts"],
           skip_verification: true,
           skip_review: true,
+          start_time: Date.now(),
         },
         mockContext,
       );
@@ -2453,6 +2458,7 @@ describe("Contract Validation", () => {
           files_touched: [],
           skip_verification: true,
           skip_review: true,
+          start_time: Date.now(),
         },
         mockContext,
       );

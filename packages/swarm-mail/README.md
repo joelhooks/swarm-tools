@@ -88,7 +88,7 @@ Shows how agent actions flow from tool calls → libSQL events → CLI queries/d
 │  ║ packages/swarm-mail/src/adapter.ts                           ║       │
 │  ╠═══════════════════════════════════════════════════════════════╣       │
 │  ║ appendEvent(event: SwarmMailEvent)                           ║       │
-│  ║  1. Validate with Zod schemas (30+ event types)              ║       │
+│  ║  1. Validate with Zod schemas (56 event types)               ║       │
 │  ║  2. Serialize event.data to JSON                             ║       │
 │  ║  3. INSERT into events table                                 ║       │
 │  ║                                                              ║       │
@@ -145,7 +145,7 @@ Shows how agent actions flow from tool calls → libSQL events → CLI queries/d
 **Flow Summary:**
 
 1. **Agent Tool Call** → Agent calls `swarmmail_init()`, `swarm_progress()`, etc.
-2. **Adapter Layer** → Validates with Zod (30+ event types), serializes to JSON, appends to `events` table
+2. **Adapter Layer** → Validates with Zod (56 event types), serializes to JSON, appends to `events` table
 3. **libSQL Storage** → Events stored in append-only log, projections auto-updated via triggers
 4. **CLI Tools** → Query events/projections for analytics, monitoring, debugging
 5. **Observability** → Full audit trail, replay capabilities, real-time dashboards
@@ -615,7 +615,7 @@ All events extend `BaseEventSchema` with common fields:
 { type: "human_feedback"; epic_id: string; accepted: boolean; modified?: boolean; notes?: string }
 ```
 
-**Total: 30+ event types** - Full Zod schemas in [src/streams/events.ts](src/streams/events.ts)
+**Total: 56 event types** - Full Zod schemas in [src/streams/events.ts](src/streams/events.ts)
 
 ## libSQL Query Examples
 
@@ -1133,32 +1133,41 @@ For complete API documentation, see [swarmtools.ai/docs](https://swarmtools.ai/d
 ```typescript
 interface SwarmMailAdapter {
   // Events
-  appendEvent(event: SwarmMailEvent): Promise<{ id: number; sequence: number }>;
-  getEvents(options?: {
-    limit?: number;
-    after?: number;
-  }): Promise<StoredEvent[]>;
+  appendEvent(event: AgentEvent, projectPath?: string): Promise<AgentEvent & { id: number; sequence: number }>;
+  appendEvents(events: AgentEvent[], projectPath?: string): Promise<Array<AgentEvent & { id: number; sequence: number }>>;
+  readEvents(options?: ReadEventsOptions, projectPath?: string): Promise<Array<AgentEvent & { id: number; sequence: number }>>;
+  getLatestSequence(projectKey?: string, projectPath?: string): Promise<number>;
+  replayEvents(options?: { projectKey?: string; fromSequence?: number; clearViews?: boolean }, projectPath?: string): Promise<{ eventsReplayed: number; duration: number }>;
 
   // Agents
-  getAgents(): Promise<Agent[]>;
-  getAgent(name: string): Promise<Agent | null>;
+  registerAgent(projectKey: string, agentName: string, options?: RegisterOptions, projectPath?: string): Promise<AgentRegisteredEvent & { id: number; sequence: number }>;
+  getAgents(projectKey: string, projectPath?: string): Promise<Agent[]>;
+  getAgent(projectKey: string, agentName: string, projectPath?: string): Promise<Agent | null>;
 
   // Messages
-  getInbox(agent: string, options?: InboxOptions): Promise<Message[]>;
-  getMessage(id: number): Promise<Message | null>;
-  getThread(threadId: string): Promise<Message[]>;
+  sendMessage(projectKey: string, fromAgent: string, toAgents: string[], subject: string, body: string, options?: SendOptions, projectPath?: string): Promise<MessageSentEvent & { id: number; sequence: number }>;
+  getInbox(projectKey: string, agentName: string, options?: InboxOptions, projectPath?: string): Promise<Message[]>;
+  getMessage(projectKey: string, messageId: number, projectPath?: string): Promise<Message | null>;
+  getThreadMessages(projectKey: string, threadId: string, projectPath?: string): Promise<Message[]>;
+  markMessageAsRead(projectKey: string, messageId: number, agentName: string, projectPath?: string): Promise<void>;
+  acknowledgeMessage(projectKey: string, messageId: number, agentName: string, projectPath?: string): Promise<void>;
 
   // Reservations
-  getReservations(): Promise<Reservation[]>;
-  getReservationsForAgent(agent: string): Promise<Reservation[]>;
-  checkConflicts(paths: string[], excludeAgent?: string): Promise<Conflict[]>;
+  reserveFiles(projectKey: string, agentName: string, paths: string[], options?: ReserveOptions, projectPath?: string): Promise<FileReservedEvent & { id: number; sequence: number }>;
+  releaseFiles(projectKey: string, agentName: string, options?: ReleaseOptions, projectPath?: string): Promise<void>;
+  getActiveReservations(projectKey: string, projectPath?: string, agentName?: string): Promise<Reservation[]>;
+  checkConflicts(projectKey: string, agentName: string, paths: string[], projectPath?: string): Promise<Conflict[]>;
 
-  // Swarm Context
-  getSwarmContext(epicId: string): Promise<SwarmContext | null>;
+  // Schema & Health
+  runMigrations(projectPath?: string): Promise<void>;
+  healthCheck(options?: { walThresholdMb?: number }, projectPath?: string): Promise<{ connected: boolean; walHealth?: { healthy: boolean; message: string } }>;
+  getDatabaseStats(projectPath?: string): Promise<{ events: number; agents: number; messages: number; reservations: number; wal?: { size: number; fileCount: number } }>;
+  resetDatabase(projectPath?: string): Promise<void>;
 
-  // Debug
-  debugEvents(options?: DebugOptions): Promise<DebugEvent[]>;
-  debugAgent(name: string): Promise<AgentDebugInfo>;
+  // Database
+  getDatabase(projectPath?: string): Promise<DatabaseAdapter>;
+  close(projectPath?: string): Promise<void>;
+  closeAll(): Promise<void>;
 }
 ```
 

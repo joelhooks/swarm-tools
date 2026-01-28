@@ -104,6 +104,8 @@ The plugin registers lifecycle hooks:
 |------|--------|
 | `SessionStart` | Initialize session context |
 | `UserPromptSubmit` | Track user prompts |
+| `PreToolUse` | Pre-edit validation and pre-complete checks |
+| `PostToolUse` | Track tool usage for hivemind_find, skills_use, swarmmail_init, hivemind_store, swarm_complete |
 | `PreCompact` | Save state before context compaction |
 | `SessionEnd` | Cleanup and sync |
 

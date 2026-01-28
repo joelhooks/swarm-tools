@@ -114,6 +114,7 @@ export type CellUpdateArgs = z.infer<typeof CellUpdateArgsSchema>;
 export const CellCloseArgsSchema = z.object({
   id: z.string(),
   reason: z.string().min(1, "Reason required"),
+  result: z.string().optional(),
 });
 export type CellCloseArgs = z.infer<typeof CellCloseArgsSchema>;
 

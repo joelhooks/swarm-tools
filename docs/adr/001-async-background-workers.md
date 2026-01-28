@@ -14,6 +14,9 @@
 ## Status
 
 **Proposed** - December 2025
+**Implementation Status:** Not Implemented
+
+The tools described in this ADR (`swarm_spawn_async`, `swarm_poll_workers`, `swarm_await_workers`) do not exist in the codebase. Current swarm implementation uses blocking `Task` tool via OpenCode's synchronous subagent API.
 
 ## Context
 
@@ -792,6 +795,8 @@ Use a proper job queue for worker coordination.
 - [ ] Add projections for worker status queries
 - [ ] Tests for event flow
 
+**Status:** Not started. Swarm-mail events currently do not include async worker lifecycle events.
+
 ### Phase 2: Core Tools (opencode-swarm-plugin)
 
 - [ ] Implement `swarm_spawn_async`
@@ -799,17 +804,23 @@ Use a proper job queue for worker coordination.
 - [ ] Implement `swarm_await_workers`
 - [ ] Modify `swarm_complete` to emit completion event
 
+**Status:** Not started. These tools are not present in `packages/opencode-swarm-plugin/src/`.
+
 ### Phase 3: Coordinator Integration
 
 - [ ] Update `/swarm` command to use async spawning
 - [ ] Add progress display to dashboard
 - [ ] Handle worker failures gracefully
 
+**Status:** Not started. Current coordinator uses blocking Task tool.
+
 ### Phase 4: Observability
 
 - [ ] Add `swarm dashboard` support for async workers
 - [ ] Add `swarm log` filtering by session
 - [ ] Metrics for worker duration, success rate
+
+**Status:** Not started. Dashboard does not track async worker state.
 
 ## Open Questions
 

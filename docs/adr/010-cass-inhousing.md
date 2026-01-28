@@ -16,7 +16,10 @@
 
 ## Status
 
-**Accepted** - December 2025 (Implementation Complete)
+**Accepted** - December 2025
+**Implementation Status:** Partially Implemented (Core Complete, CLI Integration Pending)
+
+The session indexing layer is fully implemented in `packages/swarm-mail/src/sessions/` with 102 passing tests. However, the `cass_*` CLI tools are not yet wired up to use the inhouse implementation (still reference external CASS binary in exports).
 
 ## Context
 
@@ -255,25 +258,37 @@ OpenCode may eventually add native session search. We could wait.
 
 ### Completed ✅
 
-- [x] Session parsing for 5 agent formats
-- [x] Chunking and embedding generation
-- [x] Semantic memory integration
-- [x] FTS5 fallback search
-- [x] Session viewer with pagination
-- [x] File watching (optional)
-- [x] 102 passing tests
+- [x] Session parsing for 5 agent formats (`packages/swarm-mail/src/sessions/session-parser.ts`)
+- [x] Chunking and embedding generation (`packages/swarm-mail/src/sessions/chunk-processor.ts`)
+- [x] Semantic memory integration (stores into unified `memories` table)
+- [x] FTS5 fallback search (via semantic-memory adapter)
+- [x] Session viewer with pagination (`packages/swarm-mail/src/sessions/session-viewer.ts`)
+- [x] File watching (optional) (`packages/swarm-mail/src/sessions/file-watcher.ts`)
+- [x] Staleness detection (`packages/swarm-mail/src/sessions/staleness-detector.ts`)
+- [x] Session quality scoring (`packages/swarm-mail/src/sessions/session-quality.ts`)
+- [x] Session export (`packages/swarm-mail/src/sessions/session-export.ts`)
+- [x] 102 passing tests (session-parser, chunk-processor, session-viewer, pagination, staleness-detector, file-watcher)
 - [x] README documentation
 
-### In Progress 🔄
+### Blocked (Pending ADR-011) ⏸️
 
-- [ ] Wire up `cass_*` CLI tools to use inhouse implementation
-- [ ] Add migration path for existing CASS users
-- [ ] Update AGENTS.md documentation
+The `cass_*` tools are **deprecated aliases** that point to the external CASS binary. According to ADR-011 (Hivemind Memory Unification), these should be removed entirely and replaced with `hivemind_*` tools that provide unified access to both learnings and sessions.
+
+**Current state:**
+- `cass_*` tools exist in `packages/opencode-swarm-plugin/src/cass-tools.ts` (export exists)
+- Session indexing infrastructure is complete and functional
+- However, `cass_*` tools still reference external CASS binary, not the inhouse implementation
+
+**Resolution path (per ADR-011):**
+- [ ] Remove `cass_*` tools entirely (deprecated)
+- [ ] Use `hivemind_index()` for session indexing
+- [ ] Use `hivemind_find()` for unified search across learnings + sessions
+- [ ] Update AGENTS.md to remove CASS section
 
 ### Future 📋
 
-- [ ] Cloud-only agents (Claude Code web, Gemini, Copilot)
-- [ ] Multi-machine sync
+- [ ] Cloud-only agents (Claude Code web, Gemini, Copilot) - requires authentication
+- [ ] Multi-machine sync (requires cloud backend)
 - [ ] TUI interface for session browsing
 - [ ] Automatic session cleanup (>90 days old)
 

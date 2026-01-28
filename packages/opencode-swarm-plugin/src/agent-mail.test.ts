@@ -1,4 +1,5 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, beforeAll, beforeEach, afterAll, afterEach, mock } from "bun:test";
+import { server, createAgentMailHandlers } from "./test-utils/msw-server";
 
 const mockIsToolAvailable = mock(async () => true);
 const mockWarnMissingTool = mock(() => {});
@@ -16,50 +17,20 @@ import {
   clearState,
 } from "./agent-mail";
 
-/**
- * Create a mock fetch handler for Agent Mail requests.
- */
-function createMockFetch(
-  requests: Array<{ tool: string; args: Record<string, unknown> }>,
-  toolResponses: Record<string, unknown> = {},
-) {
-  return mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body ?? "{}"));
-    const toolName = body?.params?.name;
-    const args = (body?.params?.arguments ?? {}) as Record<string, unknown>;
+// Start MSW server for all agent-mail tests
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "bypass" });
+});
 
-    requests.push({ tool: toolName, args });
+afterEach(() => {
+  server.resetHandlers();
+});
 
-    if (toolName && toolName in toolResponses) {
-      return new Response(JSON.stringify({ result: toolResponses[toolName] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (toolName === "ensure_project") {
-      return new Response(
-        JSON.stringify({ result: { id: "project-1", human_key: args.human_key } }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    if (toolName === "register_agent") {
-      return new Response(
-        JSON.stringify({ result: { name: args.name ?? "agent-1" } }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    return new Response(JSON.stringify({ result: {} }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  });
-}
+afterAll(() => {
+  server.close();
+});
 
 describe("agentmail_init", () => {
-  const originalFetch = globalThis.fetch;
   const mockContext = { sessionID: "agentmail-init-test" } as const;
 
   beforeEach(() => {
@@ -69,13 +40,12 @@ describe("agentmail_init", () => {
   });
 
   afterEach(() => {
-    globalThis.fetch = originalFetch;
     clearState(mockContext.sessionID);
   });
 
   test("registers agent with default OpenCode model", async () => {
     const requests: Array<{ tool: string; args: Record<string, unknown> }> = [];
-    globalThis.fetch = createMockFetch(requests);
+    server.use(...createAgentMailHandlers(requests));
 
     await agentmail_init.execute(
       {
@@ -92,7 +62,6 @@ describe("agentmail_init", () => {
 });
 
 describe("agentmail_reserve", () => {
-  const originalFetch = globalThis.fetch;
   const mockContext = { sessionID: "agentmail-reserve-test" } as const;
 
   beforeEach(() => {
@@ -102,13 +71,12 @@ describe("agentmail_reserve", () => {
   });
 
   afterEach(() => {
-    globalThis.fetch = originalFetch;
     clearState(mockContext.sessionID);
   });
 
   test("requires ttl_seconds", async () => {
     const requests: Array<{ tool: string; args: Record<string, unknown> }> = [];
-    globalThis.fetch = createMockFetch(requests);
+    server.use(...createAgentMailHandlers(requests));
 
     await agentmail_init.execute(
       {
@@ -131,24 +99,26 @@ describe("agentmail_reserve", () => {
 
   test("releases stored reservations on completion", async () => {
     const requests: Array<{ tool: string; args: Record<string, unknown> }> = [];
-    globalThis.fetch = createMockFetch(requests, {
-      file_reservation_paths: {
-        granted: [
-          {
-            id: 42,
-            path_pattern: "src/agent.ts",
-            exclusive: true,
-            reason: "",
-            expires_ts: "2026-01-10T00:00:00Z",
-          },
-        ],
-        conflicts: [],
-      },
-      release_file_reservations: {
-        released: 1,
-        released_at: "2026-01-10T00:00:01Z",
-      },
-    });
+    server.use(
+      ...createAgentMailHandlers(requests, {
+        file_reservation_paths: {
+          granted: [
+            {
+              id: 42,
+              path_pattern: "src/agent.ts",
+              exclusive: true,
+              reason: "",
+              expires_ts: "2026-01-10T00:00:00Z",
+            },
+          ],
+          conflicts: [],
+        },
+        release_file_reservations: {
+          released: 1,
+          released_at: "2026-01-10T00:00:01Z",
+        },
+      }),
+    );
 
     await agentmail_init.execute(
       {

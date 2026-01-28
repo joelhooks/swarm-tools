@@ -58,6 +58,10 @@ async function isRedisAvailable(): Promise<boolean> {
     });
     await redis.connect();
     await redis.ping();
+    // Also verify write access — read-only replicas respond to ping but reject writes
+    const testKey = `ratelimit:__write_test__:${Date.now()}`;
+    await redis.set(testKey, "1", "EX", 5);
+    await redis.del(testKey);
     await redis.quit();
     return true;
   } catch {

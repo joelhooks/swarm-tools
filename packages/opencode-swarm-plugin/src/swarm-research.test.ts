@@ -57,14 +57,13 @@ describe("discoverDocTools", () => {
     const tools = await discoverDocTools();
     const toolNames = tools.map((t) => t.name);
 
-    // Should include known doc-fetching capabilities
-    // Note: We don't assert these are available, just that we check for them
+    // Should include known doc-fetching capabilities from TOOL_DEFINITIONS
+    // Note: semantic-memory was removed from TOOL_DEFINITIONS (now uses hivemind)
     const expectedTools = [
       "next-devtools",
       "context7",
       "fetch",
       "pdf-brain",
-      "semantic-memory",
     ];
 
     for (const expected of expectedTools) {
@@ -136,13 +135,15 @@ describe("discoverDocTools", () => {
     }
   });
 
-  test("marks semantic-memory availability based on ollama", async () => {
+  test("marks tool availability correctly", async () => {
+    // semantic-memory was removed from TOOL_DEFINITIONS (now uses hivemind).
+    // Instead, verify that all returned tools have a boolean availability status.
     const tools = await discoverDocTools();
-    const semMem = tools.find((t) => t.name === "semantic-memory");
 
-    expect(semMem).toBeDefined();
-    // Availability depends on runtime env - just check it's defined
-    expect(typeof semMem?.available).toBe("boolean");
+    expect(tools.length).toBeGreaterThan(0);
+    for (const tool of tools) {
+      expect(typeof tool.available).toBe("boolean");
+    }
   });
 });
 

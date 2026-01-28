@@ -63,11 +63,12 @@ import { tmpdir } from "os";
 
 // Query & observability tools
 import {
-  executeQuery,
+  executeQueryCLI,
   executePreset,
   formatAsTable,
   formatAsCSV,
   formatAsJSON,
+  type QueryResult,
 } from "../src/query-tools.js";
 import {
   getWorkerStatus,
@@ -90,6 +91,7 @@ import {
 import { tree } from "./commands/tree.js";
 import { session } from "./commands/session.js";
 import { log } from "./commands/log.js";
+import { status } from "./commands/status.js";
 import {
   querySwarmHistory,
   formatSwarmHistory,
@@ -2835,11 +2837,26 @@ async function claudeCommand() {
     case "user-prompt":
       await claudeUserPrompt();
       break;
+    case "pre-edit":
+      await claudePreEdit();
+      break;
+    case "pre-complete":
+      await claudePreComplete();
+      break;
+    case "post-complete":
+      await claudePostComplete();
+      break;
     case "pre-compact":
       await claudePreCompact();
       break;
     case "session-end":
       await claudeSessionEnd();
+      break;
+    case "track-tool":
+      await claudeTrackTool(Bun.argv[4]); // tool name is 4th arg
+      break;
+    case "compliance":
+      await claudeCompliance();
       break;
     default:
       console.error(`Unknown subcommand: ${subcommand}`);
@@ -2859,6 +2876,9 @@ Commands:
   init                Create project-local .claude/ config
   session-start       Hook: session start context (JSON output)
   user-prompt         Hook: prompt submit context (JSON output)
+  pre-edit            Hook: pre-Edit/Write reminder (hivemind check)
+  pre-complete        Hook: pre-swarm_complete checklist
+  post-complete       Hook: post-swarm_complete learnings reminder
   pre-compact         Hook: pre-compaction handler
   session-end         Hook: session cleanup
 `);
@@ -3290,6 +3310,319 @@ async function claudeSessionEnd() {
   }
 }
 
+/**
+ * Claude hook: pre-edit reminder for workers
+ *
+ * Runs BEFORE Edit/Write tool calls. Reminds worker to query hivemind first.
+ * This is a gentle nudge, not a blocker.
+ */
+async function claudePreEdit() {
+  try {
+    const input = await readHookInput<ClaudeHookInput & { tool_name?: string; tool_input?: Record<string, unknown> }>();
+
+    // Only inject reminder if this looks like a worker context
+    // (workers have initialized via swarmmail_init)
+    const projectPath = resolveClaudeProjectPath(input);
+
+    // Check if we've seen hivemind_find in this session
+    // For now, we always remind - tracking will come later
+    const contextLines: string[] = [];
+
+    contextLines.push("⚠️ **Before this edit**: Did you run `hivemind_find` to check for existing solutions?");
+    contextLines.push("If you haven't queried hivemind yet, consider doing so to avoid re-solving problems.");
+
+    writeClaudeHookOutput("PreToolUse:Edit", contextLines.join("\n"), { suppressOutput: true });
+  } catch (error) {
+    // Non-fatal - don't block the edit
+    console.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Claude hook: pre-complete check for workers
+ *
+ * Runs BEFORE swarm_complete. Checks compliance with mandatory steps
+ * and warns if any were skipped.
+ */
+async function claudePreComplete() {
+  try {
+    const input = await readHookInput<ClaudeHookInput & { tool_input?: Record<string, unknown> }>();
+    const projectPath = resolveClaudeProjectPath(input);
+    const contextLines: string[] = [];
+
+    // Check session tracking markers
+    const trackingDir = join(projectPath, ".claude", ".worker-tracking");
+    const sessionId = (input as { session_id?: string }).session_id || "";
+    const sessionDir = join(trackingDir, sessionId.slice(0, 8));
+
+    const mandatoryTools = [
+      { name: "swarmmail_init", label: "Initialize coordination" },
+      { name: "hivemind_find", label: "Query past learnings" },
+    ];
+    const recommendedTools = [
+      { name: "skills_use", label: "Load relevant skills" },
+      { name: "hivemind_store", label: "Store new learnings" },
+    ];
+
+    const missing: string[] = [];
+    const skippedRecommended: string[] = [];
+
+    for (const tool of mandatoryTools) {
+      const markerPath = join(sessionDir, `${tool.name}.marker`);
+      if (!existsSync(markerPath)) {
+        missing.push(tool.label);
+      }
+    }
+
+    for (const tool of recommendedTools) {
+      const markerPath = join(sessionDir, `${tool.name}.marker`);
+      if (!existsSync(markerPath)) {
+        skippedRecommended.push(tool.label);
+      }
+    }
+
+    if (missing.length > 0) {
+      contextLines.push("⚠️ **MANDATORY STEPS SKIPPED:**");
+      for (const step of missing) {
+        contextLines.push(`  ❌ ${step}`);
+      }
+      contextLines.push("");
+      contextLines.push("These steps are critical for swarm coordination.");
+      contextLines.push("Consider running `hivemind_find` before future completions.");
+    }
+
+    if (skippedRecommended.length > 0 && missing.length === 0) {
+      contextLines.push("📝 **Recommended steps not observed:**");
+      for (const step of skippedRecommended) {
+        contextLines.push(`  - ${step}`);
+      }
+    }
+
+    if (missing.length === 0 && skippedRecommended.length === 0) {
+      contextLines.push("✅ **All mandatory and recommended steps completed!**");
+    }
+
+    // Emit compliance event for analytics
+    try {
+      const swarmMail = await getSwarmMailLibSQL(projectPath);
+      const db = await swarmMail.getDatabase(projectPath);
+
+      await db.execute({
+        sql: `INSERT INTO swarm_events (event_type, project_path, agent_name, epic_id, bead_id, payload, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+        args: [
+          "worker_compliance",
+          projectPath,
+          "worker",
+          "",
+          "",
+          JSON.stringify({
+            session_id: sessionId,
+            mandatory_skipped: missing.length,
+            recommended_skipped: skippedRecommended.length,
+            score: Math.round(((mandatoryTools.length - missing.length) / mandatoryTools.length) * 100),
+          }),
+        ],
+      });
+    } catch {
+      // Non-fatal
+    }
+
+    if (contextLines.length > 0) {
+      writeClaudeHookOutput("PreToolUse:swarm_complete", contextLines.join("\n"), { suppressOutput: missing.length === 0 });
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Claude hook: post-complete reminder for workers
+ *
+ * Runs AFTER swarm_complete. Reminds to store learnings if any were discovered.
+ */
+async function claudePostComplete() {
+  try {
+    const input = await readHookInput<ClaudeHookInput & { tool_output?: string }>();
+    const contextLines: string[] = [];
+
+    contextLines.push("✅ Task completed. If you discovered anything valuable during this work:");
+    contextLines.push("```");
+    contextLines.push("hivemind_store(");
+    contextLines.push('  information="<what you learned, WHY it matters>",');
+    contextLines.push('  tags="<domain, pattern-type>"');
+    contextLines.push(")");
+    contextLines.push("```");
+    contextLines.push("**The swarm's collective intelligence grows when agents share learnings.**");
+
+    writeClaudeHookOutput("PostToolUse:swarm_complete", contextLines.join("\n"), { suppressOutput: true });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Track when a mandatory tool is called.
+ *
+ * Creates a session-specific marker file that records tool usage.
+ * These markers are checked at swarm_complete to calculate compliance.
+ */
+async function claudeTrackTool(toolName: string) {
+  if (!toolName) return;
+
+  try {
+    const input = await readHookInput<ClaudeHookInput>();
+    const projectPath = resolveClaudeProjectPath(input);
+
+    // Get or create session tracking directory
+    const trackingDir = join(projectPath, ".claude", ".worker-tracking");
+    const sessionId = (input as { session_id?: string }).session_id || `unknown-${Date.now()}`;
+    const sessionDir = join(trackingDir, sessionId.slice(0, 8)); // Use first 8 chars of session ID
+
+    if (!existsSync(sessionDir)) {
+      mkdirSync(sessionDir, { recursive: true });
+    }
+
+    // Write marker file for this tool
+    const markerPath = join(sessionDir, `${toolName}.marker`);
+    writeFileSync(markerPath, new Date().toISOString());
+
+    // Also emit an event for long-term analytics (non-blocking)
+    try {
+      const swarmMail = await getSwarmMailLibSQL(projectPath);
+      const db = await swarmMail.getDatabase(projectPath);
+
+      await db.execute({
+        sql: `INSERT INTO swarm_events (event_type, project_path, agent_name, epic_id, bead_id, payload, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+        args: [
+          "worker_tool_call",
+          projectPath,
+          "worker", // We don't have agent name in hook context
+          "",
+          "",
+          JSON.stringify({ tool: toolName, session_id: sessionId }),
+        ],
+      });
+    } catch {
+      // Non-fatal - tracking is best-effort
+    }
+  } catch (error) {
+    // Silent failure - don't interrupt the tool call
+    console.error(`[track-tool] ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Check worker compliance - which mandatory tools were called.
+ *
+ * Returns compliance data based on session tracking markers.
+ */
+async function claudeCompliance() {
+  try {
+    const input = await readHookInput<ClaudeHookInput>();
+    const projectPath = resolveClaudeProjectPath(input);
+
+    const trackingDir = join(projectPath, ".claude", ".worker-tracking");
+    const sessionId = (input as { session_id?: string }).session_id || "";
+    const sessionDir = join(trackingDir, sessionId.slice(0, 8));
+
+    const mandatoryTools = ["swarmmail_init", "hivemind_find", "skills_use"];
+    const recommendedTools = ["hivemind_store"];
+
+    const compliance: Record<string, boolean> = {};
+
+    for (const tool of [...mandatoryTools, ...recommendedTools]) {
+      const markerPath = join(sessionDir, `${tool}.marker`);
+      compliance[tool] = existsSync(markerPath);
+    }
+
+    const mandatoryCount = mandatoryTools.filter(t => compliance[t]).length;
+    const score = Math.round((mandatoryCount / mandatoryTools.length) * 100);
+
+    console.log(JSON.stringify({
+      session_id: sessionId,
+      compliance,
+      mandatory_score: score,
+      mandatory_met: mandatoryCount,
+      mandatory_total: mandatoryTools.length,
+      stored_learnings: compliance.hivemind_store,
+    }));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Query worker compliance stats across all sessions.
+ */
+async function showWorkerCompliance() {
+  const projectPath = process.cwd();
+
+  try {
+    // Use shared executeQuery (handles DB connection internally)
+    const toolUsageSql = `SELECT
+      json_extract(payload, '$.tool') as tool,
+      COUNT(*) as count,
+      COUNT(DISTINCT json_extract(payload, '$.session_id')) as sessions
+    FROM swarm_events
+    WHERE event_type = 'worker_tool_call'
+      AND created_at > datetime('now', '-7 days')
+    GROUP BY tool
+    ORDER BY count DESC`;
+
+    const toolResult = await executeQueryCLI(projectPath, toolUsageSql);
+    const rows = toolResult.rows;
+
+    console.log(yellow(BANNER));
+    console.log(cyan("\n📊 Worker Tool Usage (Last 7 Days)\n"));
+
+    if (rows.length === 0) {
+      console.log(dim("No worker tool usage data found."));
+      console.log(dim("Data is collected when workers run with the Claude Code plugin."));
+      return;
+    }
+
+    console.log(dim("Tool                    Calls   Sessions"));
+    console.log(dim("─".repeat(45)));
+
+    for (const row of rows) {
+      const tool = String(row.tool).padEnd(22);
+      const count = String(row.count).padStart(6);
+      const sessions = String(row.sessions).padStart(8);
+      console.log(`${tool} ${count} ${sessions}`);
+    }
+
+    // Calculate compliance rate
+    const hivemindFinds = rows.find(r => r.tool === "hivemind_find");
+    const completesSql = `SELECT COUNT(*) as count FROM swarm_events
+      WHERE event_type = 'worker_completed'
+        AND created_at > datetime('now', '-7 days')`;
+    const completesResult = await executeQueryCLI(projectPath, completesSql);
+
+    const completes = Number(completesResult.rows[0]?.count || 0);
+    const finds = Number(hivemindFinds?.count || 0);
+
+    if (completes > 0) {
+      const rate = Math.round((Math.min(finds, completes) / completes) * 100);
+      console.log(dim("\n─".repeat(45)));
+      console.log(`\n${green("Hivemind compliance rate:")} ${rate}% (${finds} queries / ${completes} completions)`);
+    }
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("no such table")) {
+      console.log(yellow(BANNER));
+      console.log(cyan("\n📊 Worker Tool Usage\n"));
+      console.log(dim("No tracking data yet."));
+      console.log(dim("Compliance tracking starts when workers run with the Claude Code plugin hooks."));
+      console.log(dim("\nThe swarm_events table will be created on first tracked tool call."));
+    } else {
+      console.error("Error fetching compliance data:", msg);
+    }
+  }
+}
+
 async function init() {
   p.intro("swarm init v" + VERSION);
 
@@ -3637,16 +3970,16 @@ async function query() {
   const projectPath = process.cwd();
 
   try {
-    let rows: any[];
+    let result: QueryResult;
 
     if (parsed.preset) {
       // Execute preset query
       p.log.step(`Executing preset: ${parsed.preset}`);
-      rows = await executePreset(projectPath, parsed.preset);
+      result = await executePreset(projectPath, parsed.preset);
     } else if (parsed.query) {
       // Execute custom SQL
       p.log.step("Executing custom SQL");
-      rows = await executeQuery(projectPath, parsed.query);
+      result = await executeQueryCLI(projectPath, parsed.query);
     } else {
       p.log.error("No query specified. Use --sql or --preset");
       p.outro("Aborted");
@@ -3657,14 +3990,14 @@ async function query() {
     let output: string;
     switch (parsed.format) {
       case "csv":
-        output = formatAsCSV(rows);
+        output = formatAsCSV(result);
         break;
       case "json":
-        output = formatAsJSON(rows);
+        output = formatAsJSON(result);
         break;
       case "table":
       default:
-        output = formatAsTable(rows);
+        output = formatAsTable(result);
         break;
     }
 
@@ -3672,7 +4005,7 @@ async function query() {
     console.log(output);
     console.log();
 
-    p.outro(`Found ${rows.length} result(s)`);
+    p.outro(`Found ${result.rowCount} result(s)`);
   } catch (error) {
     p.log.error("Query failed");
     p.log.message(error instanceof Error ? error.message : String(error));
@@ -4013,10 +4346,16 @@ async function help() {
   console.log(magenta("  " + getRandomMessage()));
   console.log(`
 ${cyan("Commands:")}
+  swarm                 Status dashboard (default when no subcommand)
+  swarm status          Status dashboard (same as running swarm with no args)
+    --json              Machine-readable JSON output
   swarm setup           Interactive installer - checks and installs dependencies
     --reinstall, -r     Skip prompt, go straight to reinstall
     --yes, -y           Non-interactive with defaults (opus/sonnet/haiku)
   swarm doctor          Health check - shows status of all dependencies
+    --deep              Deep DB health checks (integrity, orphans, cycles, zombies)
+    --deep --fix        Auto-repair fixable issues
+    --deep --json       Machine-readable JSON output
   swarm init      Initialize beads in current project
   swarm config    Show paths to generated config files
   swarm claude    Claude Code integration (path/install/uninstall/init/hooks)
@@ -4036,6 +4375,7 @@ ${cyan("Commands:")}
   swarm eval      Eval-driven development commands
   swarm query     SQL analytics with presets (--sql, --preset, --format)
   swarm dashboard Live terminal UI with worker status (--epic, --refresh)
+  swarm compliance Worker tool usage compliance stats (hivemind, skills, etc)
   swarm replay    Event replay with timing (--speed, --type, --agent, --since, --until)
   swarm export    Export events (--format otlp/csv/json, --epic, --output)
   swarm tree      Visualize cell hierarchy as ASCII tree (--status, --epic, --json)
@@ -4122,6 +4462,7 @@ ${cyan("Observability Commands:")}
   swarm export --format csv            Export as CSV
   swarm export --epic <id>             Export specific epic only
   swarm export --output <file>         Write to file instead of stdout
+  swarm compliance                     Show worker tool usage compliance stats
   swarm tree                           Show all cells as tree
   swarm tree --status open             Show only open cells
   swarm tree --epic <id>               Show specific epic subtree
@@ -4146,6 +4487,11 @@ ${cyan("Claude Code:")}
   swarm claude init                 Create project-local .claude config
   swarm claude session-start        Hook: session start context
   swarm claude user-prompt          Hook: prompt submit context
+  swarm claude pre-edit             Hook: pre-Edit/Write (hivemind reminder)
+  swarm claude pre-complete         Hook: pre-swarm_complete (compliance check)
+  swarm claude post-complete        Hook: post-swarm_complete (store learnings)
+  swarm claude track-tool <name>    Hook: track mandatory tool usage
+  swarm claude compliance           Hook: show session compliance data
   swarm claude pre-compact          Hook: pre-compaction handler
   swarm claude session-end          Hook: session cleanup
 
@@ -7367,8 +7713,14 @@ switch (command) {
     break;
   }
   case "doctor": {
-    const debugFlag = process.argv.includes("--debug") || process.argv.includes("-d");
-    await doctor(debugFlag);
+    const deepFlag = process.argv.includes("--deep");
+    if (deepFlag) {
+      const { doctorDeep } = await import("./commands/doctor.js");
+      await doctorDeep(process.argv.slice(3));
+    } else {
+      const debugFlag = process.argv.includes("--debug") || process.argv.includes("-d");
+      await doctor(debugFlag);
+    }
     break;
   }
   case "init":
@@ -7453,6 +7805,9 @@ switch (command) {
   case "dashboard":
     await dashboard();
     break;
+  case "compliance":
+    await showWorkerCompliance();
+    break;
   case "replay":
     await replay();
     break;
@@ -7465,6 +7820,9 @@ switch (command) {
   case "session":
     await session();
     break;
+  case "status":
+    await status(process.argv.slice(3));
+    break;
   case "version":
   case "--version":
   case "-v":
@@ -7476,7 +7834,7 @@ switch (command) {
     await help();
     break;
   case undefined:
-    await setup();
+    await status(process.argv.slice(3));
     break;
   default:
     console.error("Unknown command: " + command);

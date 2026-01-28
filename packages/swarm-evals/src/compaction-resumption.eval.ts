@@ -184,6 +184,8 @@ evalite("Epic ID Specificity", {
             deleted_by: null,
             delete_reason: null,
             created_by: "coordinator",
+            result: null,
+            result_at: null,
           },
         ],
         swarmMailState: {
@@ -258,6 +260,8 @@ evalite("No False Positives", {
             deleted_by: null,
             delete_reason: null,
             created_by: null,
+            result: null,
+            result_at: null,
           },
         ],
         swarmMailState: {

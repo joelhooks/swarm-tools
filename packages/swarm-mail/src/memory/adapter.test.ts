@@ -1401,3 +1401,97 @@ describe("MemoryAdapter - Confidence-Based Decay", () => {
     expect(midResult.score).toBeLessThan(0.6); // Should be around 0.5 * rawScore
   });
 });
+
+describe("MemoryAdapter - Text Chunking for Long Memories (Issue #118)", () => {
+  let client: Client;
+  let db: SwarmDb;
+  let adapter: ReturnType<typeof createMemoryAdapter>;
+  let originalFetch: typeof fetch;
+  let consoleWarnSpy: ReturnType<typeof mock>;
+
+  beforeEach(async () => {
+    originalFetch = global.fetch;
+    const testDb = await createTestDb();
+    client = testDb.client;
+    db = testDb.db;
+
+    // Spy on console.warn to verify chunking warnings
+    consoleWarnSpy = mock(() => {});
+    console.warn = consoleWarnSpy as typeof console.warn;
+
+    const mockFetch = mock(() => mockSuccessResponse(mockEmbedding(1)));
+    global.fetch = mockFetch as typeof fetch;
+
+    adapter = createMemoryAdapter(db, mockConfig);
+  });
+
+  afterEach(async () => {
+    global.fetch = originalFetch;
+    client.close();
+  });
+
+  test("store() handles very long text without throwing", async () => {
+    // Create text that exceeds the conservative chunk limit (~30k chars)
+    const veryLongText = "This is a test. ".repeat(2500); // ~40k chars
+
+    // Should not throw
+    const result = await adapter.store(veryLongText);
+    expect(result.id).toBeDefined();
+
+    // Verify memory was stored
+    const retrieved = await adapter.get(result.id);
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.content).toBe(veryLongText);
+  });
+
+  test("store() chunks very long text and generates valid embedding", async () => {
+    const veryLongText = "A".repeat(30000); // 30k chars, exceeds limit
+
+    const result = await adapter.store(veryLongText);
+    expect(result.id).toBeDefined();
+
+    // Verify embedding was created (query should work)
+    const results = await adapter.find("A");
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  test("store() bypasses chunking for short text", async () => {
+    const shortText = "This is a short memory.";
+
+    await adapter.store(shortText);
+
+    // console.warn should NOT be called for short text
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+
+  test("store() warns when chunking is triggered", async () => {
+    const longText = "X".repeat(25000); // Exceeds 24k char limit
+
+    await adapter.store(longText);
+
+    // Should log warning about chunking
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    const warnMessage = consoleWarnSpy.mock.calls[0]?.[0];
+    expect(warnMessage).toContain("chunk");
+  });
+
+  test("store() produces valid averaged embedding for chunked text", async () => {
+    // Mock multiple embedding responses for different chunks
+    let callCount = 0;
+    const mockFetchMultiChunk = mock(() => {
+      callCount++;
+      // Return different embeddings for each chunk
+      return mockSuccessResponse(mockEmbedding(callCount));
+    });
+    global.fetch = mockFetchMultiChunk as typeof fetch;
+
+    const longText = "B".repeat(30000);
+
+    const result = await adapter.store(longText);
+
+    // Verify the memory is searchable (averaged embedding works)
+    const results = await adapter.find("B");
+    expect(results.length).toBeGreaterThan(0);
+    expect(results.some((r) => r.memory.id === result.id)).toBe(true);
+  });
+});

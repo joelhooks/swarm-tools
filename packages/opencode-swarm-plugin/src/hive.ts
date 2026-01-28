@@ -75,14 +75,19 @@ async function runGitCommand(
     stderr: "pipe",
   });
 
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
+  try {
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
 
-  const exitCode = await proc.exited;
+    const exitCode = await proc.exited;
 
-  return { exitCode, stdout, stderr };
+    return { exitCode, stdout, stderr };
+  } finally {
+    // Ensure process is killed if Promise.all or proc.exited fails
+    proc.kill();
+  }
 }
 
 import {
@@ -98,6 +103,7 @@ import {
   type EpicCreateResult,
 } from "./schemas";
 import { createEvent, appendEvent } from "swarm-mail";
+import { safeEmitEvent } from "./utils/event-utils";
 
 /**
  * Custom error for hive operations
@@ -384,7 +390,7 @@ export async function importJsonlToPGLite(projectPath: string): Promise<{
           : null;
         
         await db.query(
-          `INSERT INTO cells (
+          `INSERT INTO beads (
             id, project_key, type, status, title, description, priority,
             parent_id, assignee, created_at, updated_at, closed_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
@@ -655,21 +661,19 @@ export const hive_create = tool({
       await adapter.markDirty(projectKey, cell.id);
 
       // Emit cell_created event for observability
-      try {
-        const event = createEvent("cell_created", {
-          project_key: projectKey,
+      await safeEmitEvent(
+        "cell_created",
+        {
           cell_id: cell.id,
           title: validated.title,
           description: validated.description,
           issue_type: validated.type || "task",
           priority: validated.priority ?? 2,
           parent_id: validated.parent_id,
-        });
-        await appendEvent(event, projectKey);
-      } catch (error) {
-        // Non-fatal - log and continue
-        console.warn("[hive_create] Failed to emit cell_created event:", error);
-      }
+        },
+        "hive_create",
+        projectKey,
+      );
 
       const formatted = formatCellForOutput(cell);
       return JSON.stringify(formatted, null, 2);
@@ -687,9 +691,9 @@ export const hive_create = tool({
  * Create an epic with subtasks in one atomic operation
  */
 export const hive_create_epic = tool({
-  description: "Create epic with subtasks in one atomic operation",
+  description: "Create epic with subtasks atomically. REQUIRED: epic_title, subtasks (array with {title, files?}). Use after swarm_validate_decomposition confirms your decomposition is valid. Each subtask should list files it will modify to enable parallel work without conflicts.",
   args: {
-    epic_title: tool.schema.string().describe("Epic title"),
+    epic_title: tool.schema.string().describe("Epic title (e.g., 'Implement user auth')"),
     epic_description: tool.schema
       .string()
       .optional()
@@ -735,6 +739,29 @@ export const hive_create_epic = tool({
       .describe("Recovery context from checkpoint compaction"),
   },
   async execute(args, ctx) {
+    // Validate required parameters with helpful error messages
+    const missing: string[] = [];
+    if (!args.epic_title) missing.push("epic_title");
+    if (!args.subtasks || args.subtasks.length === 0) missing.push("subtasks (array of subtask objects)");
+
+    if (missing.length > 0) {
+      return JSON.stringify({
+        success: false,
+        error: `Missing required parameters: ${missing.join(", ")}`,
+        hint: "hive_create_epic creates an epic with subtasks atomically.",
+        example: {
+          epic_title: "Implement user authentication",
+          epic_description: "Add login, logout, and session management",
+          subtasks: [
+            { title: "Create auth service", files: ["src/auth/service.ts"] },
+            { title: "Add login endpoint", files: ["src/api/login.ts"] },
+            { title: "Add session middleware", files: ["src/middleware/session.ts"] },
+          ],
+        },
+        tip: "Each subtask should have a title and optionally files it will modify. This helps with file reservation and parallel execution.",
+      }, null, 2);
+    }
+
     const validated = EpicCreateArgsSchema.parse(args);
     const projectKey = getHiveWorkingDirectory();
     const adapter = await getHiveAdapter(projectKey);
@@ -771,27 +798,25 @@ export const hive_create_epic = tool({
 
       // Emit epic_created event for observability
       const effectiveProjectKey = args.project_key || projectKey;
-      try {
-        const epicCreatedEvent = createEvent("epic_created", {
-          project_key: effectiveProjectKey,
+      await safeEmitEvent(
+        "epic_created",
+        {
           epic_id: epic.id,
           title: validated.epic_title,
           description: validated.epic_description,
           subtask_count: validated.subtasks.length,
           subtask_ids: created.slice(1).map(c => c.id),
-        });
-        await appendEvent(epicCreatedEvent, effectiveProjectKey);
-      } catch (error) {
-        // Non-fatal - log and continue
-        console.warn("[hive_create_epic] Failed to emit epic_created event:", error);
-      }
+        },
+        "hive_create_epic",
+        effectiveProjectKey,
+      );
 
       // Emit DecompositionGeneratedEvent for learning system
       // Always emit using projectKey (from getHiveWorkingDirectory), not args.project_key
       // This fixes the bug where events weren't emitted when callers didn't pass project_key
-      try {
-        const event = createEvent("decomposition_generated", {
-          project_key: effectiveProjectKey,
+      await safeEmitEvent(
+        "decomposition_generated",
+        {
           epic_id: epic.id,
           task: args.task || validated.epic_title,
           context: validated.epic_description,
@@ -803,39 +828,29 @@ export const hive_create_epic = tool({
             priority: st.priority,
           })),
           recovery_context: args.recovery_context,
-        });
-        await appendEvent(event, effectiveProjectKey);
-      } catch (error) {
-        // Non-fatal - log and continue
-        console.warn(
-          "[hive_create_epic] Failed to emit DecompositionGeneratedEvent:",
-          error,
-        );
-      }
+        },
+        "hive_create_epic",
+        effectiveProjectKey,
+      );
 
       // Emit SwarmStartedEvent for orchestration lifecycle tracking
-      try {
-        const totalFiles = validated.subtasks.reduce(
-          (count, st) => count + (st.files?.length || 0),
-          0,
-        );
-        const swarmStartedEvent = createEvent("swarm_started", {
-          project_key: effectiveProjectKey,
+      const totalFiles = validated.subtasks.reduce(
+        (count, st) => count + (st.files?.length || 0),
+        0,
+      );
+      await safeEmitEvent(
+        "swarm_started",
+        {
           epic_id: epic.id,
           epic_title: validated.epic_title,
           strategy: args.strategy || "feature-based",
           subtask_count: validated.subtasks.length,
           total_files: totalFiles,
           coordinator_agent: "coordinator", // Default coordinator name
-        });
-        await appendEvent(swarmStartedEvent, effectiveProjectKey);
-      } catch (error) {
-        // Non-fatal - log and continue
-        console.warn(
-          "[hive_create_epic] Failed to emit SwarmStartedEvent:",
-          error,
-        );
-      }
+        },
+        "hive_create_epic",
+        effectiveProjectKey,
+      );
 
       // Capture decomposition_complete event for eval scoring
       try {
@@ -1043,22 +1058,20 @@ export const hive_update = tool({
       await adapter.markDirty(projectKey, cellId);
 
       // Emit cell_updated event for observability
-      try {
-        const fieldsChanged: string[] = [];
-        if (validated.status) fieldsChanged.push("status");
-        if (validated.description !== undefined) fieldsChanged.push("description");
-        if (validated.priority !== undefined) fieldsChanged.push("priority");
-        
-        const event = createEvent("cell_updated", {
-          project_key: projectKey,
+      const fieldsChanged: string[] = [];
+      if (validated.status) fieldsChanged.push("status");
+      if (validated.description !== undefined) fieldsChanged.push("description");
+      if (validated.priority !== undefined) fieldsChanged.push("priority");
+
+      await safeEmitEvent(
+        "cell_updated",
+        {
           cell_id: cellId,
           fields_changed: fieldsChanged,
-        });
-        await appendEvent(event, projectKey);
-      } catch (error) {
-        // Non-fatal - log and continue
-        console.warn("[hive_update] Failed to emit cell_updated event:", error);
-      }
+        },
+        "hive_update",
+        projectKey,
+      );
 
       const formatted = formatCellForOutput(cell!);
       return JSON.stringify(formatted, null, 2);
@@ -1095,6 +1108,7 @@ export const hive_close = tool({
   args: {
     id: tool.schema.string().describe("Cell ID or partial hash"),
     reason: tool.schema.string().describe("Completion reason"),
+    result: tool.schema.string().optional().describe("Implementation summary - what was actually done (like a PR description)"),
   },
   async execute(args, ctx) {
     const validated = CellCloseArgsSchema.parse(args);
@@ -1113,6 +1127,7 @@ export const hive_close = tool({
         projectKey,
         cellId,
         validated.reason,
+        validated.result ? { result: validated.result } : undefined,
       );
 
       await adapter.markDirty(projectKey, cellId);
@@ -1120,13 +1135,11 @@ export const hive_close = tool({
       // Emit SwarmCompletedEvent if this was an epic
       if (isEpic && cellBeforeClose) {
         try {
-          const { createEvent, appendEvent } = await import("swarm-mail");
-          
           // Query subtasks to gather metrics
           const subtasks = await adapter.queryCells(projectKey, { parent_id: cellId });
           const completedSubtasks = subtasks.filter(st => st.status === "closed");
           const failedSubtasks = subtasks.filter(st => st.status === "blocked");
-          
+
           // Gather all unique files from DecompositionGeneratedEvent
           let totalFilesTouched: string[] = [];
           try {
@@ -1135,11 +1148,11 @@ export const hive_close = tool({
               projectKey,
               types: ["decomposition_generated"],
             }, projectKey);
-            
-            const epicDecomp = decompositionEvents.find((e: any) => 
+
+            const epicDecomp = decompositionEvents.find((e: any) =>
               e.type === "decomposition_generated" && e.epic_id === cellId
             );
-            
+
             if (epicDecomp) {
               const allFiles = new Set<string>();
               for (const subtask of (epicDecomp as any).subtasks || []) {
@@ -1152,7 +1165,7 @@ export const hive_close = tool({
           } catch (error) {
             console.warn("[hive_close] Failed to gather files from decomposition:", error);
           }
-          
+
           // Calculate total duration from swarm_started to now
           let totalDurationMs = 0;
           try {
@@ -1161,29 +1174,32 @@ export const hive_close = tool({
               projectKey,
               types: ["swarm_started"],
             }, projectKey);
-            
-            const startEvent = swarmStartedEvents.find((e: any) => 
+
+            const startEvent = swarmStartedEvents.find((e: any) =>
               e.type === "swarm_started" && e.epic_id === cellId
             );
-            
+
             if (startEvent) {
               totalDurationMs = Date.now() - (startEvent as any).timestamp;
             }
           } catch (error) {
             console.warn("[hive_close] Failed to calculate duration:", error);
           }
-          
-          const swarmCompletedEvent = createEvent("swarm_completed", {
-            project_key: projectKey,
-            epic_id: cellId,
-            epic_title: cellBeforeClose.title,
-            success: failedSubtasks.length === 0,
-            total_duration_ms: totalDurationMs,
-            subtasks_completed: completedSubtasks.length,
-            subtasks_failed: failedSubtasks.length,
-            total_files_touched: totalFilesTouched,
-          });
-          await appendEvent(swarmCompletedEvent, projectKey);
+
+          await safeEmitEvent(
+            "swarm_completed",
+            {
+              epic_id: cellId,
+              epic_title: cellBeforeClose.title,
+              success: failedSubtasks.length === 0,
+              total_duration_ms: totalDurationMs,
+              subtasks_completed: completedSubtasks.length,
+              subtasks_failed: failedSubtasks.length,
+              total_files_touched: totalFilesTouched,
+            },
+            "hive_close",
+            projectKey,
+          );
           
           // Run validation hook (fire-and-forget)
           // This validates the swarm event stream and emits validation events
@@ -1236,17 +1252,15 @@ export const hive_close = tool({
       }
 
       // Emit cell_closed event for all cells (including epics)
-      try {
-        const event = createEvent("cell_closed", {
-          project_key: projectKey,
+      await safeEmitEvent(
+        "cell_closed",
+        {
           cell_id: cellId,
           reason: validated.reason,
-        });
-        await appendEvent(event, projectKey);
-      } catch (error) {
-        // Non-fatal - log and continue
-        console.warn("[hive_close] Failed to emit cell_closed event:", error);
-      }
+        },
+        "hive_close",
+        projectKey,
+      );
 
       return `Closed ${cell.id}: ${validated.reason}`;
     } catch (error) {

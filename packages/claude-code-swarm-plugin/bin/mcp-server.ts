@@ -7,7 +7,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import { z } from "zod";
 
 interface ToolInfo {
@@ -161,13 +161,14 @@ function getToolDefinitions(): ToolInfo[] {
 
 /**
  * Execute a tool via swarm CLI.
+ * Uses execFileSync to eliminate shell injection risk.
  */
 function executeTool(name: string, args: Record<string, unknown>): string {
   try {
     const argsJson = JSON.stringify(args);
-    const output = execSync(`swarm tool ${name} --json '${argsJson.replace(/'/g, "'\\''")}'`, {
+    const output = execFileSync("swarm", ["tool", name, "--json", argsJson], {
       encoding: "utf-8",
-      timeout: 120000, // 2 minute timeout for long operations
+      timeout: 300000, // 5 minute timeout for long operations
       env: {
         ...process.env,
         CLAUDE_SESSION_ID: process.env.CLAUDE_SESSION_ID,
@@ -177,23 +178,75 @@ function executeTool(name: string, args: Record<string, unknown>): string {
     });
     return output;
   } catch (error) {
-    const err = error as { stdout?: string; stderr?: string; message?: string };
+    const err = error as { stdout?: string; stderr?: string; message?: string; code?: string };
     if (err.stdout) return err.stdout;
+
+    // Determine error code
+    let errorCode = "EXECUTION_ERROR";
+    if (err.code === "ENOENT") {
+      errorCode = "CLI_NOT_FOUND";
+    } else if (err.message?.includes("timeout")) {
+      errorCode = "CLI_TIMEOUT";
+    } else if (err.stderr?.includes("Unknown tool") || err.stderr?.includes("not found")) {
+      errorCode = "TOOL_ERROR";
+    }
+
     return JSON.stringify({
       success: false,
       error: {
-        code: "EXECUTION_ERROR",
+        code: errorCode,
         message: err.message || String(error),
         stderr: err.stderr,
+        hint: errorCode === "CLI_NOT_FOUND"
+          ? "swarm CLI not found in PATH. Run: npm install -g @opencode/swarm"
+          : errorCode === "CLI_TIMEOUT"
+          ? "Tool execution timed out after 5 minutes"
+          : undefined,
       },
     });
   }
 }
 
+/**
+ * Get swarm CLI version.
+ * Falls back to a placeholder if CLI not available.
+ */
+function getSwarmVersion(): string {
+  try {
+    const output = execFileSync("swarm", ["--version"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    // Parse version from output like "v0.57.5" or "0.57.5"
+    const match = output.match(/v?(\d+\.\d+\.\d+)/);
+    return match ? match[1] : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function main(): Promise<void> {
+  // Health check: verify swarm CLI is available before starting server
+  try {
+    execFileSync("swarm", ["--version"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+  } catch (error) {
+    const err = error as { code?: string };
+    if (err.code === "ENOENT") {
+      console.error("[swarm-mcp] ERROR: swarm CLI not found in PATH");
+      console.error("[swarm-mcp] Install with: npm install -g @opencode/swarm");
+      process.exit(1);
+    } else {
+      console.error("[swarm-mcp] WARNING: Failed to check swarm CLI version:", error);
+      // Continue anyway - might be a transient error
+    }
+  }
+
   const server = new McpServer({
     name: "swarm-tools",
-    version: process.env.SWARM_VERSION || "0.57.5",
+    version: getSwarmVersion(),
   });
 
   // Get tools from CLI, filter deprecated ones, and register

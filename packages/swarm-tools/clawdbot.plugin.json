@@ -1,0 +1,11 @@
+{
+  "id": "swarm-tools",
+  "name": "Swarm Tools",
+  "description": "Multi-agent swarm coordination with hivemind memory, cells, and workflows",
+  "kind": "tools",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  }
+}

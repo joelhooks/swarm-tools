@@ -18,6 +18,7 @@ export * from "./swarm-prompts";
 export * from "./swarm-orchestrate";
 export * from "./swarm-research";
 export * from "./swarm-adversarial-review";
+export * from "./swarm-verify";
 
 // Import tools from each module
 import { decomposeTools } from "./swarm-decompose";
@@ -26,10 +27,11 @@ import { promptTools } from "./swarm-prompts";
 import { researchTools } from "./swarm-research";
 import { strategyTools } from "./swarm-strategies";
 import { adversarialReviewTools } from "./swarm-adversarial-review";
+import { verificationTools } from "./swarm-verify";
 
 /**
  * Combined swarm tools for plugin registration.
- * Includes all tools from strategy, decompose, prompt, orchestrate, research, and adversarial-review modules.
+ * Includes all tools from strategy, decompose, prompt, orchestrate, research, adversarial-review, and verification modules.
  */
 export const swarmTools = {
   ...strategyTools,
@@ -38,4 +40,5 @@ export const swarmTools = {
   ...orchestrateTools,
   ...researchTools,
   ...adversarialReviewTools,
+  ...verificationTools,
 };

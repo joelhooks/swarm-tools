@@ -17,14 +17,19 @@ related_skills:
 
 This skill guides multi-agent coordination for OpenCode swarm workflows.
 
-## When to Use
+## When to Swarm
 
-- Tasks touching 3+ files
-- Parallelizable work (frontend/backend/tests)
-- Work requiring specialized agents
-- Time-to-completion matters
+**Always swarm when `/swarm` is invoked.** The user's explicit invocation overrides any heuristics.
 
-Avoid swarming for 1–2 file changes or tightly sequential work.
+Swarming serves multiple purposes beyond parallelization:
+- **Context preservation** - workers offload work from coordinator
+- **Session resilience** - workers persist if coordinator compacts
+- **Progress tracking** - hive cells track completion state
+- **Learning capture** - hivemind stores discoveries per subtask
+
+Even small tasks (1-2 files) benefit from swarming when context is precious.
+
+For sequential work, use dependencies between subtasks rather than refusing to swarm.
 
 ## Tool Access (Wildcard)
 
@@ -44,18 +49,47 @@ Claude Code auto-launches MCP servers from `mcpServers` configuration. Do **not*
 ## Coordinator Protocol (High-Level)
 
 1. Initialize Swarm Mail (`swarmmail_init`).
-2. Query past learnings (`hivemind_find`).
+2. **Query past learnings** (`hivemind_find`) - MANDATORY before decomposition.
 3. Decompose (`swarm_plan_prompt` + `swarm_validate_decomposition`).
 4. Spawn workers with explicit file lists.
 5. Review worker output (`swarm_review` + `swarm_review_feedback`).
 6. Record outcomes (`swarm_complete`).
+7. **Store learnings** (`hivemind_store`) - MANDATORY after swarm completion.
 
 ## Worker Protocol (High-Level)
 
 1. Initialize Swarm Mail (`swarmmail_init`).
 2. Reserve files (`swarmmail_reserve`).
 3. Work within scope and report progress.
-4. Complete with `swarm_complete`.
+4. **Store discoveries** (`hivemind_store`) - any gotchas, patterns, or decisions made.
+5. Complete with `swarm_complete`.
+
+## Hivemind Usage (MANDATORY)
+
+Agents MUST use hivemind to build collective memory:
+
+**Before work:**
+```
+hivemind_find({ query: "relevant topic or codebase pattern" })
+```
+
+**During work (when discovering something):**
+```
+hivemind_store({
+  information: "The auth module requires X before Y",
+  tags: "auth,gotcha,codebase-name"
+})
+```
+
+**After work:**
+```
+hivemind_store({
+  information: "Completed task X. Key learnings: ...",
+  tags: "swarm,completion,epic-id"
+})
+```
+
+Store liberally. Memory is cheap; re-discovering gotchas is expensive.
 
 ## File Reservations
 

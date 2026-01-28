@@ -21,6 +21,7 @@ import {
   messagesTable,
   reservationsTable,
 } from "../db/schema/streams.js";
+import { cleanupExpiredReservations } from "./reservation-utils.js";
 
 // ============================================================================
 // Types
@@ -285,16 +286,7 @@ export async function getActiveReservationsDrizzle(
   const now = Date.now();
 
   // CLEANUP: Auto-release expired reservations before querying
-  await db
-    .update(reservationsTable)
-    .set({ released_at: now })
-    .where(
-      and(
-        eq(reservationsTable.project_key, projectKey),
-        sql`${reservationsTable.released_at} IS NULL`,
-        sql`${reservationsTable.expires_at} < ${now}`,
-      ),
-    );
+  await cleanupExpiredReservations(db, projectKey);
 
   const conditions = [
     eq(reservationsTable.project_key, projectKey),

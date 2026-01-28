@@ -69,6 +69,8 @@ import {
   semantic_memory_find,
 } from "./hivemind-tools";
 
+import { setCoordinatorContext, clearCoordinatorContext } from "./planning-guardrails";
+
 import type { Bead, EpicCreateResult } from "./schemas";
 
 // ============================================================================
@@ -454,6 +456,9 @@ describe("swarmmail tools adapter wiring", () => {
     const coordinatorCtx = createTestContext();
     const testerCtx = createTestContext();
 
+    // Set coordinator context so release_all is allowed
+    setCoordinatorContext({ isCoordinator: true, sessionId: coordinatorCtx.sessionID });
+
     await executeTool(
       swarmmail_init,
       { project_path: TEST_DB_PATH, agent_name: "AgentOne" },
@@ -510,6 +515,7 @@ describe("swarmmail tools adapter wiring", () => {
     clearSessionState(agent2Ctx.sessionID);
     clearSessionState(coordinatorCtx.sessionID);
     clearSessionState(testerCtx.sessionID);
+    clearCoordinatorContext(coordinatorCtx.sessionID);
   });
 
   it("swarmmail_release_agent releases only target agent reservations", async () => {
@@ -517,6 +523,9 @@ describe("swarmmail tools adapter wiring", () => {
     const agent2Ctx = createTestContext();
     const coordinatorCtx = createTestContext();
     const testerCtx = createTestContext();
+
+    // Set coordinator context so release_agent is allowed
+    setCoordinatorContext({ isCoordinator: true, sessionId: coordinatorCtx.sessionID });
 
     await executeTool(
       swarmmail_init,
@@ -581,6 +590,7 @@ describe("swarmmail tools adapter wiring", () => {
     clearSessionState(agent2Ctx.sessionID);
     clearSessionState(coordinatorCtx.sessionID);
     clearSessionState(testerCtx.sessionID);
+    clearCoordinatorContext(coordinatorCtx.sessionID);
   });
 });
 

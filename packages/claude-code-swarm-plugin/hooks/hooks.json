@@ -22,6 +22,73 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude pre-edit"
+          }
+        ]
+      },
+      {
+        "matcher": "swarm_complete",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude pre-complete"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "hivemind_find|mcp__plugin_swarm_swarm-tools__hivemind_find",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude track-tool hivemind_find"
+          }
+        ]
+      },
+      {
+        "matcher": "skills_use|Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude track-tool skills_use"
+          }
+        ]
+      },
+      {
+        "matcher": "swarmmail_init|mcp__plugin_swarm_swarm-tools__swarmmail_init",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude track-tool swarmmail_init"
+          }
+        ]
+      },
+      {
+        "matcher": "hivemind_store|mcp__plugin_swarm_swarm-tools__hivemind_store",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude track-tool hivemind_store"
+          }
+        ]
+      },
+      {
+        "matcher": "swarm_complete",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude post-complete"
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "matcher": "",

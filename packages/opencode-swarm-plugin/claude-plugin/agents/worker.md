@@ -5,6 +5,7 @@ model: sonnet
 skills:
   - always-on-guidance
   - swarm-coordination
+  - swarm-cli
   - testing-patterns
   - system-design
 tools:

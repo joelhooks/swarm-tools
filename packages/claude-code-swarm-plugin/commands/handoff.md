@@ -10,7 +10,7 @@ Wrap up a swarm session cleanly.
 1. Summarize completed work and open blockers.
 2. `swarmmail_release()` to free reservations (if any).
 3. Update cells with `hive_update()` or `hive_close()`.
-4. `hive_sync()` to persist state to git.
+4. Use git commands directly to persist state (add, commit, push).
 5. Provide a concise handoff note for the next session.
 
 ## Usage

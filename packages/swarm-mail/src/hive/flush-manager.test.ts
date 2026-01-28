@@ -17,7 +17,7 @@ import { convertPlaceholders, type DatabaseAdapter } from "../libsql.js";
 import { createHiveAdapter } from "./adapter.js";
 import { FlushManager } from "./flush-manager.js";
 import { parseJSONL } from "./jsonl.js";
-import { beadsMigrationLibSQL, cellsViewMigrationLibSQL } from "./migrations.js";
+import { beadsMigrationLibSQL, cellsViewMigrationLibSQL, beadsResultColumnsMigrationLibSQL } from "./migrations.js";
 
 /**
  * Wrap libSQL client with DatabaseAdapter interface
@@ -86,6 +86,7 @@ describe("FlushManager", () => {
     // Run hive migrations directly (beads tables, cells view)
     await db.exec(beadsMigrationLibSQL.up);
     await db.exec(cellsViewMigrationLibSQL.up);
+    await db.exec(beadsResultColumnsMigrationLibSQL.up);
 
     adapter = createHiveAdapter(db, projectKey);
   });
@@ -242,5 +243,112 @@ describe("FlushManager", () => {
 
     const finalContent = await readFile(testOutputPath, "utf-8");
     expect(finalContent).toBe(existingContent);
+  });
+
+  test("scheduleFlush() should track errors from failed flushes", async () => {
+    const testOutputPath = "/invalid/path/that/does/not/exist/issues.jsonl";
+
+    // ARRANGE: Create a cell and mark it dirty
+    const cell = await adapter.createCell(projectKey, {
+      title: "Test Cell",
+      type: "task",
+      priority: 1,
+    });
+    await adapter.markDirty(projectKey, cell.id);
+
+    // ACT: Schedule a flush that will fail due to invalid path
+    let errorCaught = false;
+    const flushManager = new FlushManager({
+      adapter,
+      projectKey,
+      outputPath: testOutputPath,
+      debounceMs: 10, // Short delay for testing
+      onError: (err) => {
+        errorCaught = true;
+      },
+    });
+
+    flushManager.scheduleFlush();
+
+    // Wait for scheduled flush to execute and fail
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // ASSERT: Error should be tracked
+    expect(flushManager.hasError()).toBe(true);
+    expect(flushManager.getLastError()).toBeInstanceOf(Error);
+    expect(errorCaught).toBe(true);
+
+    // Cleanup
+    flushManager.stop();
+  });
+
+  test("clearError() should reset error state", async () => {
+    const testOutputPath = "/invalid/path/that/does/not/exist/issues.jsonl";
+
+    // ARRANGE: Create a cell and mark it dirty
+    const cell = await adapter.createCell(projectKey, {
+      title: "Test Cell",
+      type: "task",
+      priority: 1,
+    });
+    await adapter.markDirty(projectKey, cell.id);
+
+    // ACT: Schedule a flush that will fail
+    const flushManager = new FlushManager({
+      adapter,
+      projectKey,
+      outputPath: testOutputPath,
+      debounceMs: 10,
+    });
+
+    flushManager.scheduleFlush();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Verify error is tracked
+    expect(flushManager.hasError()).toBe(true);
+
+    // Clear the error
+    flushManager.clearError();
+
+    // ASSERT: Error state should be cleared
+    expect(flushManager.hasError()).toBe(false);
+    expect(flushManager.getLastError()).toBe(null);
+
+    // Cleanup
+    flushManager.stop();
+  });
+
+  test("onError callback should be invoked when scheduled flush fails", async () => {
+    const testOutputPath = "/invalid/path/that/does/not/exist/issues.jsonl";
+
+    // ARRANGE: Create a cell and mark it dirty
+    const cell = await adapter.createCell(projectKey, {
+      title: "Test Cell",
+      type: "task",
+      priority: 1,
+    });
+    await adapter.markDirty(projectKey, cell.id);
+
+    // ACT: Schedule a flush with error callback
+    let capturedError: Error | null = null;
+    const flushManager = new FlushManager({
+      adapter,
+      projectKey,
+      outputPath: testOutputPath,
+      debounceMs: 10,
+      onError: (err) => {
+        capturedError = err;
+      },
+    });
+
+    flushManager.scheduleFlush();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // ASSERT: Callback should have been invoked with error
+    expect(capturedError).toBeInstanceOf(Error);
+    expect(capturedError?.message).toContain("ENOENT");
+
+    // Cleanup
+    flushManager.stop();
   });
 });

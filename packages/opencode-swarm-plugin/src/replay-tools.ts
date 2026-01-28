@@ -131,9 +131,15 @@ export function filterEvents(
 // replayWithTiming - Async generator with speed control
 // ============================================================================
 
+export interface ReplayOptions {
+	/** Injectable sleep function for testing. Defaults to Bun.sleep / setTimeout. */
+	sleep?: (ms: number) => Promise<void>;
+}
+
 export async function* replayWithTiming(
 	events: ReplayEvent[],
 	speed: ReplaySpeed,
+	options?: ReplayOptions,
 ): AsyncGenerator<ReplayEvent> {
 	if (events.length === 0) {
 		return;
@@ -162,8 +168,10 @@ export async function* replayWithTiming(
 			// Subtract 3ms buffer to account for async overhead
 			const adjustedDelay = delay - 3;
 
-			// Use Bun.sleep for more precise timing in Bun runtime
-			if (typeof Bun !== "undefined" && typeof Bun.sleep === "function") {
+			if (options?.sleep) {
+				await options.sleep(adjustedDelay);
+			} else if (typeof Bun !== "undefined" && typeof Bun.sleep === "function") {
+				// Use Bun.sleep for more precise timing in Bun runtime
 				await Bun.sleep(adjustedDelay);
 			} else {
 				await new Promise((resolve) => setTimeout(resolve, adjustedDelay));

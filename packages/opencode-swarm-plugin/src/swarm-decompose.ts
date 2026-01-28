@@ -433,9 +433,9 @@ function formatCassHistoryForPrompt(history: CassSearchResult): string {
  */
 export const swarm_decompose = tool({
   description:
-    "Generate decomposition prompt for breaking task into parallelizable subtasks. Optionally queries CASS for similar past tasks.",
+    "Generate decomposition prompt for breaking task into parallelizable subtasks. REQUIRED: task (the work to decompose). Returns a prompt - use it to plan subtasks, then validate with swarm_validate_decomposition, then create with hive_create_epic.",
   args: {
-    task: tool.schema.string().min(1).describe("Task description to decompose"),
+    task: tool.schema.string().min(1).describe("Task description (e.g., 'Add user authentication with login/logout')"),
     context: tool.schema
       .string()
       .optional()
@@ -452,6 +452,21 @@ export const swarm_decompose = tool({
       .describe("Max CASS results to include (default: 3)"),
   },
   async execute(args) {
+    // Validate required parameter
+    if (!args.task) {
+      return JSON.stringify({
+        success: false,
+        error: "Missing required parameter: task",
+        hint: "swarm_decompose generates a decomposition prompt for breaking a task into parallelizable subtasks.",
+        example: {
+          task: "Implement user authentication with login, logout, and session management",
+          context: "This is a Next.js app using Prisma for database access",
+          query_cass: true,
+        },
+        tip: "Provide a clear task description. The tool will generate a prompt for decomposition and optionally query past similar tasks for patterns.",
+      }, null, 2);
+    }
+
     // Import needed modules
     const { formatMemoryQueryForDecomposition } = await import("./learning");
 
@@ -536,11 +551,11 @@ export const swarm_decompose = tool({
  * Use this after the agent responds to swarm:decompose to validate the structure.
  */
 export const swarm_validate_decomposition = tool({
-  description: "Validate a decomposition response against CellTreeSchema and capture for eval",
+  description: "Validate decomposition JSON before creating epic. REQUIRED: response (JSON string with {epic: {title, description}, subtasks: [{title, files, dependencies}]}). Checks for file conflicts and valid dependencies. Call after planning, before hive_create_epic.",
   args: {
     response: tool.schema
       .string()
-      .describe("JSON response from agent (CellTree format)"),
+      .describe("JSON string with epic and subtasks (see example in error hint)"),
     project_path: tool.schema
       .string()
       .optional()
@@ -563,8 +578,39 @@ export const swarm_validate_decomposition = tool({
       .describe("Epic ID for eval capture"),
   },
   async execute(args) {
+    // Validate required parameter
+    if (!args.response) {
+      return JSON.stringify({
+        success: false,
+        valid: false,
+        error: "Missing required parameter: response",
+        hint: "swarm_validate_decomposition validates a decomposition JSON. Pass the decomposition output as the 'response' parameter.",
+        example: {
+          response: JSON.stringify({
+            epic: { title: "Epic title", description: "Epic description" },
+            subtasks: [
+              { title: "Subtask 1", description: "...", files: ["src/file.ts"], dependencies: [] },
+            ],
+          }),
+          project_path: "/path/to/project",
+          task: "Original task description",
+        },
+        tip: "This tool validates the JSON output from your decomposition planning. The 'response' should be a JSON string matching CellTreeSchema.",
+      }, null, 2);
+    }
+
     try {
-      const parsed = JSON.parse(args.response);
+      // Handle both string and object inputs (MCP may pass already-parsed objects)
+      let parsed: unknown;
+      if (typeof args.response === "string") {
+        parsed = JSON.parse(args.response);
+        // Handle double-stringified edge case
+        if (typeof parsed === "string") {
+          parsed = JSON.parse(parsed);
+        }
+      } else {
+        parsed = args.response;
+      }
       const validated = CellTreeSchema.parse(parsed);
 
       // Additional validation: check for file conflicts

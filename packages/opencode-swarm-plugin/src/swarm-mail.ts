@@ -499,15 +499,29 @@ export const swarmmail_read_message = tool({
 });
 
 /**
+ * Normalize file paths by removing unnecessary escape characters.
+ * LLMs sometimes escape brackets/parens that don't need escaping.
+ */
+function normalizePath(path: string): string {
+  // Remove backslash escapes from brackets and parentheses
+  // e.g., "app/\\(content\\)/\\[slug\\]" -> "app/(content)/[slug]"
+  return path.replace(/\\([[\]()])/g, "$1");
+}
+
+/**
  * Reserve file paths for exclusive editing
  */
 export const swarmmail_reserve = tool({
   description:
-    "Reserve file paths for exclusive editing. Prevents conflicts with other agents.",
+    "Reserve file paths for exclusive editing. Prevents conflicts with other agents. " +
+    "IMPORTANT: Do NOT escape brackets or parentheses - paths like app/(content)/[slug]/page.tsx work as-is.",
   args: {
     paths: tool.schema
       .array(tool.schema.string())
-      .describe("File paths or glob patterns to reserve"),
+      .transform((paths) => paths.map(normalizePath))
+      .describe(
+        "File paths or glob patterns to reserve. Do NOT escape [ ] ( ) characters.",
+      ),
     reason: tool.schema
       .string()
       .optional()
@@ -534,10 +548,13 @@ export const swarmmail_reserve = tool({
     }
 
     try {
+      // Normalize paths - LLMs sometimes escape brackets/parens that don't need it
+      const normalizedPaths = args.paths.map(normalizePath);
+
       const result = await reserveSwarmFiles({
         projectPath: state.projectKey,
         agentName: state.agentName,
-        paths: args.paths,
+        paths: normalizedPaths,
         reason: args.reason,
         exclusive: args.exclusive ?? true,
         ttlSeconds: args.ttl_seconds,
@@ -585,12 +602,16 @@ export const swarmmail_reserve = tool({
  * Release file reservations
  */
 export const swarmmail_release = tool({
-  description: "Release file reservations. Call when done editing files.",
+  description:
+    "Release file reservations. Call when done editing files. " +
+    "Do NOT escape brackets or parentheses in paths.",
   args: {
     paths: tool.schema
       .array(tool.schema.string())
       .optional()
-      .describe("Specific paths to release (releases all if omitted)"),
+      .describe(
+        "Specific paths to release (releases all if omitted). Do NOT escape [ ] ( ) characters.",
+      ),
     reservation_ids: tool.schema
       .array(tool.schema.number())
       .optional()
@@ -616,10 +637,13 @@ export const swarmmail_release = tool({
         state.agentName,
       );
 
+      // Normalize paths if provided
+      const normalizedPaths = args.paths?.map(normalizePath);
+
       const result = await releaseSwarmFiles({
         projectPath: state.projectKey,
         agentName: state.agentName,
-        paths: args.paths,
+        paths: normalizedPaths,
         reservationIds: args.reservation_ids,
       });
 

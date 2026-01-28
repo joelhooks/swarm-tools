@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, test } from "bun:test";
 import { createDrizzleClient } from "../drizzle.js";
 import { memories } from "./memory.js";
+import { EMBEDDING_DIM } from "../../memory/ollama.js";
 
 describe("Memory Schema", () => {
   test("creates memories table with correct structure", async () => {
@@ -20,7 +21,7 @@ describe("Memory Schema", () => {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         decay_factor REAL DEFAULT 1.0,
-        embedding F32_BLOB(1024),
+        embedding F32_BLOB(${EMBEDDING_DIM}),
         valid_from TEXT,
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
@@ -80,7 +81,7 @@ describe("Memory Schema", () => {
     });
 
     expect(columnMap.get("embedding")).toMatchObject({
-      type: "F32_BLOB(1024)",
+      type: `F32_BLOB(${EMBEDDING_DIM})`,
     });
   });
 
@@ -100,7 +101,7 @@ describe("Memory Schema", () => {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         decay_factor REAL DEFAULT 1.0,
-        embedding F32_BLOB(1024),
+        embedding F32_BLOB(${EMBEDDING_DIM}),
         valid_from TEXT,
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
@@ -148,7 +149,7 @@ describe("Memory Schema", () => {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         decay_factor REAL DEFAULT 1.0,
-        embedding F32_BLOB(1024),
+        embedding F32_BLOB(${EMBEDDING_DIM}),
         valid_from TEXT,
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
@@ -157,8 +158,8 @@ describe("Memory Schema", () => {
       )
     `);
 
-    // Generate test vector (1024 dimensions)
-    const testVector = Array(1024).fill(0).map((_, i) => i / 1024);
+    // Generate test vector (EMBEDDING_DIM dimensions)
+    const testVector = Array(EMBEDDING_DIM).fill(0).map((_, i) => i / EMBEDDING_DIM);
 
     // Insert with vector using libSQL's vector() function
     await libsqlClient.execute({

@@ -8,8 +8,8 @@ Review Swarm Mail without blowing context.
 
 ## Workflow
 1. `swarmmail_inbox()` for headers (max 5).
-2. `swarmmail_read_message(message_id)` for details.
-3. `swarmmail_ack(message_id)` when handled.
+2. Review message content directly from inbox output.
+3. Use `swarmmail_send()` to reply if needed.
 
 ## Usage
 `/swarm:inbox`

@@ -83,8 +83,14 @@ import {
   isReviewApproved,
   getReviewStatus,
 } from "./swarm-review";
+import { getGitCommitInfo } from "./utils/git-commit-info";
 import { captureCoordinatorEvent, type EvalRecord } from "./eval-capture.js";
 import { formatResearcherPrompt } from "./swarm-prompts";
+import {
+  runVerificationGate,
+  type VerificationGateResult,
+  type VerificationStep,
+} from "./swarm-verify";
 
 // ============================================================================
 // Helper Functions
@@ -358,211 +364,10 @@ function formatProgressMessage(progress: AgentProgress): string {
 }
 
 // ============================================================================
-// Verification Gate
+// Verification Gate - Delegated to swarm-verify.ts
 // ============================================================================
-
-/**
- * Verification Gate result - tracks each verification step
- *
- * Based on the Gate Function from superpowers:
- * 1. IDENTIFY: What command proves this claim?
- * 2. RUN: Execute the FULL command (fresh, complete)
- * 3. READ: Full output, check exit code, count failures
- * 4. VERIFY: Does output confirm the claim?
- * 5. ONLY THEN: Make the claim
- */
-interface VerificationStep {
-  name: string;
-  command: string;
-  passed: boolean;
-  exitCode: number;
-  output?: string;
-  error?: string;
-  skipped?: boolean;
-  skipReason?: string;
-}
-
-interface VerificationGateResult {
-  passed: boolean;
-  steps: VerificationStep[];
-  summary: string;
-  blockers: string[];
-}
-
-
-/**
- * Run typecheck verification
- *
- * Attempts to run TypeScript type checking on the project.
- * Falls back gracefully if tsc is not available.
- */
-async function runTypecheckVerification(): Promise<VerificationStep> {
-  const step: VerificationStep = {
-    name: "typecheck",
-    command: "tsc --noEmit",
-    passed: false,
-    exitCode: -1,
-  };
-
-  try {
-    // Check if tsconfig.json exists in current directory
-    const tsconfigExists = await Bun.file("tsconfig.json").exists();
-    if (!tsconfigExists) {
-      step.skipped = true;
-      step.skipReason = "No tsconfig.json found";
-      step.passed = true; // Don't block if no TypeScript
-      return step;
-    }
-
-    const result = await Bun.$`tsc --noEmit`.quiet().nothrow();
-    step.exitCode = result.exitCode;
-    step.passed = result.exitCode === 0;
-
-    if (!step.passed) {
-      step.error = result.stderr.toString().slice(0, 1000); // Truncate for context
-      step.output = result.stdout.toString().slice(0, 1000);
-    }
-  } catch (error) {
-    step.skipped = true;
-    step.skipReason = `tsc not available: ${error instanceof Error ? error.message : String(error)}`;
-    step.passed = true; // Don't block if tsc unavailable
-  }
-
-  return step;
-}
-
-/**
- * Run test verification for specific files
- *
- * Attempts to find and run tests related to the touched files.
- * Uses common test patterns (*.test.ts, *.spec.ts, __tests__/).
- */
-async function runTestVerification(
-  filesTouched: string[],
-): Promise<VerificationStep> {
-  const step: VerificationStep = {
-    name: "tests",
-    command: "bun test <related-files>",
-    passed: false,
-    exitCode: -1,
-  };
-
-  if (filesTouched.length === 0) {
-    step.skipped = true;
-    step.skipReason = "No files touched";
-    step.passed = true;
-    return step;
-  }
-
-  // Find test files related to touched files
-  const testPatterns: string[] = [];
-  for (const file of filesTouched) {
-    // Skip if already a test file
-    if (file.includes(".test.") || file.includes(".spec.")) {
-      testPatterns.push(file);
-      continue;
-    }
-
-    // Look for corresponding test file
-    const baseName = file.replace(/\.(ts|tsx|js|jsx)$/, "");
-    testPatterns.push(`${baseName}.test.ts`);
-    testPatterns.push(`${baseName}.test.tsx`);
-    testPatterns.push(`${baseName}.spec.ts`);
-  }
-
-  // Check if any test files exist
-  const existingTests: string[] = [];
-  for (const pattern of testPatterns) {
-    try {
-      const exists = await Bun.file(pattern).exists();
-      if (exists) {
-        existingTests.push(pattern);
-      }
-    } catch {
-      // File doesn't exist, skip
-    }
-  }
-
-  if (existingTests.length === 0) {
-    step.skipped = true;
-    step.skipReason = "No related test files found";
-    step.passed = true;
-    return step;
-  }
-
-  try {
-    step.command = `bun test ${existingTests.join(" ")}`;
-    const result = await Bun.$`bun test ${existingTests}`.quiet().nothrow();
-    step.exitCode = result.exitCode;
-    step.passed = result.exitCode === 0;
-
-    if (!step.passed) {
-      step.error = result.stderr.toString().slice(0, 1000);
-      step.output = result.stdout.toString().slice(0, 1000);
-    }
-  } catch (error) {
-    step.skipped = true;
-    step.skipReason = `Test runner failed: ${error instanceof Error ? error.message : String(error)}`;
-    step.passed = true; // Don't block if test runner unavailable
-  }
-
-  return step;
-}
-
-/**
- * Run the full Verification Gate
- *
- * Implements the Gate Function (IDENTIFY → RUN → READ → VERIFY → CLAIM):
- * 1. Typecheck
- * 2. Tests for touched files
- *
- * NOTE: Bug scanning was removed in v0.31 - it was slowing down completion
- * without providing proportional value.
- *
- * All steps must pass (or be skipped with valid reason) to proceed.
- */
-async function runVerificationGate(
-  filesTouched: string[],
-  _skipUbs: boolean = false, // Kept for backward compatibility, now ignored
-): Promise<VerificationGateResult> {
-  const steps: VerificationStep[] = [];
-  const blockers: string[] = [];
-
-  // Step 1: Typecheck
-  const typecheckStep = await runTypecheckVerification();
-  steps.push(typecheckStep);
-  if (!typecheckStep.passed && !typecheckStep.skipped) {
-    blockers.push(
-      `Typecheck failed: ${typecheckStep.error?.slice(0, 100) || "type errors found"}. Try: Run 'tsc --noEmit' to see full errors, check tsconfig.json configuration, or fix reported type errors in modified files.`,
-    );
-  }
-
-  // Step 3: Tests
-  const testStep = await runTestVerification(filesTouched);
-  steps.push(testStep);
-  if (!testStep.passed && !testStep.skipped) {
-    blockers.push(
-      `Tests failed: ${testStep.error?.slice(0, 100) || "test failures"}. Try: Run 'bun test ${testStep.command.split(" ").slice(2).join(" ")}' to see full output, check test assertions, or fix failing tests in modified files.`,
-    );
-  }
-
-  // Build summary
-  const passedCount = steps.filter((s) => s.passed).length;
-  const skippedCount = steps.filter((s) => s.skipped).length;
-  const failedCount = steps.filter((s) => !s.passed && !s.skipped).length;
-
-  const summary =
-    failedCount === 0
-      ? `Verification passed: ${passedCount} checks passed, ${skippedCount} skipped`
-      : `Verification FAILED: ${failedCount} checks failed, ${passedCount} passed, ${skippedCount} skipped`;
-
-  return {
-    passed: failedCount === 0,
-    steps,
-    summary,
-    blockers,
-  };
-}
+// Verification logic moved to swarm-verify.ts to keep coordinator lean.
+// Import runVerificationGate and types from there.
 
 /**
  * Classify failure based on error message heuristics
@@ -883,11 +688,11 @@ export const swarm_status = tool({
  * Takes explicit agent identity since tools don't have persistent state.
  */
 export const swarm_progress = tool({
-  description: "Report progress on a subtask to coordinator",
+  description: "Report progress on a subtask to coordinator. REQUIRED: project_key, agent_name, bead_id, status. Call periodically (every 25% or when blocked) to keep coordinator informed. Use status='blocked' with message explaining the blocker if you're stuck.",
   args: {
-    project_key: tool.schema.string().describe("Project path"),
-    agent_name: tool.schema.string().describe("Your Agent Mail name"),
-    bead_id: tool.schema.string().describe("Subtask bead ID"),
+    project_key: tool.schema.string().describe("Project path (e.g., '/Users/name/project')"),
+    agent_name: tool.schema.string().describe("Your agent name from swarmmail_init"),
+    bead_id: tool.schema.string().describe("Task ID from your spawn prompt or hive cell"),
     status: tool.schema
       .enum(["in_progress", "blocked", "completed", "failed"])
       .describe("Current status"),
@@ -907,6 +712,29 @@ export const swarm_progress = tool({
       .describe("Files modified so far"),
   },
   async execute(args) {
+    // Validate required parameters with helpful error messages
+    const missing: string[] = [];
+    if (!args.bead_id) missing.push("bead_id");
+    if (!args.project_key) missing.push("project_key");
+    if (!args.agent_name) missing.push("agent_name");
+    if (!args.status) missing.push("status");
+
+    if (missing.length > 0) {
+      return JSON.stringify({
+        success: false,
+        error: `Missing required parameters: ${missing.join(", ")}`,
+        hint: "swarm_progress reports task progress to the coordinator.",
+        example: {
+          project_key: "/path/to/project",
+          agent_name: "your-agent-name",
+          bead_id: "your-task-id from spawn",
+          status: "in_progress",
+          progress_percent: 50,
+          message: "Completed X, working on Y",
+        },
+      }, null, 2);
+    }
+
     // Build progress report
     const progress: AgentProgress = {
       bead_id: args.bead_id,
@@ -1146,12 +974,12 @@ export const swarm_broadcast = tool({
  */
 export const swarm_complete = tool({
   description:
-    "Mark subtask complete with Verification Gate. Runs typecheck and tests before allowing completion.",
+    "Mark subtask complete with Verification Gate. REQUIRED: project_key, agent_name, bead_id (from your task assignment), summary, start_time (Date.now() from when you started). Before calling: 1) hivemind_store your learnings, 2) list files_touched for verification. Runs typecheck/tests before finalizing.",
   args: {
-    project_key: tool.schema.string().describe("Project path"),
-    agent_name: tool.schema.string().describe("Your Agent Mail name"),
-    bead_id: tool.schema.string().describe("Subtask bead ID"),
-    summary: tool.schema.string().describe("Brief summary of work done"),
+    project_key: tool.schema.string().describe("Project path (e.g., '/Users/name/project')"),
+    agent_name: tool.schema.string().describe("Your agent name from swarmmail_init"),
+    bead_id: tool.schema.string().describe("Task ID from your spawn prompt or hive cell"),
+    summary: tool.schema.string().describe("What you accomplished (1-3 sentences)"),
     evaluation: tool.schema
       .string()
       .optional()
@@ -1187,8 +1015,45 @@ export const swarm_complete = tool({
       .describe(
         "Skip review gate check (default: false). Use only for tasks that don't require coordinator review.",
       ),
+    commit_sha: tool.schema
+      .string()
+      .optional()
+      .describe("Git commit SHA (auto-detected if not provided)"),
+    commit_message: tool.schema
+      .string()
+      .optional()
+      .describe("Commit message (auto-detected if not provided)"),
+    commit_branch: tool.schema
+      .string()
+      .optional()
+      .describe("Git branch (auto-detected if not provided)"),
   },
   async execute(args, _ctx) {
+    // Validate required parameters with helpful error messages
+    const missing: string[] = [];
+    if (!args.bead_id) missing.push("bead_id");
+    if (!args.project_key) missing.push("project_key");
+    if (!args.agent_name) missing.push("agent_name");
+    if (!args.summary) missing.push("summary");
+    if (args.start_time === undefined) missing.push("start_time");
+
+    if (missing.length > 0) {
+      return JSON.stringify({
+        success: false,
+        error: `Missing required parameters: ${missing.join(", ")}`,
+        hint: "swarm_complete marks a subtask as done. All parameters are required.",
+        example: {
+          project_key: "/path/to/project",
+          agent_name: "your-agent-name",
+          bead_id: "epic-id.subtask-num OR cell-id from hive",
+          summary: "Brief description of what you completed",
+          start_time: Date.now(),
+          files_touched: ["src/file1.ts", "src/file2.ts"],
+        },
+        tip: "The bead_id comes from swarm_spawn_subtask or hive_create. Check your task assignment for the correct ID.",
+      }, null, 2);
+    }
+
     // Extract epic ID early for error notifications and review gate
     const epicId = args.bead_id.includes(".")
       ? args.bead_id.split(".")[0]
@@ -1237,6 +1102,17 @@ export const swarm_complete = tool({
         );
       }
     }
+
+    // Auto-detect git commit info (non-blocking, best-effort)
+    const gitInfo = getGitCommitInfo(args.project_key) || {} as Partial<import("./utils/git-commit-info").GitCommitInfo>;
+    const commitSha = args.commit_sha || gitInfo.sha;
+    const commitMessage = args.commit_message || gitInfo.message;
+    const commitBranch = args.commit_branch || gitInfo.branch;
+
+    // Build result text with optional commit info
+    const resultText = commitSha
+      ? `${args.summary}\n\nCommit: ${commitSha.slice(0, 8)} (${commitBranch || "unknown"}) - ${commitMessage || "no message"}`
+      : args.summary;
 
     try {
       // Validate bead_id exists and is not already closed (EARLY validation)
@@ -1422,8 +1298,11 @@ This will be recorded as a negative learning signal.`;
       }
 
       // Close the cell using HiveAdapter (not bd CLI)
+      // Pass resultText (summary + commit info) as both reason and result
       try {
-        await adapter.closeCell(args.project_key, args.bead_id, args.summary);
+        await adapter.closeCell(args.project_key, args.bead_id, args.summary, {
+          result: resultText,
+        });
       } catch (closeError) {
         const errorMessage = closeError instanceof Error ? closeError.message : String(closeError);
         return JSON.stringify(
@@ -1524,6 +1403,7 @@ This will be recorded as a negative learning signal.`;
         ? args.bead_id.split(".")[0]
         : args.bead_id);
 
+      let outcomeEventId: number | undefined;
       try {
         const event = createEvent("subtask_outcome", {
           project_key: args.project_key,
@@ -1537,14 +1417,34 @@ This will be recorded as a negative learning signal.`;
           success: true,
           scope_violation: contractValidation ? !contractValidation.valid : undefined,
           violation_files: contractValidation?.violations,
+          commit: commitSha ? { sha: commitSha, message: commitMessage, branch: commitBranch } : undefined,
         });
-        await appendEvent(event, args.project_key);
+        const savedEvent = await appendEvent(event, args.project_key);
+        outcomeEventId = savedEvent.id;
       } catch (error) {
         // Non-fatal - log and continue
         console.warn(
           "[swarm_complete] Failed to emit SubtaskOutcomeEvent:",
           error,
         );
+      }
+
+      // Link outcome to decision trace for quality scoring
+      if (outcomeEventId) {
+        try {
+          const { linkOutcomeToDecisionTrace } = await import("./decision-trace-integration.js");
+          await linkOutcomeToDecisionTrace({
+            projectKey: args.project_key,
+            beadId: args.bead_id,
+            outcomeEventId,
+          });
+        } catch (error) {
+          // Non-fatal - log and continue
+          console.warn(
+            "[swarm_complete] Failed to link outcome to decision trace:",
+            error,
+          );
+        }
       }
 
       // Emit worker_completed event for dashboard observability
@@ -1806,6 +1706,8 @@ This will be recorded as a negative learning signal.`;
         success: true,
         bead_id: args.bead_id,
         closed: true,
+        result: resultText,
+        commit: commitSha ? { sha: commitSha, message: commitMessage, branch: commitBranch } : undefined,
         reservations_released: reservationsReleased,
         reservations_released_count: reservationsReleasedCount,
         reservations_release_error: reservationsReleaseError,

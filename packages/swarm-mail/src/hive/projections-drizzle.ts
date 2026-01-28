@@ -212,14 +212,23 @@ async function handleBeadClosedDrizzle(
   db: SwarmDb,
   event: CellEvent,
 ): Promise<void> {
+  const setFields: Record<string, any> = {
+    status: "closed",
+    closed_at: event.timestamp,
+    closed_reason: event.reason as string,
+    updated_at: event.timestamp,
+  };
+
+  // Store result if provided
+  const result = (event as any).result;
+  if (result) {
+    setFields.result = result;
+    setFields.result_at = event.timestamp;
+  }
+
   await db
     .update(beads)
-    .set({
-      status: "closed",
-      closed_at: event.timestamp,
-      closed_reason: event.reason as string,
-      updated_at: event.timestamp,
-    })
+    .set(setFields)
     .where(eq(beads.id, event.cell_id));
 
   // Invalidate blocked cache for dependents (beads that were blocked by this one)

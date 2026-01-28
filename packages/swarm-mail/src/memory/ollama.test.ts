@@ -422,4 +422,40 @@ describe("Ollama Service", () => {
 			expect(parsed.model).toBe("custom-model");
 		});
 	});
+
+	describe("getEmbeddingDimension", () => {
+		test("returns 1024 for mxbai-embed-large", () => {
+			const { getEmbeddingDimension } = require("./ollama.js");
+			expect(getEmbeddingDimension("mxbai-embed-large")).toBe(1024);
+		});
+
+		test("returns 768 for nomic-embed-text", () => {
+			const { getEmbeddingDimension } = require("./ollama.js");
+			expect(getEmbeddingDimension("nomic-embed-text")).toBe(768);
+		});
+
+		test("returns 1024 for unknown model (default)", () => {
+			const { getEmbeddingDimension } = require("./ollama.js");
+			expect(getEmbeddingDimension("unknown-model")).toBe(1024);
+		});
+
+		test("OLLAMA_EMBED_DIM env var overrides model detection", () => {
+			const originalEnv = process.env.OLLAMA_EMBED_DIM;
+			process.env.OLLAMA_EMBED_DIM = "512";
+
+			// Re-import to pick up env var change
+			delete require.cache[require.resolve("./ollama.js")];
+			const { getEmbeddingDimension } = require("./ollama.js");
+
+			expect(getEmbeddingDimension("mxbai-embed-large")).toBe(512);
+
+			// Restore
+			if (originalEnv !== undefined) {
+				process.env.OLLAMA_EMBED_DIM = originalEnv;
+			} else {
+				delete process.env.OLLAMA_EMBED_DIM;
+			}
+			delete require.cache[require.resolve("./ollama.js")];
+		});
+	});
 });

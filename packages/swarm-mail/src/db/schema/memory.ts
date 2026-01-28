@@ -13,6 +13,7 @@
  */
 
 import { customType, real, sqliteTable, text, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
+import { EMBEDDING_DIM } from "../../memory/ollama.js";
 
 /**
  * Custom F32_BLOB vector type for libSQL.
@@ -49,7 +50,7 @@ const vector = (dimension: number) =>
  * - created_at: ISO timestamp (default current datetime)
  * - updated_at: ISO timestamp (default current datetime)
  * - decay_factor: Confidence decay multiplier (default 1.0)
- * - embedding: F32_BLOB(1024) vector for semantic search
+ * - embedding: F32_BLOB(EMBEDDING_DIM) vector for semantic search
  * - valid_from: Temporal validity start (ISO timestamp, NULL = always valid)
  * - valid_until: Temporal validity end (ISO timestamp, NULL = no expiry)
  * - superseded_by: Link to superseding memory (NULL = not superseded)
@@ -65,7 +66,7 @@ export const memories = sqliteTable("memories", {
   created_at: text("created_at").default("(datetime('now'))"),
   updated_at: text("updated_at").default("(datetime('now'))"),
   decay_factor: real("decay_factor").default(1.0),
-  embedding: vector(1024)("embedding"),
+  embedding: vector(EMBEDDING_DIM)("embedding"),
   // Temporal validity
   valid_from: text("valid_from"),
   valid_until: text("valid_until"),

@@ -1,0 +1,46 @@
+{
+  "name": "swarm-tools",
+  "version": "0.59.5",
+  "description": "Multi-agent swarm coordination plugin for Clawdbot - hivemind memory, cells, and swarm workflows",
+  "type": "module",
+  "main": "index.ts",
+  "clawdbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "build": "bun build bin/mcp-server.ts --outfile bin/mcp-server.js --target node --minify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.25.2",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "clawdbot": "*"
+  },
+  "peerDependenciesMeta": {
+    "clawdbot": {
+      "optional": true
+    }
+  },
+  "files": [
+    "clawdbot.plugin.json",
+    "index.ts",
+    "bin",
+    "hooks",
+    "skills",
+    "README.md"
+  ],
+  "author": "Joel Hooks",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joelhooks/swarm-tools"
+  }
+}

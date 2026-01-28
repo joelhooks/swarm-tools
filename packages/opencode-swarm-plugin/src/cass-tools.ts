@@ -25,6 +25,7 @@ import {
 } from "swarm-mail";
 import * as os from "node:os";
 import * as path from "node:path";
+import { AdapterCache } from "./utils/adapter-cache";
 
 // ============================================================================
 // Types
@@ -72,17 +73,24 @@ const AGENT_DIRECTORIES = [
 // Helper Functions
 // ============================================================================
 
+const sessionIndexerCache = new AdapterCache<SessionIndexer>();
+
 /**
  * Get or create SessionIndexer instance
  */
 async function getSessionIndexer(): Promise<SessionIndexer> {
-	const db = await getDb();
-	const ollamaLayer = makeOllamaLive({
-		ollamaHost: process.env.OLLAMA_HOST || "http://localhost:11434",
-		ollamaModel: process.env.OLLAMA_MODEL || "mxbai-embed-large",
-	});
+	// Use a singleton key since SessionIndexer isn't project-scoped
+	const globalKey = "global-session-indexer";
 
-	return new SessionIndexer(db, ollamaLayer);
+	return sessionIndexerCache.get(globalKey, async () => {
+		const db = await getDb();
+		const ollamaLayer = makeOllamaLive({
+			ollamaHost: process.env.OLLAMA_HOST || "http://localhost:11434",
+			ollamaModel: process.env.OLLAMA_MODEL || "mxbai-embed-large",
+		});
+
+		return new SessionIndexer(db, ollamaLayer);
+	});
 }
 
 /**

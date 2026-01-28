@@ -29,13 +29,18 @@
 import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import type { SwarmDb } from "../db/client.js";
 import { memories } from "../db/schema/memory.js";
+import { EMBEDDING_DIM } from "./ollama.js";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/** Embedding dimension for mxbai-embed-large */
-export const EMBEDDING_DIM = 1024;
+/**
+ * Embedding dimension for configured Ollama model.
+ * Auto-detected from OLLAMA_MODEL env var or defaults to 1024 (mxbai-embed-large).
+ * Can be overridden via OLLAMA_EMBED_DIM env var.
+ */
+export { EMBEDDING_DIM };
 
 /** Memory data structure */
 export interface Memory {
@@ -235,11 +240,17 @@ export function createMemoryStore(db: SwarmDb) {
     ): Promise<SearchResult[]> {
       const { limit = 10, collection } = options;
 
+      // Defense in depth: graceful degradation at store layer
+      if (!searchQuery || typeof searchQuery !== 'string') {
+        console.warn('[store] ftsSearch called with invalid query, returning empty results');
+        return [];
+      }
+
       // FTS5 requires raw SQL - not yet in Drizzle's type-safe API
       // Quote search query to escape FTS5 operators (hyphens, etc.)
       // Without quotes, "unique-keyword-12345" → "unique" MINUS "keyword" → error
       const quotedQuery = `"${searchQuery.replace(/"/g, '""')}"`;
-      
+
       // Build query dynamically based on collection filter
       const conditions = collection
         ? sql`fts.content MATCH ${quotedQuery} AND m.collection = ${collection}`

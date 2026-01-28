@@ -95,6 +95,7 @@ export const messagesTable = sqliteTable(
     projectIdx: index("idx_messages_project").on(table.project_key),
     threadIdIdx: index("idx_messages_thread").on(table.thread_id),
     createdIdx: index("idx_messages_created").on(table.created_at),
+    senderTimeIdx: index("idx_messages_sender_time").on(table.project_key, table.from_agent, table.created_at),
   }),
 );
 
@@ -143,6 +144,7 @@ export const reservationsTable = sqliteTable(
     projectIdx: index("idx_reservations_project").on(table.project_key),
     agentIdx: index("idx_reservations_agent").on(table.agent_name),
     expiresIdx: index("idx_reservations_expires").on(table.expires_at),
+    activeIdx: index("idx_reservations_active").on(table.project_key, table.released_at, table.expires_at),
     // Partial index for active reservations handled in schema SQL
   }),
 );

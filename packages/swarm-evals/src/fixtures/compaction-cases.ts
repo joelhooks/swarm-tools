@@ -67,6 +67,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic123.1",
@@ -83,6 +85,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic123.2",
@@ -99,6 +103,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic123.3",
@@ -115,6 +121,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
     ],
     swarmMailState: {
@@ -163,6 +171,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic200",
@@ -179,6 +189,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic200.1",
@@ -195,6 +207,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic300",
@@ -211,6 +225,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
     ],
     swarmMailState: {
@@ -250,6 +266,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: null,
+        result: null,
+        result_at: null,
       },
     ],
     swarmMailState: {
@@ -316,6 +334,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
       {
         id: "test-project-lf2p4u-epic400.1",
@@ -332,6 +352,8 @@ export const compactionCases: CompactionTestCase[] = [
         deleted_by: null,
         delete_reason: null,
         created_by: "coordinator",
+        result: null,
+        result_at: null,
       },
     ],
     swarmMailState: {

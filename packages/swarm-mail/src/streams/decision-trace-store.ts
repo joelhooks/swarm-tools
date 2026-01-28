@@ -233,6 +233,28 @@ export async function getDecisionTracesByEpic(
 }
 
 /**
+ * Find the most recent decision trace for a bead.
+ *
+ * Used to link outcome events back to the decision that spawned the work.
+ * Returns the most recent trace since multiple decisions may reference the same bead.
+ *
+ * @param db - Database adapter
+ * @param beadId - Bead/cell ID to query
+ * @returns Most recent decision trace for the bead, or null if none found
+ */
+export async function findDecisionTraceByBead(
+  db: DatabaseAdapter,
+  beadId: string,
+): Promise<DecisionTrace | null> {
+  const result = await db.query<DecisionTrace>(
+    `SELECT * FROM decision_traces WHERE bead_id = ? ORDER BY timestamp DESC LIMIT 1`,
+    [beadId],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+/**
  * Get all decision traces for an agent, ordered by timestamp.
  *
  * @param db - Database adapter

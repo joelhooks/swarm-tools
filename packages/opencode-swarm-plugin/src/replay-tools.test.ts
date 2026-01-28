@@ -261,54 +261,63 @@ describe("replay-tools (RED phase - tests should FAIL)", () => {
 
 		test("yields events at 1x speed with correct delays", async () => {
 			const speed: ReplaySpeed = "1x";
+			const sleepCalls: number[] = [];
+			const mockSleep = async (ms: number) => { sleepCalls.push(ms); };
+
+			const collected: ReplayEvent[] = [];
 			const startTime = Date.now();
-			const timings: number[] = [];
-
-			// Collect events and their actual timing
-			for await (const event of replayWithTiming(allEvents, speed)) {
-				timings.push(Date.now() - startTime);
+			for await (const event of replayWithTiming(allEvents, speed, { sleep: mockSleep })) {
+				collected.push(event);
 			}
+			const wallTime = Date.now() - startTime;
 
-			expect(timings.length).toBe(4);
+			expect(collected.length).toBe(4);
+			// Should complete nearly instantly (no real sleeping)
+			expect(wallTime).toBeLessThan(100);
 
-			// First event should be immediate
-			expect(timings[0]).toBeLessThan(50); // <50ms tolerance
+			// 3 sleep calls (first event has delta_ms=0, no sleep needed)
+			expect(sleepCalls.length).toBe(3);
 
-			// Second event should be ~1000ms after start
-			expect(timings[1]).toBeGreaterThanOrEqual(950);
-			expect(timings[1]).toBeLessThanOrEqual(1050);
+			// Cumulative targets at 1x: 1000, 2500, 5000
+			// Code subtracts 3ms buffer + tiny elapsed, so values are slightly less
+			expect(sleepCalls[0]).toBeGreaterThan(900);
+			expect(sleepCalls[0]).toBeLessThan(1010);
 
-			// Third event should be ~2500ms after start
-			expect(timings[2]).toBeGreaterThanOrEqual(2450);
-			expect(timings[2]).toBeLessThanOrEqual(2550);
+			expect(sleepCalls[1]).toBeGreaterThan(2400);
+			expect(sleepCalls[1]).toBeLessThan(2510);
 
-			// Fourth event should be ~5000ms after start
-			expect(timings[3]).toBeGreaterThanOrEqual(4950);
-			expect(timings[3]).toBeLessThanOrEqual(5050);
+			expect(sleepCalls[2]).toBeGreaterThan(4900);
+			expect(sleepCalls[2]).toBeLessThan(5010);
 		});
 
 		test("yields events at 2x speed with half delays", async () => {
 			const speed: ReplaySpeed = "2x";
+			const sleepCalls: number[] = [];
+			const mockSleep = async (ms: number) => { sleepCalls.push(ms); };
+
+			const collected: ReplayEvent[] = [];
 			const startTime = Date.now();
-			const timings: number[] = [];
-
-			for await (const event of replayWithTiming(allEvents, speed)) {
-				timings.push(Date.now() - startTime);
+			for await (const event of replayWithTiming(allEvents, speed, { sleep: mockSleep })) {
+				collected.push(event);
 			}
+			const wallTime = Date.now() - startTime;
 
-			expect(timings.length).toBe(4);
+			expect(collected.length).toBe(4);
+			// Should complete nearly instantly
+			expect(wallTime).toBeLessThan(100);
 
-			// Second event should be ~500ms after start (half of 1000ms)
-			expect(timings[1]).toBeGreaterThanOrEqual(450);
-			expect(timings[1]).toBeLessThanOrEqual(550);
+			// 3 sleep calls (first event has delta_ms=0)
+			expect(sleepCalls.length).toBe(3);
 
-			// Third event should be ~1250ms after start (half of 2500ms)
-			expect(timings[2]).toBeGreaterThanOrEqual(1200);
-			expect(timings[2]).toBeLessThanOrEqual(1300);
+			// Cumulative targets at 2x (halved): 500, 1250, 2500
+			expect(sleepCalls[0]).toBeGreaterThan(400);
+			expect(sleepCalls[0]).toBeLessThan(510);
 
-			// Fourth event should be ~2500ms after start (half of 5000ms)
-			expect(timings[3]).toBeGreaterThanOrEqual(2450);
-			expect(timings[3]).toBeLessThanOrEqual(2550);
+			expect(sleepCalls[1]).toBeGreaterThan(1150);
+			expect(sleepCalls[1]).toBeLessThan(1260);
+
+			expect(sleepCalls[2]).toBeGreaterThan(2400);
+			expect(sleepCalls[2]).toBeLessThan(2510);
 		});
 
 		test("yields events instantly with no delays", async () => {

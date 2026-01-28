@@ -19,9 +19,12 @@ This package contains the evaluation framework for the swarm-tools ecosystem. Ex
 ## What Gets Evaluated
 
 - **Coordinator Protocol** - Does the coordinator spawn workers vs doing work itself?
+- **Coordinator Behavior** - LLM behavior after compaction (stays in coordinator role)
+- **Compaction Resumption** - Context injection correctness after compaction
+- **Compaction Prompt Quality** - Quality of continuation prompts generated
 - **Task Decomposition** - Quality of task splitting, file conflict detection
-- **Compaction** - Context compression correctness
-- **Review Thoroughness** - Does coordinator review worker output properly?
+- **Strategy Selection** - Correct strategy choice for task characteristics
+- **Decision Quality** - Strategy selection quality and precedent relevance
 
 ## Usage
 
@@ -46,7 +49,7 @@ This package is part of the swarm-tools monorepo:
 
 ## Development
 
-Evals use real coordinator sessions captured to `~/.config/swarm-tools/sessions/*.jsonl`. See the main plugin's `evals/README.md` for details on session capture.
+Evals use real coordinator sessions captured to `~/.config/swarm-tools/sessions/*.jsonl`. See `docs/README.md` in this package for details on session capture and eval architecture.
 
 ## License
 

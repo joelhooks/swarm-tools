@@ -216,9 +216,18 @@ describe("Dashboard Data Layer - RED Phase", () => {
 			},
 		];
 
-		// Note: Hive cells use a separate schema. For this test, we'll mock the responses
-		// in the implementation or use HiveAdapter integration in GREEN phase.
-		// For RED phase, we're defining the contract - implementation will handle data source.
+		// Insert beads (cells) into the beads table for getEpicList queries
+		// The beads table should already exist from swarm-mail schema init
+		// Use INSERT OR REPLACE to handle stale rows from previous test runs
+		// (global DB may already have these IDs with a different project_key)
+		for (const cell of cells) {
+			const parentId = (cell as any).parent_id ?? null;
+			const ts = new Date((cell as any).created_at).getTime() || Date.now();
+			await db.query(
+				"INSERT OR REPLACE INTO beads (id, project_key, type, status, title, priority, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				[cell.id, testProjectPath, cell.type, cell.status, cell.title, cell.priority, parentId, ts, ts]
+			);
+		}
 	});
 
 	afterAll(async () => {

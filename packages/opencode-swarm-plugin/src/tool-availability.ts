@@ -119,14 +119,17 @@ const toolCheckers: Record<ToolName, () => Promise<ToolStatus>> = {
       });
 
       const timeout = setTimeout(() => proc.kill(), BUNX_TIMEOUT_MS);
-      const exitCode = await proc.exited;
-      clearTimeout(timeout);
-
-      return {
-        available: exitCode === 0,
-        checkedAt: new Date().toISOString(),
-        version: "bunx",
-      };
+      try {
+        const exitCode = await proc.exited;
+        return {
+          available: exitCode === 0,
+          checkedAt: new Date().toISOString(),
+          version: "bunx",
+        };
+      } finally {
+        clearTimeout(timeout);
+        proc.kill(); // Safe to call even if already dead
+      }
     } catch (e) {
       return {
         available: false,
@@ -210,14 +213,17 @@ const toolCheckers: Record<ToolName, () => Promise<ToolStatus>> = {
       });
 
       const timeout = setTimeout(() => proc.kill(), BUNX_TIMEOUT_MS);
-      const exitCode = await proc.exited;
-      clearTimeout(timeout);
-
-      return {
-        available: exitCode === 0,
-        checkedAt: new Date().toISOString(),
-        version: "bunx-semantic-memory",
-      };
+      try {
+        const exitCode = await proc.exited;
+        return {
+          available: exitCode === 0,
+          checkedAt: new Date().toISOString(),
+          version: "bunx-semantic-memory",
+        };
+      } finally {
+        clearTimeout(timeout);
+        proc.kill(); // Safe to call even if already dead
+      }
     } catch (e) {
       return {
         available: false,

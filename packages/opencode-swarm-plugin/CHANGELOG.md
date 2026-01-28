@@ -1,5 +1,122 @@
 # opencode-swarm-plugin
 
+## 0.60.0
+
+### Minor Changes
+
+- [`ff92377`](https://github.com/joelhooks/swarm-tools/commit/ff923778f4ffb2b39ab3165aaf993e9f766b97db) Thanks [@joelhooks](https://github.com/joelhooks)! - feat: Dex-inspired improvements — result field, status dashboard, doctor, commit linking, tree display
+
+  ### swarm-mail
+
+  - **Schema migration v10**: Added `result` TEXT and `result_at` INTEGER columns to beads table
+  - **closeCell result support**: CellClosedEvent now carries optional `result` field, projections write `result`/`result_at` on close
+  - **SubtaskOutcomeEvent commit field**: Added optional `commit` object (sha, message, branch) to outcome events
+  - **queries-drizzle fix**: Added missing `result`/`result_at` mapping in `findCellsByPartialId`
+
+  ### opencode-swarm-plugin
+
+  - **`hive_close` result param**: Accepts optional `result` string — implementation summary stored on cell completion
+  - **`swarm_complete` commit linking**: Auto-captures git SHA, branch, message on task completion; passes summary as `result`
+  - **Status dashboard**: `swarm` with no args now shows rich dashboard (progress %, ready/blocked/completed sections, active agents)
+  - **Enhanced doctor**: `swarm doctor --deep` runs 6 health checks (DB integrity, orphans, cycles, stale reservations, zombie blocked, ghost workers) with `--fix` auto-repair
+  - **Tree display**: Status markers `[x]/[ ]/[~]/[!]`, blocker IDs, priority coloring, epic completion %, ANSI-aware truncation
+
+### Patch Changes
+
+- Updated dependencies [[`ff92377`](https://github.com/joelhooks/swarm-tools/commit/ff923778f4ffb2b39ab3165aaf993e9f766b97db), [`cbdfcdb`](https://github.com/joelhooks/swarm-tools/commit/cbdfcdbc381d607005ad671dde334a5f205dccb6)]:
+  - swarm-mail@1.11.0
+
+## 0.59.5
+
+### Patch Changes
+
+- fix(hivemind): add input validation for hivemind_find query parameter
+
+  Fixes TypeError when Claude calls hivemind_find with empty input `{}`.
+
+  **Defense in depth:**
+
+  - hivemind-tools.ts: Early validation returns user-friendly error JSON
+  - memory.ts: Throws at adapter boundary (fail fast)
+  - store.ts: Returns empty array (graceful degradation)
+
+  Added 3 test cases for missing/empty/whitespace query parameters.
+
+## 0.59.4
+
+### Patch Changes
+
+- docs(swarm): add mandatory hivemind steps for custom worker prompts
+  - Added section 6.5 "Custom Prompts: MANDATORY Sections"
+  - Custom prompts must include hivemind_find queries and hivemind_store steps
+
+## 0.59.3
+
+### Patch Changes
+
+- feat(swarm): require user confirmation for branch/PR creation
+  - Step 3: Confirm feature branch creation
+  - Step 11: Confirm PR creation
+
+## 0.59.2
+
+### Patch Changes
+
+- fix(swarmmail): auto-normalize escaped paths in reserve/release tools
+  - LLMs escaping `[slug]` and `(content)` now auto-corrected
+  - Added worker prompt guidance about Next.js path handling
+
+## 0.59.1
+
+### Patch Changes
+
+- docs(swarm): comprehensive coordinator instructions with mandatory hivemind usage
+
+  - Added visual boxes for GOOD/BAD coordinator behavior patterns
+  - FORBIDDEN EXCUSES box prevents "too small for swarm" refusals
+  - Mandatory hivemind_find before decomposition, hivemind_store after
+  - Context preservation rules (delegate planning to subagent)
+  - Inbox monitoring every 5-10 min requirement
+  - ASCII art session summary required
+  - Planning modes: --fast, --auto, --confirm-only
+
+## 0.59.0
+
+### Minor Changes
+
+- [`8badfe8`](https://github.com/joelhooks/swarm-tools/commit/8badfe8a13324f278b22e35891590f2e84c9cd0e) Thanks [@joelhooks](https://github.com/joelhooks)! - feat(observability): wire linkOutcomeToTrace for quality_score population
+
+  When workers complete via swarm_complete, the outcome event is now linked
+  back to its decision trace, enabling quality_score calculation. This fixes
+  the 0% success rate previously shown in `swarm stats` and `swarm o11y`.
+
+  New functions:
+
+  - `findDecisionTraceByBead()` - look up decision traces by bead ID
+  - `linkOutcomeToDecisionTrace()` - helper to link outcomes to traces
+
+### Patch Changes
+
+- Updated dependencies [[`8badfe8`](https://github.com/joelhooks/swarm-tools/commit/8badfe8a13324f278b22e35891590f2e84c9cd0e)]:
+  - swarm-mail@1.10.3
+
+## 0.58.4
+
+### Patch Changes
+
+- [`7d9bf32`](https://github.com/joelhooks/swarm-tools/commit/7d9bf320a6cc5fea03c66f79e9bb61023af16d99) Thanks [@joelhooks](https://github.com/joelhooks)! - fix: add defensive validation with helpful error hints to swarm tools
+
+  - Add null checks to swarm_complete, swarm_progress, swarm_decompose, swarm_validate_decomposition, hive_create_epic
+  - Return friendly error messages with examples when required params are missing
+  - Improve tool descriptions with workflow hints and required param lists
+  - Fix subprocess cleanup with try-finally patterns in hive.ts, skills.ts, storage.ts, tool-availability.ts
+  - Add 30s timeout to execSemanticMemory to prevent hanging
+  - Add error state tracking to FlushManager
+
+- [`ef6d21d`](https://github.com/joelhooks/swarm-tools/commit/ef6d21de5ae445bb5070f279e5559f1d2499eb49) Thanks [@joelhooks](https://github.com/joelhooks)! - fix(decompose): handle object and double-stringified response in swarm_validate_decomposition
+
+  MCP server may pass response as already-parsed object (not string) when Claude provides the decomposition. Now handles both string and object inputs, plus the edge case of double-stringified JSON.
+
 ## 0.57.6
 
 ### Patch Changes

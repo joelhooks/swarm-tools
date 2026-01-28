@@ -90,9 +90,11 @@ describe("SUBTASK_PROMPT_V2", () => {
     test("Step 2 is hivemind_find (before skills)", () => {
       const step2Pos = SUBTASK_PROMPT_V2.indexOf("### Step 2:");
       const step3Pos = SUBTASK_PROMPT_V2.indexOf("### Step 3:");
-      const memoryFindPos = SUBTASK_PROMPT_V2.indexOf("hivemind_find");
-      const skillsPos = SUBTASK_PROMPT_V2.indexOf("skills_list");
-      
+      // Find hivemind_find AFTER Step 2 starts (may appear earlier in STOP box)
+      const memoryFindPos = SUBTASK_PROMPT_V2.indexOf("hivemind_find", step2Pos);
+      // Find skills_list AFTER Step 3 starts
+      const skillsPos = SUBTASK_PROMPT_V2.indexOf("skills_list", step3Pos);
+
       // Memory find should be in Step 2, before skills in Step 3
       expect(memoryFindPos).toBeGreaterThan(step2Pos);
       expect(memoryFindPos).toBeLessThan(step3Pos);
@@ -1385,8 +1387,16 @@ describe("getPromptInsights", () => {
 			// This test verifies the full flow: 
 			// formatSubtaskPromptV2 → getWorkerInsights → getFileFailureHistory → formatFileHistoryWarnings
 			
-			// First, seed the database with review_feedback events
-			const { createLibSQLAdapter, createSwarmMailAdapter, getGlobalDbPath } = await import("swarm-mail");
+			// CRITICAL: Close all cached adapters first to prevent CLIENT_CLOSED errors
+			// when running in the full test suite. Other tests may have closed the
+			// global adapter, leaving stale entries in the instances cache.
+			const { createLibSQLAdapter, createSwarmMailAdapter, getGlobalDbPath, closeAllSwarmMailLibSQL } = await import("swarm-mail");
+			const { resetMemoryCache } = await import("./memory-tools");
+			await closeAllSwarmMailLibSQL();
+			// Also clear the memory adapter cache which holds refs to now-closed DB adapters
+			resetMemoryCache();
+			
+			// Now seed the database with review_feedback events using a fresh connection
 			const globalDbPath = getGlobalDbPath();
 			const dbAdapter = await createLibSQLAdapter({ url: `file:${globalDbPath}` });
 			const testSwarmMail = createSwarmMailAdapter(dbAdapter, "test-integration");
@@ -1428,6 +1438,13 @@ describe("getPromptInsights", () => {
 					}),
 				],
 			);
+			
+			// Close the seeding adapter and clear ALL caches so formatSubtaskPromptV2
+			// creates a fresh adapter that will see the seeded data
+			await testSwarmMail.close();
+			await closeAllSwarmMailLibSQL();
+			// Clear memory adapter cache again to ensure getWorkerInsights gets a fresh adapter
+			resetMemoryCache();
 			
 			// Now call formatSubtaskPromptV2 with those files
 			const { formatSubtaskPromptV2 } = await import("./swarm-prompts");

@@ -181,6 +181,45 @@ export interface HealthStatus {
 // ============================================================================
 
 /**
+ * Maximum characters per chunk (conservative for ~6k tokens with mxbai-embed-large)
+ * mxbai-embed-large has ~512 token limit, but we use a more conservative 24k chars
+ * to handle various content types safely.
+ */
+const MAX_CHARS_PER_CHUNK = 24000;
+
+/**
+ * Chunk overlap for context continuity
+ */
+const CHUNK_OVERLAP = 200;
+
+/**
+ * Split text into chunks with overlap
+ *
+ * @param text - Text to chunk
+ * @param maxChars - Maximum characters per chunk
+ * @param overlap - Characters to overlap between chunks
+ * @returns Array of text chunks
+ */
+function chunkText(text: string, maxChars: number, overlap: number): string[] {
+  if (text.length <= maxChars) {
+    return [text];
+  }
+
+  const chunks: string[] = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const end = Math.min(start + maxChars, text.length);
+    chunks.push(text.slice(start, end));
+
+    // Move forward by (maxChars - overlap) to create overlapping chunks
+    start += maxChars - overlap;
+  }
+
+  return chunks;
+}
+
+/**
  * Create a memory adapter with high-level operations
  *
  * @param db - Drizzle database instance (libSQL)
@@ -194,8 +233,49 @@ export function createMemoryAdapter(db: SwarmDb, config: MemoryConfig) {
   /**
    * Generate embedding for text using Ollama
    * Returns null if Ollama unavailable (graceful degradation)
+   *
+   * For long text, automatically chunks and averages embeddings.
    */
   const generateEmbedding = async (text: string): Promise<number[] | null> => {
+    // Check if text needs chunking
+    if (text.length > MAX_CHARS_PER_CHUNK) {
+      console.warn(
+        `⚠️  Text length (${text.length} chars) exceeds limit (${MAX_CHARS_PER_CHUNK} chars). ` +
+        `Auto-chunking into smaller segments for embedding.`
+      );
+
+      const chunks = chunkText(text, MAX_CHARS_PER_CHUNK, CHUNK_OVERLAP);
+      const embeddings: number[][] = [];
+
+      // Generate embedding for each chunk
+      for (const chunk of chunks) {
+        const program = Effect.gen(function* () {
+          const ollama = yield* Ollama;
+          return yield* ollama.embed(chunk);
+        });
+
+        const result = await Effect.runPromise(
+          program.pipe(Effect.provide(ollamaLayer), Effect.either)
+        );
+
+        if (result._tag === "Left") {
+          // Ollama failed - return null for graceful degradation
+          return null;
+        }
+
+        embeddings.push(result.right);
+      }
+
+      // Average the embeddings
+      const avgEmbedding = embeddings[0].map((_, i) => {
+        const sum = embeddings.reduce((acc, emb) => acc + emb[i], 0);
+        return sum / embeddings.length;
+      });
+
+      return avgEmbedding;
+    }
+
+    // Short text - no chunking needed
     const program = Effect.gen(function* () {
       const ollama = yield* Ollama;
       return yield* ollama.embed(text);

@@ -505,23 +505,12 @@ export async function reserveSwarmFiles(
   // This prevents false conflicts from expired but unreleased reservations
   const { getOrCreateAdapter } = await import("./store-drizzle");
   const { toDrizzleDb } = await import("../libsql.convenience");
-  const { reservationsTable } = await import("../db/schema/streams");
-  const { eq, and, sql } = await import("drizzle-orm");
-  
+  const { cleanupExpiredReservations } = await import("./reservation-utils");
+
   const adapter = await getOrCreateAdapter(projectPath, dbOverride);
   const swarmDb = toDrizzleDb(adapter);
-  const now = Date.now();
-  
-  await swarmDb
-    .update(reservationsTable)
-    .set({ released_at: now })
-    .where(
-      and(
-        eq(reservationsTable.project_key, projectPath),
-        sql`${reservationsTable.released_at} IS NULL`,
-        sql`${reservationsTable.expires_at} < ${now}`,
-      ),
-    );
+
+  await cleanupExpiredReservations(swarmDb, projectPath);
 
   // Check for conflicts (after cleanup)
   const conflicts = await checkConflicts(
@@ -592,23 +581,12 @@ export async function releaseSwarmFiles(
   // This is a good place to do global cleanup since we're already releasing
   const { getOrCreateAdapter } = await import("./store-drizzle");
   const { toDrizzleDb } = await import("../libsql.convenience");
-  const { reservationsTable } = await import("../db/schema/streams");
-  const { eq, and, sql } = await import("drizzle-orm");
-  
+  const { cleanupExpiredReservations } = await import("./reservation-utils");
+
   const adapter = await getOrCreateAdapter(projectPath, dbOverride);
   const swarmDb = toDrizzleDb(adapter);
-  const now = Date.now();
-  
-  await swarmDb
-    .update(reservationsTable)
-    .set({ released_at: now })
-    .where(
-      and(
-        eq(reservationsTable.project_key, projectPath),
-        sql`${reservationsTable.released_at} IS NULL`,
-        sql`${reservationsTable.expires_at} < ${now}`,
-      ),
-    );
+
+  await cleanupExpiredReservations(swarmDb, projectPath);
 
   // Get current reservations to count what we're releasing
   const currentReservations = await getActiveReservations(

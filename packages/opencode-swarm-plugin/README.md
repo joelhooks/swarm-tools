@@ -16,14 +16,27 @@
  ╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝
 ```
 
+## Prerequisites
+
+**Bun is required.** The CLI uses Bun-specific APIs and won't run with Node.js alone.
+
+```bash
+# Install Bun (if you don't have it)
+curl -fsSL https://bun.sh/install | bash
+```
+
+See [bun.sh](https://bun.sh) for other installation methods (Homebrew, npm, etc.).
+
 ## Quickstart (<2 minutes)
 
 ### 1. Install
 
 ```bash
-npm install -g opencode-swarm-plugin@latest
+bun install -g opencode-swarm-plugin@latest
 swarm setup
 ```
+
+> **Note:** You can also use `npm install -g`, but Bun must be installed to run the CLI.
 
 ### Claude Code Plugin (Marketplace)
 

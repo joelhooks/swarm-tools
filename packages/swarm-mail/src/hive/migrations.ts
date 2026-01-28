@@ -446,6 +446,137 @@ export const beadsMigrationLibSQL: Migration = {
 };
 
 /**
+ * Migration v10: Add result and result_at columns to beads table
+ *
+ * Captures implementation summaries when cells are completed.
+ * - result: TEXT - What was actually done (like a PR description)
+ * - result_at: INTEGER (Unix ms) - When the result was recorded
+ * Both nullable (only set on completion).
+ */
+export const beadsResultColumnsMigration: Migration = {
+  version: 10,
+  description: "Add result and result_at columns to beads table",
+  up: `
+    ALTER TABLE beads ADD COLUMN result TEXT;
+    ALTER TABLE beads ADD COLUMN result_at INTEGER;
+
+    -- Recreate cells view triggers to include new columns
+    DROP TRIGGER IF EXISTS cells_insert;
+    CREATE TRIGGER cells_insert
+      INSTEAD OF INSERT ON cells
+      FOR EACH ROW
+    BEGIN
+      INSERT INTO beads (id, project_key, type, status, title,
+        description, priority, parent_id, assignee,
+        created_at, updated_at, closed_at, closed_reason,
+        deleted_at, deleted_by, delete_reason, created_by,
+        result, result_at)
+      VALUES (
+        NEW.id, NEW.project_key, NEW.type, NEW.status, NEW.title,
+        NEW.description, NEW.priority, NEW.parent_id, NEW.assignee,
+        NEW.created_at, NEW.updated_at, NEW.closed_at, NEW.closed_reason,
+        NEW.deleted_at, NEW.deleted_by, NEW.delete_reason, NEW.created_by,
+        NEW.result, NEW.result_at
+      );
+    END;
+
+    DROP TRIGGER IF EXISTS cells_update;
+    CREATE TRIGGER cells_update
+      INSTEAD OF UPDATE ON cells
+      FOR EACH ROW
+    BEGIN
+      UPDATE beads SET
+        project_key = NEW.project_key,
+        type = NEW.type,
+        status = NEW.status,
+        title = NEW.title,
+        description = NEW.description,
+        priority = NEW.priority,
+        parent_id = NEW.parent_id,
+        assignee = NEW.assignee,
+        created_at = NEW.created_at,
+        updated_at = NEW.updated_at,
+        closed_at = NEW.closed_at,
+        closed_reason = NEW.closed_reason,
+        deleted_at = NEW.deleted_at,
+        deleted_by = NEW.deleted_by,
+        delete_reason = NEW.delete_reason,
+        created_by = NEW.created_by,
+        result = NEW.result,
+        result_at = NEW.result_at
+      WHERE id = NEW.id;
+    END;
+  `,
+  down: `
+    ALTER TABLE beads DROP COLUMN result;
+    ALTER TABLE beads DROP COLUMN result_at;
+  `,
+};
+
+/**
+ * LibSQL-compatible version of v10 migration
+ */
+export const beadsResultColumnsMigrationLibSQL: Migration = {
+  version: 10,
+  description: "Add result and result_at columns to beads table (LibSQL)",
+  up: `
+    ALTER TABLE beads ADD COLUMN result TEXT;
+    ALTER TABLE beads ADD COLUMN result_at INTEGER;
+
+    -- Recreate cells view triggers to include new columns
+    DROP TRIGGER IF EXISTS cells_insert;
+    CREATE TRIGGER cells_insert
+      INSTEAD OF INSERT ON cells
+      FOR EACH ROW
+    BEGIN
+      INSERT INTO beads (id, project_key, type, status, title,
+        description, priority, parent_id, assignee,
+        created_at, updated_at, closed_at, closed_reason,
+        deleted_at, deleted_by, delete_reason, created_by,
+        result, result_at)
+      VALUES (
+        NEW.id, NEW.project_key, NEW.type, NEW.status, NEW.title,
+        NEW.description, NEW.priority, NEW.parent_id, NEW.assignee,
+        NEW.created_at, NEW.updated_at, NEW.closed_at, NEW.closed_reason,
+        NEW.deleted_at, NEW.deleted_by, NEW.delete_reason, NEW.created_by,
+        NEW.result, NEW.result_at
+      );
+    END;
+
+    DROP TRIGGER IF EXISTS cells_update;
+    CREATE TRIGGER cells_update
+      INSTEAD OF UPDATE ON cells
+      FOR EACH ROW
+    BEGIN
+      UPDATE beads SET
+        project_key = NEW.project_key,
+        type = NEW.type,
+        status = NEW.status,
+        title = NEW.title,
+        description = NEW.description,
+        priority = NEW.priority,
+        parent_id = NEW.parent_id,
+        assignee = NEW.assignee,
+        created_at = NEW.created_at,
+        updated_at = NEW.updated_at,
+        closed_at = NEW.closed_at,
+        closed_reason = NEW.closed_reason,
+        deleted_at = NEW.deleted_at,
+        deleted_by = NEW.deleted_by,
+        delete_reason = NEW.delete_reason,
+        created_by = NEW.created_by,
+        result = NEW.result,
+        result_at = NEW.result_at
+      WHERE id = NEW.id;
+    END;
+  `,
+  down: `
+    -- SQLite doesn't support DROP COLUMN until 3.35.0
+    -- Columns can be left as NULL if downgrade is needed
+  `,
+};
+
+/**
  * Export individual migrations
  */
 export const beadsMigrations: Migration[] = [beadsMigration];
@@ -453,7 +584,7 @@ export const beadsMigrations: Migration[] = [beadsMigration];
 /**
  * All hive migrations in order (PGLite version)
  */
-export const hiveMigrations: Migration[] = [beadsMigration, cellsViewMigration];
+export const hiveMigrations: Migration[] = [beadsMigration, cellsViewMigration, beadsResultColumnsMigration];
 
 /**
  * Migration v9: Add sessions table for handoff notes
@@ -499,4 +630,5 @@ export const hiveMigrationsLibSQL: Migration[] = [
 	beadsMigrationLibSQL,
 	cellsViewMigrationLibSQL,
 	sessionsMigrationLibSQL,
+	beadsResultColumnsMigrationLibSQL,
 ];

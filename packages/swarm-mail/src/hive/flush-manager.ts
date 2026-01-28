@@ -21,6 +21,7 @@ export interface FlushManagerOptions {
   outputPath: string;
   debounceMs?: number; // Default 30000 (30s)
   onFlush?: (result: FlushResult) => void;
+  onError?: (error: Error) => void;
 }
 
 export interface FlushResult {
@@ -54,8 +55,10 @@ export class FlushManager {
   private outputPath: string;
   private debounceMs: number;
   private onFlush?: (result: FlushResult) => void;
+  private onError?: (error: Error) => void;
   private timer: NodeJS.Timeout | null = null;
   private flushing = false;
+  private lastError: Error | null = null;
 
   constructor(options: FlushManagerOptions) {
     this.adapter = options.adapter;
@@ -63,6 +66,7 @@ export class FlushManager {
     this.outputPath = options.outputPath;
     this.debounceMs = options.debounceMs ?? 30000;
     this.onFlush = options.onFlush;
+    this.onError = options.onError;
   }
 
   /**
@@ -79,7 +83,11 @@ export class FlushManager {
     // Schedule new flush
     this.timer = setTimeout(() => {
       this.flush().catch((err) => {
+        this.lastError = err instanceof Error ? err : new Error(String(err));
         console.error("[FlushManager] Flush error:", err);
+        if (this.onError) {
+          this.onError(this.lastError);
+        }
       });
     }, this.debounceMs);
   }
@@ -175,6 +183,31 @@ export class FlushManager {
     } finally {
       this.flushing = false;
     }
+  }
+
+  /**
+   * Check if the last scheduled flush failed
+   */
+  hasError(): boolean {
+    return this.lastError !== null;
+  }
+
+  /**
+   * Get the last error from a scheduled flush
+   *
+   * Returns null if no error has occurred or if the error has been cleared.
+   */
+  getLastError(): Error | null {
+    return this.lastError;
+  }
+
+  /**
+   * Clear the last error state
+   *
+   * Useful after handling an error to reset the error tracking.
+   */
+  clearError(): void {
+    this.lastError = null;
   }
 
   /**

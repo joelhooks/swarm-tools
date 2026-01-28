@@ -256,6 +256,26 @@ Begin work on your subtask now.`;
  */
 export const SUBTASK_PROMPT_V2 = `You are a swarm agent working on: **{subtask_title}**
 
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║   🛑  STOP - READ THIS FIRST - BEFORE ANY EDIT OR WRITE  🛑                  ║
+║                                                                               ║
+║   You MUST do these 3 things BEFORE your first Edit/Write call:              ║
+║                                                                               ║
+║   1️⃣  hivemind_find(query="<your task keywords>", limit=5, expand=true)      ║
+║       → Check if past agents already solved this                              ║
+║       → Find gotchas, patterns, warnings                                      ║
+║                                                                               ║
+║   2️⃣  skills_list() then skills_use(name="<relevant>")                       ║
+║       → testing-patterns, swarm-coordination, system-design                   ║
+║                                                                               ║
+║   3️⃣  swarmmail_send(to=["coordinator"], ...) when blocked                   ║
+║       → Don't spin >5min - ASK FOR HELP                                       ║
+║                                                                               ║
+║   SKIPPING THESE = wasted time repeating solved problems                      ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
 ## [IDENTITY]
 Agent: (assigned at spawn)
 Cell: {bead_id}
@@ -347,6 +367,27 @@ swarmmail_reserve(
 \`\`\`
 
 **Workers reserve their own files.** This prevents edit conflicts with other agents.
+
+### ⚠️ CRITICAL: File Path Handling (Next.js/Special Characters)
+
+**DO NOT escape brackets or parentheses in file paths!**
+
+When working with Next.js App Router or any codebase with special characters in paths:
+
+❌ **WRONG** (will fail):
+\`\`\`
+Read: app/\\(content\\)/events/\\[slug\\]/page.tsx
+Glob: src/**/\\[id\\]/**/*.ts
+\`\`\`
+
+✅ **CORRECT** (use raw paths):
+\`\`\`
+Read: app/(content)/events/[slug]/page.tsx
+Glob: src/**/[id]/**/*.ts
+\`\`\`
+
+**The Read and Glob tools handle special characters automatically.**
+Never add backslashes before \`[\`, \`]\`, \`(\`, or \`)\` in file paths.
 
 ### Step 5: Do the Work (TDD MANDATORY)
 

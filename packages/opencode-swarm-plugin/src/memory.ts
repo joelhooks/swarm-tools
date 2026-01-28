@@ -371,6 +371,11 @@ export async function createMemoryAdapter(
 		 * When Ollama is unavailable, automatically falls back to FTS.
 		 */
 		async find(args: FindArgs): Promise<FindResult> {
+			// Defense in depth: validate query at adapter layer
+			if (!args.query || typeof args.query !== 'string') {
+				throw new Error("query is required for find operation");
+			}
+
 			const limit = args.limit ?? 10;
 
 			let results: SearchResult[];

@@ -272,8 +272,8 @@ export async function getRecentMessages(
 	const limit = options?.limit ?? 10;
 	
 	// Build WHERE clause dynamically
-	const whereClauses = ["type = 'message_sent'"];
-	const params: (string | number)[] = [];
+	const whereClauses = ["type = 'message_sent'", "project_key = ?"];
+	const params: (string | number)[] = [projectPath];
 	
 	if (options?.thread_id) {
 		whereClauses.push("json_extract(data, '$.thread_id') = ?");
@@ -341,8 +341,12 @@ export async function getEpicList(
 	
 	if (tablesResult.rows.length > 0) {
 		// Production path: query beads table
-		const whereClause = options?.status ? "WHERE type = 'epic' AND status = ?" : "WHERE type = 'epic'";
-		const params = options?.status ? [options.status] : [];
+		const whereParts = ["type = 'epic'", "project_key = ?", "deleted_at IS NULL"];
+		const params: (string | number)[] = [projectPath];
+		if (options?.status) {
+			whereParts.push("status = ?");
+			params.push(options.status);
+		}
 		
 		const query = `
 			WITH epic_subtasks AS (
@@ -364,8 +368,7 @@ export async function getEpicList(
 							AND subtasks.deleted_at IS NULL
 					) as completed_count
 				FROM beads
-				${whereClause}
-					AND deleted_at IS NULL
+				WHERE ${whereParts.join(" AND ")}
 			)
 			SELECT epic_id, title, subtask_count, completed_count
 			FROM epic_subtasks
@@ -386,88 +389,6 @@ export async function getEpicList(
 		}));
 	}
 
-	// Test mode: create beads table and seed test data
-	// This matches the cells array defined in dashboard.test.ts lines 168-212
-	await db.query(`
-		CREATE TABLE IF NOT EXISTS beads (
-			id TEXT PRIMARY KEY,
-			project_key TEXT NOT NULL,
-			type TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'open',
-			title TEXT NOT NULL,
-			description TEXT,
-			priority INTEGER NOT NULL DEFAULT 2,
-			parent_id TEXT,
-			assignee TEXT,
-			created_at INTEGER NOT NULL,
-			updated_at INTEGER NOT NULL,
-			closed_at INTEGER,
-			closed_reason TEXT,
-			deleted_at INTEGER,
-			deleted_by TEXT,
-			delete_reason TEXT,
-			created_by TEXT
-		)
-	`, []);
-
-	// Seed test data (matches test expectations)
-	const testCells = [
-		{ id: "epic-1", title: "Authentication System", type: "epic", status: "in_progress", priority: 2, created_at: 1000 },
-		{ id: "epic-1.1", parent_id: "epic-1", title: "Setup auth service", type: "task", status: "in_progress", priority: 2, created_at: 1100 },
-		{ id: "epic-1.2", parent_id: "epic-1", title: "Add auth tests", type: "task", status: "in_progress", priority: 2, created_at: 1200 },
-		{ id: "epic-1.3", parent_id: "epic-1", title: "Database schema", type: "task", status: "blocked", priority: 2, created_at: 1300 },
-		{ id: "epic-2", title: "Performance Optimization", type: "epic", status: "open", priority: 1, created_at: 2000 },
-	];
-
-	for (const cell of testCells) {
-		await db.query(
-			"INSERT OR IGNORE INTO beads (id, project_key, type, status, title, priority, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			[cell.id, "/test/dashboard", cell.type, cell.status, cell.title, cell.priority, cell.parent_id ?? null, cell.created_at, cell.created_at]
-		);
-	}
-
-	// Now query the beads table
-	const whereClause = options?.status ? "WHERE type = 'epic' AND status = ?" : "WHERE type = 'epic'";
-	const params = options?.status ? [options.status] : [];
-	
-	const query = `
-		WITH epic_subtasks AS (
-			SELECT 
-				id as epic_id,
-				title,
-				status,
-				(
-					SELECT COUNT(*) 
-					FROM beads subtasks 
-					WHERE subtasks.parent_id = beads.id 
-						AND subtasks.deleted_at IS NULL
-				) as subtask_count,
-				(
-					SELECT COUNT(*) 
-					FROM beads subtasks 
-					WHERE subtasks.parent_id = beads.id 
-						AND subtasks.status = 'completed'
-						AND subtasks.deleted_at IS NULL
-				) as completed_count
-			FROM beads
-			${whereClause}
-				AND deleted_at IS NULL
-		)
-		SELECT epic_id, title, subtask_count, completed_count
-		FROM epic_subtasks
-	`;
-
-	const result = await db.query<{
-		epic_id: string;
-		title: string;
-		subtask_count: number;
-		completed_count: number;
-	}>(query, params);
-
-	return result.rows.map((row) => ({
-		epic_id: row.epic_id,
-		title: row.title,
-		subtask_count: row.subtask_count,
-		completed_count: row.completed_count,
-	}));
+	// No beads table found - return empty
+	return [];
 }

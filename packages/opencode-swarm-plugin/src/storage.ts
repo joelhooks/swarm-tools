@@ -84,9 +84,14 @@ async function execSemanticMemory(
     });
 
     try {
+      const TIMEOUT_MS = 30_000;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Process timed out after 30s")), TIMEOUT_MS)
+      );
+
       const stdout = Buffer.from(await new Response(proc.stdout).arrayBuffer());
       const stderr = Buffer.from(await new Response(proc.stderr).arrayBuffer());
-      const exitCode = await proc.exited;
+      const exitCode = await Promise.race([proc.exited, timeoutPromise]);
 
       return { exitCode, stdout, stderr };
     } finally {
@@ -795,15 +800,42 @@ export function createStorage(
 }
 
 /**
+ * Cached result of semantic-memory availability check.
+ * The CLI binary doesn't appear/disappear during a process lifetime,
+ * so we cache the result after the first check.
+ */
+let _availabilityCache: boolean | null = null;
+let _availabilityPromise: Promise<boolean> | null = null;
+
+/**
  * Check if semantic-memory is available (native or via bunx)
+ *
+ * Result is cached for the lifetime of the process since CLI availability
+ * doesn't change at runtime. Use resetAvailabilityCache() in tests.
  */
 export async function isSemanticMemoryAvailable(): Promise<boolean> {
-  try {
-    const result = await execSemanticMemory(["stats"]);
-    return result.exitCode === 0;
-  } catch {
-    return false;
-  }
+  if (_availabilityCache !== null) return _availabilityCache;
+  if (_availabilityPromise) return _availabilityPromise;
+
+  _availabilityPromise = (async () => {
+    try {
+      const result = await execSemanticMemory(["stats"]);
+      _availabilityCache = result.exitCode === 0;
+    } catch {
+      _availabilityCache = false;
+    }
+    _availabilityPromise = null;
+    return _availabilityCache;
+  })();
+  return _availabilityPromise;
+}
+
+/**
+ * Reset the availability cache (for testing)
+ */
+export function resetAvailabilityCache(): void {
+  _availabilityCache = null;
+  _availabilityPromise = null;
 }
 
 /**

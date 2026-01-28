@@ -15,6 +15,7 @@
 
 import { tool } from "@opencode-ai/plugin";
 import { getSwarmMailLibSQL, createEvent, appendEvent } from "swarm-mail";
+import { AdapterCache } from "./utils/adapter-cache";
 import {
 	createMemoryAdapter,
 	type MemoryAdapter,
@@ -62,8 +63,7 @@ interface ToolContext {
 // Memory Adapter Cache
 // ============================================================================
 
-let cachedAdapter: MemoryAdapter | null = null;
-let cachedProjectPath: string | null = null;
+const memoryAdapterCache = new AdapterCache<MemoryAdapter>();
 
 /**
  * Get or create memory adapter for the current project
@@ -76,28 +76,20 @@ export async function getMemoryAdapter(
 ): Promise<MemoryAdapter> {
 	const path = projectPath || process.cwd();
 
-	// Return cached adapter if same project
-	if (cachedAdapter && cachedProjectPath === path) {
-		return cachedAdapter;
-	}
+	return memoryAdapterCache.get(path, async (projectPath) => {
+		const swarmMail = await getSwarmMailLibSQL(projectPath);
+		const dbAdapter = await swarmMail.getDatabase();
 
-	// Create new adapter
-	const swarmMail = await getSwarmMailLibSQL(path);
-	const dbAdapter = await swarmMail.getDatabase();
-	
-	// createMemoryAdapter now accepts DatabaseAdapter directly and converts internally
-	cachedAdapter = await createMemoryAdapter(dbAdapter);
-	cachedProjectPath = path;
-
-	return cachedAdapter;
+		// createMemoryAdapter now accepts DatabaseAdapter directly and converts internally
+		return await createMemoryAdapter(dbAdapter);
+	});
 }
 
 /**
  * Reset adapter cache (for testing)
  */
 export function resetMemoryCache(): void {
-	cachedAdapter = null;
-	cachedProjectPath = null;
+	memoryAdapterCache.clear();
 }
 
 // Re-export createMemoryAdapter for external use
@@ -152,7 +144,7 @@ export const semantic_memory_store = tool({
 
 		// Emit memory_stored event for observability
 		try {
-			const projectKey = cachedProjectPath || process.cwd();
+			const projectKey = memoryAdapterCache.getCachedPath() || process.cwd();
 			const tags = args.tags ? args.tags.split(",").map(t => t.trim()) : [];
 			const event = createEvent("memory_stored", {
 				project_key: projectKey,
@@ -205,7 +197,7 @@ export const semantic_memory_find = tool({
 
 		// Emit memory_found event for observability
 		try {
-			const projectKey = cachedProjectPath || process.cwd();
+			const projectKey = memoryAdapterCache.getCachedPath() || process.cwd();
 			const topScore = result.results.length > 0 ? result.results[0].score : undefined;
 			const event = createEvent("memory_found", {
 				project_key: projectKey,
@@ -255,7 +247,7 @@ export const semantic_memory_remove = tool({
 		// Emit memory_deleted event for observability
 		if (result.success) {
 			try {
-				const projectKey = cachedProjectPath || process.cwd();
+				const projectKey = memoryAdapterCache.getCachedPath() || process.cwd();
 				const event = createEvent("memory_deleted", {
 					project_key: projectKey,
 					memory_id: args.id,
@@ -287,7 +279,7 @@ export const semantic_memory_validate = tool({
 		// Emit memory_validated event for observability
 		if (result.success) {
 			try {
-				const projectKey = cachedProjectPath || process.cwd();
+				const projectKey = memoryAdapterCache.getCachedPath() || process.cwd();
 				const event = createEvent("memory_validated", {
 					project_key: projectKey,
 					memory_id: args.id,
@@ -394,7 +386,7 @@ export const semantic_memory_upsert = tool({
 
 		// Emit memory_updated event for observability (covers ADD, UPDATE, DELETE, NOOP)
 		try {
-			const projectKey = cachedProjectPath || process.cwd();
+			const projectKey = memoryAdapterCache.getCachedPath() || process.cwd();
 			const event = createEvent("memory_updated", {
 				project_key: projectKey,
 				memory_id: result.memoryId || "unknown",

@@ -69,7 +69,6 @@ describe("Tool discovery integration", () => {
 		expect(toolNames).toContain("context7");
 		expect(toolNames).toContain("fetch");
 		expect(toolNames).toContain("pdf-brain");
-		expect(toolNames).toContain("semantic-memory");
 	});
 
 	test("swarm_discover_tools plugin tool returns JSON summary", async () => {
@@ -490,7 +489,7 @@ describe("End-to-end research workflow", () => {
 
 		// The spawned prompt should be ready for Task tool
 		expect(spawnData.prompt).toContain("swarmmail_init");
-		expect(spawnData.prompt).toContain("semantic-memory_store");
+		expect(spawnData.prompt).toContain("hivemind_store");
 		expect(spawnData.prompt).toContain(testProjectPath);
 	});
 
@@ -660,7 +659,7 @@ describe("Research spawn instructions (NEW)", () => {
 		// Prompt should include swarmmail_init (researcher workers need this)
 		const instruction = result.spawn_instructions[0];
 		expect(instruction.prompt).toContain("swarmmail_init");
-		expect(instruction.prompt).toContain("semantic-memory_store");
+		expect(instruction.prompt).toContain("hivemind_store");
 	});
 });
 

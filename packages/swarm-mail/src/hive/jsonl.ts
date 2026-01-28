@@ -351,7 +351,7 @@ async function importSingleCell(
       : null;
     
     await db.query(
-      `INSERT INTO cells (
+      `INSERT INTO beads (
         id, project_key, type, status, title, description, priority,
         parent_id, assignee, created_at, updated_at, closed_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,

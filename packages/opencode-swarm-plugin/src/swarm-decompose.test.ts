@@ -186,3 +186,80 @@ describe("captureDecomposition integration", () => {
     captureDecompositionSpy.mockRestore();
   });
 });
+
+// ============================================================================
+// Response Parsing Tests
+// ============================================================================
+
+describe("swarm_validate_decomposition response parsing", () => {
+  test("accepts response as JSON string", async () => {
+    const validCellTree = JSON.stringify({
+      epic: { title: "Test Epic", description: "Test" },
+      subtasks: [
+        {
+          title: "Subtask 1",
+          files: ["src/test.ts"],
+          dependencies: [],
+          estimated_complexity: 1,
+        },
+      ],
+    });
+
+    const result = await swarm_validate_decomposition.execute(
+      { response: validCellTree },
+      mockContext,
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.valid).toBe(true);
+  });
+
+  test("accepts response as object (MCP double-parse scenario)", async () => {
+    // When MCP server receives an object and passes it through,
+    // the tool may receive an already-parsed object instead of a string
+    const validCellTree = {
+      epic: { title: "Test Epic", description: "Test" },
+      subtasks: [
+        {
+          title: "Subtask 1",
+          files: ["src/test.ts"],
+          dependencies: [],
+          estimated_complexity: 1,
+        },
+      ],
+    };
+
+    const result = await swarm_validate_decomposition.execute(
+      // Cast to any to simulate the MCP scenario where response might be object
+      { response: validCellTree as any },
+      mockContext,
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.valid).toBe(true);
+  });
+
+  test("handles nested JSON string (triple-encoded edge case)", async () => {
+    const cellTree = {
+      epic: { title: "Test Epic", description: "Test" },
+      subtasks: [
+        {
+          title: "Subtask 1",
+          files: ["src/test.ts"],
+          dependencies: [],
+          estimated_complexity: 1,
+        },
+      ],
+    };
+    // Double-stringified
+    const doubleStringified = JSON.stringify(JSON.stringify(cellTree));
+
+    const result = await swarm_validate_decomposition.execute(
+      { response: doubleStringified },
+      mockContext,
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.valid).toBe(true);
+  });
+});

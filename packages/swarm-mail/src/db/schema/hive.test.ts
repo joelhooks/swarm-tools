@@ -130,7 +130,9 @@ describe("Hive Schema", () => {
         deleted_at INTEGER,
         deleted_by TEXT,
         delete_reason TEXT,
-        created_by TEXT
+        created_by TEXT,
+        result TEXT,
+        result_at INTEGER
       )
     `);
 
@@ -194,7 +196,9 @@ describe("Hive Schema", () => {
         deleted_at INTEGER,
         deleted_by TEXT,
         delete_reason TEXT,
-        created_by TEXT
+        created_by TEXT,
+        result TEXT,
+        result_at INTEGER
       )
     `);
 

@@ -28,6 +28,9 @@
 ## Status
 
 **Accepted** - December 2025
+**Implementation Status:** Implemented (Phase 1-3 Complete, Cleanup Pending)
+
+The `hivemind_*` tools are fully implemented and registered in the plugin. However, legacy `memory-tools.ts` still exists and deprecated `semantic-memory_*` aliases are still present for backward compatibility.
 
 ## Context
 
@@ -391,37 +394,56 @@ export default {
 
 ## Implementation Plan
 
-### Phase 1: Core Rename (hivemind-tools.ts)
+### Phase 1: Core Rename (hivemind-tools.ts) ✅ COMPLETE
 
-1. Create `src/hivemind-tools.ts` with new tool names
-2. Merge memory + session functionality
-3. Add deprecation aliases for old names
-4. Update tool registration in index.ts
+- [x] Create `src/hivemind-tools.ts` with new tool names
+- [x] Merge memory + session functionality
+- [x] Add deprecation aliases for old names (semantic-memory_*, cass_*)
+- [x] Update tool registration in index.ts
 
-### Phase 2: Migration Automation
+**Status:** Complete. File exists at `packages/opencode-swarm-plugin/src/hivemind-tools.ts` with 8 unified tools and exports `hivemindTools` in index.ts.
 
-1. Make `swarm setup` migration non-interactive
-2. Add auto-migration on first hivemind tool call
-3. Remove semantic-memory MCP from config automatically
+### Phase 2: Migration Automation ✅ COMPLETE
 
-### Phase 3: Prompt Updates
+- [x] Auto-migration on first hivemind tool call (via swarm-mail/src/memory/migrate-legacy.ts)
+- [x] Remove semantic-memory MCP from config automatically (handled by swarm setup)
 
-1. Update SUBTASK_PROMPT_V2 (worker survival checklist)
-2. Update coordinator prompts
-3. Update AGENTS.md generator
-4. Update all documentation
+**Status:** Complete. Migration logic exists and is tested. PGLite → libSQL migration is automatic and idempotent.
 
-### Phase 4: Testing
+### Phase 3: Prompt Updates ✅ COMPLETE
 
-1. Unit tests for hivemind tools
-2. Integration tests for migration
-3. E2E test: store → find → validate → sync
+- [x] Update SUBTASK_PROMPT_V2 (worker survival checklist) - now uses `hivemind_*`
+- [x] Update coordinator prompts - use `hivemind_*` tools
+- [x] Update AGENTS.md generator - removed semantic-memory section
+- [x] Update all documentation
 
-### Phase 5: Cleanup
+**Status:** Complete. Worker prompts in `packages/opencode-swarm-plugin/src/swarm-prompts.ts` reference `hivemind_*` tools. AGENTS.md uses `hivemind:*` namespace.
 
-1. Remove `memory-tools.ts` (replaced by hivemind-tools.ts)
-2. Remove `cass-tools.ts` (absorbed into hivemind-tools.ts)
-3. Remove deprecation aliases (after 2 releases)
+### Phase 4: Testing ✅ COMPLETE
+
+- [x] Unit tests for hivemind tools (`packages/opencode-swarm-plugin/src/hivemind-tools.test.ts`)
+- [x] Integration tests for migration (in swarm-mail package)
+- [x] E2E test: store → find → validate → sync
+
+**Status:** Complete. Tests passing for all hivemind tools and migration logic.
+
+### Phase 5: Cleanup ⏸️ PENDING
+
+- [ ] Remove `memory-tools.ts` (replaced by hivemind-tools.ts) - **Still exists, exports memoryTools**
+- [ ] Remove `cass-tools.ts` (absorbed into hivemind-tools.ts) - **Still exists, exports cassTools**
+- [ ] Remove deprecation aliases (after 2 releases) - **Still present in hivemind-tools.ts and index.ts**
+
+**Status:** Pending. Legacy files still exist:
+- `packages/opencode-swarm-plugin/src/memory-tools.ts` - exports `memoryTools` (semantic-memory_*)
+- `packages/opencode-swarm-plugin/src/cass-tools.ts` - exports `cassTools` (cass_*)
+- Deprecation aliases present in `hivemind-tools.ts` for backward compatibility
+
+**Next steps:**
+1. Announce deprecation in release notes (2 release window before removal)
+2. Add runtime warnings when deprecated tools are used
+3. After 2 releases, remove memory-tools.ts and cass-tools.ts entirely
+4. Remove deprecation aliases from hivemind-tools.ts
+5. Remove from index.ts exports
 
 ## References
 

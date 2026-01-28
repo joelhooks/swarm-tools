@@ -15,7 +15,7 @@
  * ```
  */
 
-export const SWARM_MAIL_VERSION = "1.10.1";
+export const SWARM_MAIL_VERSION = "1.10.4";
 
 // ============================================================================
 // Debug Logging
@@ -135,6 +135,7 @@ export {
 // Decision trace store for observability
 export {
 	createDecisionTrace,
+	findDecisionTraceByBead,
 	getDecisionTracesByAgent,
 	getDecisionTracesByEpic,
 	getDecisionTracesByType,

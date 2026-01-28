@@ -1,73 +1,74 @@
-# React + TypeScript + Vite
+# Swarm Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Real-time visualization for OpenCode Swarm multi-agent coordination.
 
-Currently, two official plugins are available:
+## What It Does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The Swarm Dashboard provides live monitoring of distributed agent workflows. It connects to the Swarm Mail SSE server and displays:
 
-## React Compiler
+- **Active Agents** - Currently registered agents with status indicators
+- **Event Stream** - Real-time SSE events with filtering (agent/epic/event type)
+- **Cell Hierarchy** - Epic and subtask tree visualization with status
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Built for debugging parallel agent execution, tracking file reservations, and understanding swarm coordination patterns.
 
-## Expanding the ESLint configuration
+## Quick Start
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+```bash
+# Development
+bun run dev
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+# Build
+bun run build
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Preview production build
+bun run preview
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The dashboard expects the Swarm Mail SSE server running on `http://localhost:3333/sse`. Start it with:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+swarm serve --port 3333
 ```
+
+## Architecture
+
+- **React 19** with TypeScript
+- **Vite** for fast dev/build
+- **Tailwind CSS 4** for styling
+- **SSE (Server-Sent Events)** for real-time updates
+- **swarm-mail** package for event types and utilities
+
+### Key Components
+
+- `useSwarmEvents` - SSE connection hook with auto-reconnect
+- `AgentsPane` - Active agent cards with registration status
+- `EventsPane` - Filterable event stream with timestamps
+- `CellsPane` - Tree view of epics/subtasks (hive cells)
+
+## Event Types
+
+The dashboard consumes events from the Swarm Mail protocol:
+
+- `agent_registered`, `agent_active` - Agent lifecycle
+- `message_sent`, `message_read`, `message_acked` - Inter-agent messaging
+- `file_reserved`, `file_released` - File lock coordination
+- `task_started`, `task_progress`, `task_completed`, `task_blocked` - Task execution
+- `decomposition_generated`, `subtask_outcome` - Swarm coordination
+- `swarm_checkpointed`, `swarm_recovered` - Persistence events
+
+## Development
+
+```bash
+# Type checking
+bun run typecheck
+
+# Linting
+bun run lint
+```
+
+## Related Packages
+
+- `swarm-mail` - Event protocol and SSE server
+- `opencode-swarm-plugin` - Claude Code plugin with hive/hivemind tools
+- `claude-code-swarm-plugin` - Agent coordination primitives

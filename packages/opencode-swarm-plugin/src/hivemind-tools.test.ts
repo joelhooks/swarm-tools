@@ -18,18 +18,28 @@
  * 6. Error handling and edge cases
  */
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
 import { hivemindTools, resetHivemindCache } from "./hivemind-tools";
 import { closeAllSwarmMail, createInMemorySwarmMail } from "swarm-mail";
+import { server } from "./test-utils/msw-server";
 
 describe("hivemind tools integration", () => {
 	beforeAll(async () => {
+		// MSW intercepts Ollama API calls at the network level.
+		// No globalThis.fetch mutation needed.
+		server.listen({ onUnhandledRequest: "bypass" });
+
 		// Create in-memory database for tests
 		// This ensures tests are isolated and don't affect real data
 		await createInMemorySwarmMail("hivemind-test");
 	});
 
+	afterEach(() => {
+		server.resetHandlers();
+	});
+
 	afterAll(async () => {
+		server.close();
 		resetHivemindCache();
 		await closeAllSwarmMail();
 	});
@@ -139,12 +149,15 @@ describe("hivemind tools integration", () => {
 				{ sessionID: "test-session" } as any,
 			);
 
-			// Search for it
+			// Search using FTS — exact keyword matching is a full-text search scenario,
+			// not a semantic similarity one. Random strings like "xyzHIVE789" don't have
+			// meaningful embeddings, making vector search unreliable for this use case.
 			const findTool = hivemindTools["hivemind_find"];
 			const result = await findTool.execute(
 				{
 					query: "xyzHIVE789",
 					limit: 5,
+					fts: true,
 				},
 				{ sessionID: "test-session" } as any,
 			);
@@ -746,6 +759,43 @@ describe("hivemind tools integration", () => {
 				r.content.includes("FALLBACKTEST123")
 			);
 			expect(found).toBe(true);
+		});
+	});
+
+	describe("input validation", () => {
+		test("hivemind_find returns error when query is missing", async () => {
+			const findTool = hivemindTools["hivemind_find"];
+			const result = await findTool.execute(
+				{} as any,
+				{ sessionID: "test-session" } as any,
+			);
+
+			const parsed = JSON.parse(result);
+			expect(parsed.success).toBe(false);
+			expect(parsed.error).toBeDefined();
+			expect(parsed.error.message).toContain("query");
+		});
+
+		test("hivemind_find returns error when query is empty string", async () => {
+			const findTool = hivemindTools["hivemind_find"];
+			const result = await findTool.execute(
+				{ query: "" },
+				{ sessionID: "test-session" } as any,
+			);
+
+			const parsed = JSON.parse(result);
+			expect(parsed.success).toBe(false);
+		});
+
+		test("hivemind_find returns error when query is whitespace only", async () => {
+			const findTool = hivemindTools["hivemind_find"];
+			const result = await findTool.execute(
+				{ query: "   " },
+				{ sessionID: "test-session" } as any,
+			);
+
+			const parsed = JSON.parse(result);
+			expect(parsed.success).toBe(false);
 		});
 	});
 

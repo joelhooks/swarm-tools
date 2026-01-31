@@ -453,7 +453,20 @@ interface MemoryResult {
   matchType: string;
 }
 
-function swarmMemory(action: string, args: Record<string, unknown>): { success: boolean; data?: unknown; error?: string } {
+// Global project key for system-wide memory (set via config)
+let globalProjectKey: string | null = null;
+
+// Content hash cache to prevent duplicates within session
+const recentContentHashes = new Set<string>();
+const MAX_HASH_CACHE_SIZE = 100;
+
+function hashContent(text: string): string {
+  // Simple hash for dedup - first 100 chars normalized + length
+  const normalized = text.slice(0, 100).toLowerCase().replace(/\s+/g, " ").trim();
+  return `${normalized.length}:${normalized.slice(0, 50)}`;
+}
+
+function swarmMemory(action: string, args: Record<string, unknown>): { success: boolean; data?: unknown; error?: string; results?: MemoryResult[] } {
   try {
     const cmdArgs = ["memory", action];
     if (action === "store" && args.information) {
@@ -468,6 +481,8 @@ function swarmMemory(action: string, args: Record<string, unknown>): { success: 
     const output = execFileSync("swarm", cmdArgs, {
       encoding: "utf-8",
       timeout: 30000,
+      // Use global project path as cwd for system-wide memory
+      cwd: globalProjectKey || undefined,
       env: { ...process.env, PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}` },
     });
     return JSON.parse(output);
@@ -477,6 +492,45 @@ function swarmMemory(action: string, args: Record<string, unknown>): { success: 
       try { return JSON.parse(err.stdout); } catch { /* ignore */ }
     }
     return { success: false, error: err.message || String(error) };
+  }
+}
+
+/**
+ * Check if content is a duplicate (in session cache or similar in DB)
+ */
+function isDuplicate(text: string, minScore = 0.85): boolean {
+  const hash = hashContent(text);
+
+  // Check session cache first (fast)
+  if (recentContentHashes.has(hash)) {
+    return true;
+  }
+
+  // Check DB for similar content (semantic dedup)
+  const result = swarmMemory("find", { query: text.slice(0, 200), limit: 3 });
+  if (result.success && result.results) {
+    for (const r of result.results) {
+      if (r.score >= minScore) {
+        // Very similar content exists
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Add content hash to session cache
+ */
+function markAsStored(text: string): void {
+  const hash = hashContent(text);
+  recentContentHashes.add(hash);
+
+  // Prune cache if too large
+  if (recentContentHashes.size > MAX_HASH_CACHE_SIZE) {
+    const toDelete = Array.from(recentContentHashes).slice(0, 20);
+    toDelete.forEach(h => recentContentHashes.delete(h));
   }
 }
 
@@ -546,6 +600,9 @@ const swarmPlugin = {
       autoCapture: { type: "boolean", default: true, description: "Store important info after each turn" },
       maxRecallResults: { type: "number", default: 5, description: "Max memories to inject" },
       minScore: { type: "number", default: 0.3, description: "Min similarity score for recall" },
+      dedupScore: { type: "number", default: 0.85, description: "Min similarity to consider duplicate (prevents storing)" },
+      memoryScope: { type: "string", default: "global", description: "Memory scope: 'global' (system-wide) or 'project' (per-directory)" },
+      globalMemoryPath: { type: "string", description: "Path for global memory (default: ~/clawd)" },
       debug: { type: "boolean", default: false, description: "Debug logging" },
     },
     additionalProperties: false,
@@ -557,9 +614,18 @@ const swarmPlugin = {
       autoCapture: true,
       maxRecallResults: 5,
       minScore: 0.3,
+      dedupScore: 0.85,
+      memoryScope: "global",
+      globalMemoryPath: `${process.env.HOME}/clawd`,
       debug: false,
       ...(api.pluginConfig as Record<string, unknown>),
     };
+
+    // Set global project key for system-wide memory
+    if (cfg.memoryScope === "global") {
+      globalProjectKey = cfg.globalMemoryPath as string;
+      console.log(`[swarm-plugin] Using global memory scope: ${globalProjectKey}`);
+    }
 
     // Register all swarm tools
     for (const tool of SWARM_TOOLS) {
@@ -647,14 +713,28 @@ const swarmPlugin = {
           if (toCapture.length === 0) return;
 
           let stored = 0;
+          let skippedDupes = 0;
           for (const text of toCapture.slice(0, 2)) {
-            const tags = detectTags(text);
             const truncated = text.slice(0, 500);
+
+            // Check for duplicates before storing
+            if (isDuplicate(truncated, cfg.dedupScore as number)) {
+              skippedDupes++;
+              if (cfg.debug) console.log(`[swarm-plugin] Skipping duplicate: ${truncated.slice(0, 50)}...`);
+              continue;
+            }
+
+            const tags = detectTags(text);
             const result = swarmMemory("store", { information: truncated, tags: tags.join(",") });
-            if (result.success) stored++;
+            if (result.success) {
+              stored++;
+              markAsStored(truncated);
+            }
           }
 
-          if (cfg.debug && stored > 0) console.log(`[swarm-plugin] Captured ${stored} memories`);
+          if (cfg.debug && (stored > 0 || skippedDupes > 0)) {
+            console.log(`[swarm-plugin] Captured ${stored} memories, skipped ${skippedDupes} duplicates`);
+          }
         } catch (err) {
           if (cfg.debug) console.log(`[swarm-plugin] Capture error: ${err}`);
         }

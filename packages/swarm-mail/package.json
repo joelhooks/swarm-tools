@@ -1,6 +1,6 @@
 {
   "name": "swarm-mail",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "description": "Event sourcing primitives for multi-agent coordination. Local-first, no external servers.",
   "type": "module",
   "main": "./dist/index.js",

@@ -185,4 +185,43 @@ describe("selectWorkerModel", () => {
     const result = selectWorkerModel(subtask, mockConfig);
     expect(result).toBe("anthropic/claude-haiku-4-5");
   });
+
+  test("uses Synthetic model when explicitly provided", () => {
+    const subtask: DecomposedSubtask & { model?: string } = {
+      title: "Complex reasoning task",
+      description: "Use advanced reasoning",
+      files: ["src/ai.ts"],
+      estimated_effort: "large",
+      model: "synthetic/hf:moonshotai/Kimi-K2.5",
+    };
+
+    const result = selectWorkerModel(subtask, mockConfig);
+    expect(result).toBe("synthetic/hf:moonshotai/Kimi-K2.5");
+  });
+
+  test("synthetic DeepSeek model is selectable", () => {
+    const subtask: DecomposedSubtask & { model?: string } = {
+      title: "Deep reasoning task",
+      description: "Deep analysis required",
+      files: ["src/deep.ts"],
+      estimated_effort: "large",
+      model: "synthetic/hf:deepseek-ai/DeepSeek-V3.2",
+    };
+
+    const result = selectWorkerModel(subtask, mockConfig);
+    expect(result).toBe("synthetic/hf:deepseek-ai/DeepSeek-V3.2");
+  });
+
+  test("synthetic MiniMax model is selectable for worker tasks", () => {
+    const subtask: DecomposedSubtask & { model?: string } = {
+      title: "Fast processing task",
+      description: "Process data quickly",
+      files: ["src/process.ts"],
+      estimated_effort: "small",
+      model: "synthetic/hf:MiniMaxAI/MiniMax-M2.1",
+    };
+
+    const result = selectWorkerModel(subtask, mockConfig);
+    expect(result).toBe("synthetic/hf:MiniMaxAI/MiniMax-M2.1");
+  });
 });

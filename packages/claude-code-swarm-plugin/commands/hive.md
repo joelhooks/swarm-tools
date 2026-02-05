@@ -6,6 +6,13 @@ description: Query and manage swarm tasks (cells)
 
 Manage Hive cells with the `hive_*` tools (no deprecated CLI references).
 
+Hive cells are git-backed persistent truth. Native TaskCreate/TaskList provide real-time UI visibility for the same work.
+
+## Native integration
+- Hive cells = persistent, git-synced, survives session compaction
+- Native tasks (TaskCreate/TaskList) = ephemeral, UI-visible, session-scoped
+- Use both: hive for long-term tracking, native tasks for real-time UI feedback
+
 ## Common actions
 - List ready work: `hive_ready()`
 - Query by status: `hive_query({ status: "open" })`

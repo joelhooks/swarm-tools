@@ -11,6 +11,48 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "coordinator",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude coordinator-start"
+          }
+        ]
+      },
+      {
+        "matcher": "worker",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude worker-start"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude subagent-stop"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude agent-stop"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -38,6 +80,15 @@
           {
             "type": "command",
             "command": "swarm claude pre-complete"
+          }
+        ]
+      },
+      {
+        "matcher": "TaskCreate|TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude track-task"
           }
         ]
       }
@@ -85,6 +136,15 @@
           {
             "type": "command",
             "command": "swarm claude post-complete"
+          }
+        ]
+      },
+      {
+        "matcher": "TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "swarm claude post-task-update"
           }
         ]
       }

@@ -8,6 +8,32 @@ You are a swarm coordinator. Decompose the task into subtasks and spawn parallel
 
 $ARGUMENTS
 
+## ENVIRONMENT DETECTION (CHECK FIRST)
+
+**Before doing anything else, check which mode you're operating in:**
+
+```bash
+# Check if native agent teams are available
+if [ -n "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" ]; then
+  MODE="native-teams"
+else
+  MODE="task-fallback"
+fi
+```
+
+**Mode Detection Matters:**
+
+- **native-teams**: Use `TeammateTool` + `EnterPlanMode` + `TaskCreate` for UI
+- **task-fallback**: Use `Task(subagent_type)` + `TaskCreate` for UI spinners
+
+**What stays the same (plugin's unique value):**
+- `hivemind_*` (semantic memory persistence)
+- `swarmmail_reserve` (file locking - native teams DON'T have this)
+- `swarm_decompose/swarm_validate_decomposition` (intelligent decomposition)
+- `swarm_review/swarm_review_feedback` (structured code review)
+- `swarm_complete` (verification gates)
+- `hive_create_epic` (git-backed persistence)
+
 ## Flags (parse from task above)
 
 ### Planning Modes
@@ -32,6 +58,78 @@ $ARGUMENTS
 /swarm:swarm --auto "task description"       # Auto-select, minimal Q&A
 /swarm:swarm --confirm-only "task"           # Show plan, yes/no only
 /swarm:swarm --fast --to-main "quick fix"    # Fast mode + push to main
+```
+
+## Dual-Mode Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        DUAL-MODE SWARM SYSTEM                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  MODE 1: NATIVE AGENT TEAMS (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)   │
+│  ┌────────────────────────────────────────────────────────────┐        │
+│  │  Planning:    EnterPlanMode → explore → ExitPlanMode       │        │
+│  │  Spawning:    TeammateTool (spawn teammates)               │        │
+│  │  Tasks:       TaskCreate/TaskUpdate/TaskList (UI spinners) │        │
+│  │  Messaging:   SendMessage (live, ephemeral)                │        │
+│  │  Shutdown:    SendMessage(type="shutdown_request")         │        │
+│  └────────────────────────────────────────────────────────────┘        │
+│                                                                         │
+│  MODE 2: TASK FALLBACK (default)                                       │
+│  ┌────────────────────────────────────────────────────────────┐        │
+│  │  Planning:    Task(subagent_type="Plan")                   │        │
+│  │  Spawning:    Task(subagent_type="swarm:worker")           │        │
+│  │  Tasks:       TaskCreate/TaskUpdate (UI spinners)          │        │
+│  │  Messaging:   swarmmail_send (persistent)                  │        │
+│  └────────────────────────────────────────────────────────────┘        │
+│                                                                         │
+│  SHARED PLUGIN VALUE (both modes):                                     │
+│  ┌────────────────────────────────────────────────────────────┐        │
+│  │  • hivemind_find/hivemind_store (semantic memory)          │        │
+│  │  • swarmmail_reserve (file locking - teams don't have)     │        │
+│  │  • swarm_decompose (intelligent task breakdown)            │        │
+│  │  • swarm_review/swarm_review_feedback (code review)        │        │
+│  │  • swarm_complete (verification gates)                     │        │
+│  │  • hive_create_epic (git-backed persistence)               │        │
+│  └────────────────────────────────────────────────────────────┘        │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Coordination Flow:**
+
+```
+                 ┌──────────────┐
+                 │  /swarm cmd  │
+                 └──────┬───────┘
+                        │
+            ┌───────────▼────────────┐
+            │  Environment Check     │
+            │  (CLAUDE_CODE_...)     │
+            └───────────┬────────────┘
+                        │
+         ┌──────────────┴──────────────┐
+         │                             │
+    ┌────▼─────┐                 ┌────▼────┐
+    │  Native  │                 │  Task   │
+    │  Teams   │                 │ Fallback│
+    └────┬─────┘                 └────┬────┘
+         │                             │
+    ┌────▼──────────────┐         ┌───▼──────────────┐
+    │ EnterPlanMode     │         │ Task(Plan)       │
+    │ TeammateTool      │         │ Task(worker)     │
+    │ SendMessage       │         │ swarmmail_send   │
+    └────┬──────────────┘         └───┬──────────────┘
+         │                             │
+         └──────────────┬──────────────┘
+                        │
+                ┌───────▼────────┐
+                │  Plugin Tools   │
+                │  (hivemind,     │
+                │   swarm_review, │
+                │   file locks)   │
+                └─────────────────┘
 ```
 
 ## CRITICAL: Always Swarm When Invoked
@@ -156,7 +254,39 @@ Swarm Mail is embedded (no external server needed) and provides:
 
 ## Workflow
 
-### 0. Task Clarity Check (BEFORE ANYTHING ELSE)
+### 0. Environment & Mode Detection (FIRST)
+
+**Detect which mode you're in BEFORE any other work:**
+
+```bash
+# Check environment variable
+if [ -n "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" ]; then
+  echo "Native Teams Mode - use TeammateTool + EnterPlanMode"
+else
+  echo "Task Fallback Mode - use Task(subagent_type)"
+fi
+```
+
+**What this determines:**
+
+| Aspect          | Native Teams Mode                        | Task Fallback Mode                  |
+| --------------- | ---------------------------------------- | ----------------------------------- |
+| Planning        | `EnterPlanMode` (read-only exploration)  | `Task(subagent_type="Plan")`        |
+| Spawning        | `TeammateTool(operation="spawnTeam")`    | `Task(subagent_type="swarm:worker")`|
+| Messaging       | `SendMessage(type="message")`            | `swarmmail_send`                    |
+| Task UI         | `TaskCreate/TaskUpdate` (both modes)     | `TaskCreate/TaskUpdate` (both modes)|
+| File Locks      | `swarmmail_reserve` (both modes)         | `swarmmail_reserve` (both modes)    |
+| Shutdown        | `SendMessage(type="shutdown_request")`   | Workers exit when done              |
+
+**Both modes share:**
+- hivemind (semantic memory)
+- swarmmail_reserve (file locking)
+- swarm_decompose/swarm_validate_decomposition (intelligent decomposition)
+- swarm_review/swarm_review_feedback (code review)
+- swarm_complete (verification gates)
+- hive_create_epic (git-backed persistence)
+
+### 0.5. Task Clarity Check (BEFORE DECOMPOSING)
 
 **Before decomposing, ask yourself: Is this task clear enough to parallelize?**
 
@@ -267,27 +397,53 @@ git checkout -b swarm/<short-task-name>
 git push -u origin HEAD
 ```
 
-### 4. Decomposition (Delegate to Subagent)
+### 4. Decomposition (Mode-Aware)
 
 > **⚠️ CRITICAL: Context Preservation**
 >
 > **DO NOT decompose inline in the coordinator thread.** This consumes massive context with file reading and reasoning.
 >
-> **ALWAYS delegate to a Task subagent** that returns only the validated JSON.
+> **Use mode-appropriate planning:**
 
-**❌ Don't do this (inline planning):**
+#### Native Teams Mode (EnterPlanMode)
+
+**Use `EnterPlanMode` for read-only exploration before implementation:**
 
 ```
-# This pollutes your main thread context
-# ... you reason about decomposition inline ...
-# ... context fills with file contents, analysis ...
+# 1. Enter planning mode (read-only, no edits allowed)
+EnterPlanMode(reason="Decompose task: <task>")
+
+# 2. Get decomposition prompt
+swarm_decompose({ task: "<task>", context: "<hivemind findings>" })
+
+# 3. Explore codebase with Read, Glob, Grep (no Edit/Write allowed)
+# Read relevant files, understand architecture
+
+# 4. Generate CellTree JSON
+# ... create decomposition ...
+
+# 5. Validate decomposition
+swarm_validate_decomposition({ response: "<JSON>" })
+
+# 6. Exit planning mode when ready to implement
+ExitPlanMode()
+
+# 7. Create epic with validated JSON
+hive_create_epic({ ... })
 ```
 
-**✅ Do this (delegate to subagent):**
+**Why EnterPlanMode?**
+- Read-only ensures no premature edits
+- Clear separation between planning and execution
+- Can explore without risk of partial changes
+
+#### Task Fallback Mode (Delegate to Subagent)
+
+**Delegate to a disposable Task subagent:**
 
 ```
 # 1. Get decomposition prompt
-swarm_decompose({ task: "<task description>", context: "<hivemind findings>" })
+swarm_decompose({ task: "<task>", context: "<hivemind findings>" })
 
 # 2. Delegate to subagent
 Task(
@@ -300,13 +456,15 @@ Return ONLY the validated JSON."
 )
 
 # 3. Parse result and create epic
+hive_create_epic({ ... })
 ```
 
 **Why delegate?**
-
 - Main thread stays clean (only receives final JSON)
 - Subagent context is disposable (garbage collected after planning)
 - Scales to 10+ worker swarms without exhaustion
+
+**Both modes:** Main coordinator context stays lean, decomposition reasoning is isolated
 
 ### 5. Create Epic + Subtasks
 
@@ -334,27 +492,85 @@ Rules:
 > Workers reserve their own files via `swarmmail_reserve()` as their first action.
 > If coordinator reserves, workers get blocked and swarm stalls.
 
-**CRITICAL: Spawn ALL workers in a SINGLE message with multiple Task calls.**
+**CRITICAL: Spawn ALL workers in a SINGLE message (parallel execution).**
 
-For each subtask:
+#### Native Teams Mode (TeammateTool)
 
 ```
-# 1. Get spawn prompt
+# 1. Create team
+TeammateTool({
+  operation: "spawnTeam",
+  team_name: "<epic-id>",
+  description: "<task summary>",
+  agent_type: "coordinator"
+})
+
+# 2. Create shared task list with TaskCreate
+TaskCreate({
+  title: "Subtask 1: <title>",
+  description: "<description>",
+  owner: "",  # Unassigned initially
+  dependencies: []
+})
+# ... repeat for each subtask ...
+
+# 3. Spawn teammates (all in one message for parallel execution)
+Task(
+  subagent_type="swarm:worker",
+  team_name: "<epic-id>",
+  name: "worker-1",
+  description: "Subtask 1: <title>",
+  prompt: "<worker prompt with MANDATORY:
+    - swarmmail_init first
+    - hivemind_find for prior learnings
+    - swarmmail_reserve for file locks
+    - TaskUpdate to claim task
+    - SendMessage to report progress
+    - swarm_complete to finish>"
+)
+# ... spawn all workers in same message ...
+```
+
+**Teammate coordination:**
+- Workers claim tasks via `TaskUpdate(owner="worker-1")`
+- Workers message via `SendMessage(recipient="coordinator")`
+- Coordinator broadcasts via `SendMessage(type="broadcast")` (use sparingly - expensive)
+- Shutdown via `SendMessage(type="shutdown_request")`
+
+#### Task Fallback Mode (Task Subagent)
+
+```
+# 1. Create UI tasks for each subtask
+TaskCreate({
+  title: "Subtask 1: <title>",
+  description: "<description>",
+  owner: "worker-1",
+  dependencies: []
+})
+# ... repeat for each subtask ...
+
+# 2. Get spawn prompts
 swarm_spawn_subtask({
   bead_id: "<subtask-id>",
   epic_id: "<epic-id>",
   subtask_title: "<title>",
   files: ["src/foo.ts"],
-  shared_context: "<hivemind findings + any researcher results>"
+  shared_context: "<hivemind findings>"
 })
 
-# 2. Spawn worker
+# 3. Spawn workers (all in one message)
 Task(
   subagent_type="swarm:worker",
-  description="<subtask-title>",
+  description="Subtask 1",
   prompt="<prompt from swarm_spawn_subtask>"
 )
+# ... spawn all workers in same message ...
 ```
+
+**Both modes:**
+- `TaskCreate` provides UI spinners for user visibility
+- Workers use `TaskUpdate` to show progress
+- Spawn all workers in SINGLE message for parallel execution
 
 **✅ GOOD:** Spawned all 5 workers in single message → parallel execution
 **❌ BAD:** Spawned workers one-by-one → sequential, slow
@@ -453,43 +669,61 @@ After (with hivemind):
 7. swarm_complete(...)
 ```
 
-### 7. Monitor Inbox (MANDATORY - unless --no-sync)
+### 7. Monitor Progress (MANDATORY - unless --no-sync)
 
 > **⚠️ CRITICAL: Active monitoring is NOT optional.**
 >
-> Check `swarmmail_inbox()` **every 5-10 minutes** during swarm execution.
 > Workers get blocked. Files conflict. Scope changes. You must intervene.
 
-**Monitoring pattern:**
+#### Native Teams Mode (Automatic Messaging)
+
+**Messages from teammates are automatically delivered to you.**
 
 ```
-# Every 5-10 minutes while workers are active
-swarmmail_inbox()  # Check for worker messages (max 5, no bodies)
+# Check shared task list to see progress
+TaskList()
 
-# If urgent messages appear
-# Read specific message if needed
+# Messages appear automatically as conversation turns
+# No need to poll - the system delivers them to you
 
 # Check overall status
 swarm_status({ epic_id: "<epic-id>", project_key: "$PWD" })
 ```
 
-**Intervention triggers:**
+**When teammates send you messages:**
+- Messages appear as new conversation turns (like user messages)
+- No manual inbox checking needed
+- Respond with `SendMessage(recipient="worker-1", ...)`
 
-- **Worker blocked >5 min** → Check inbox, offer guidance
+**Broadcasting updates (use sparingly - expensive):**
+```
+SendMessage({
+  type: "broadcast",
+  content: "<guidance>",
+  summary: "Critical update"
+})
+```
+
+#### Task Fallback Mode (swarmmail_inbox)
+
+**Check swarmmail inbox every 5-10 minutes:**
+
+```
+# Every 5-10 minutes while workers are active
+swarmmail_inbox()  # Check for worker messages (max 5, no bodies)
+
+# If urgent messages appear, read specific message if needed
+
+# Check overall status
+swarm_status({ epic_id: "<epic-id>", project_key: "$PWD" })
+```
+
+**Both modes - Intervention triggers:**
+
+- **Worker blocked >5 min** → Offer guidance
 - **File conflict** → Mediate, reassign files
 - **Worker asking questions** → Answer directly
 - **Scope creep** → Redirect, create new cell for extras
-
-If incompatibilities spotted, broadcast:
-
-```
-swarmmail_send({
-  to: ["*"],
-  subject: "Coordinator Update",
-  body: "<guidance>",
-  importance: "high"
-})
-```
 
 ### 8. Review Worker Output (MANDATORY)
 
@@ -543,9 +777,39 @@ hivemind_store({
 })
 ```
 
-### 10. Complete
+### 10. Complete & Cleanup
+
+#### Native Teams Mode
 
 ```
+# 1. Request teammates to shut down
+SendMessage({
+  type: "shutdown_request",
+  recipient: "worker-1",
+  content: "Task complete, wrapping up session"
+})
+# ... for each worker ...
+
+# 2. Workers respond with shutdown_response (approve/reject)
+# 3. Once all workers shut down, cleanup team
+TeammateTool({ operation: "cleanup" })
+
+# 4. Complete coordinator work
+swarm_complete({
+  project_key: "$PWD",
+  agent_name: "coordinator",
+  bead_id: "<epic-id>",
+  summary: "<what was accomplished>",
+  files_touched: [...]
+})
+```
+
+**IMPORTANT:** `cleanup` fails if team still has active members. Gracefully terminate teammates first.
+
+#### Task Fallback Mode
+
+```
+# Workers complete and exit automatically
 swarm_complete({
   project_key: "$PWD",
   agent_name: "<your-name>",
@@ -561,15 +825,45 @@ swarm_complete({
 gh pr create --title "feat: <epic title>" --body "## Summary\n<bullets>\n\n## Subtasks\n<list>"
 ```
 
-## Swarm Mail Quick Reference
+## Mode-Specific Tools Quick Reference
+
+### Native Teams Mode
+
+| Tool                     | Purpose                                        |
+| ------------------------ | ---------------------------------------------- |
+| `TeammateTool`           | Create team, cleanup after completion          |
+| `EnterPlanMode`          | Enter read-only planning (no edits allowed)    |
+| `ExitPlanMode`           | Exit planning, ready to implement              |
+| `SendMessage`            | Send message to teammate or broadcast          |
+| `TaskCreate`             | Create UI task (spinners for user visibility)  |
+| `TaskUpdate`             | Update task status, claim ownership            |
+| `TaskList`               | View shared task list                          |
+
+### Task Fallback Mode
 
 | Tool                     | Purpose                             |
 | ------------------------ | ----------------------------------- |
-| `swarmmail_init`         | Initialize session (REQUIRED FIRST) |
+| `Task`                   | Spawn subagent worker               |
+| `TaskCreate`             | Create UI task (spinners)           |
+| `TaskUpdate`             | Update task status                  |
 | `swarmmail_send`         | Send message to agents              |
 | `swarmmail_inbox`        | Check inbox (max 5, no bodies)      |
-| `swarmmail_reserve`      | Reserve files for exclusive editing |
-| `swarmmail_release`      | Release file reservations           |
+
+### Both Modes (Plugin Tools)
+
+| Tool                     | Purpose                                 |
+| ------------------------ | --------------------------------------- |
+| `swarmmail_init`         | Initialize session (REQUIRED FIRST)     |
+| `swarmmail_reserve`      | Reserve files for exclusive editing     |
+| `swarmmail_release`      | Release file reservations               |
+| `hivemind_find`          | Search semantic memory                  |
+| `hivemind_store`         | Store learnings                         |
+| `swarm_decompose`        | Generate decomposition prompt           |
+| `swarm_validate_decomposition` | Validate CellTree JSON            |
+| `swarm_review`           | Generate review prompt                  |
+| `swarm_review_feedback`  | Approve/reject worker output            |
+| `swarm_complete`         | Complete with verification              |
+| `hive_create_epic`       | Create epic + subtasks (git-backed)     |
 
 ## Strategy Reference
 
@@ -618,20 +912,79 @@ Not: Do Everything Inline → Run Out of Context → Fail
 
 ## Quick Checklist
 
+### Pre-Flight
+- [ ] **Environment check** - detect mode (native-teams vs task-fallback)
 - [ ] **swarmmail_init** called FIRST
 - [ ] **hivemind_find** queried for prior learnings (MANDATORY)
 - [ ] Researcher spawned if needed for unfamiliar tech
-- [ ] **Planning delegated to subagent** (NOT inline)
+
+### Planning Phase
+- [ ] **Mode-aware planning** (EnterPlanMode OR Task subagent, NOT inline)
 - [ ] CellTree validated (no file conflicts)
-- [ ] Epic + subtasks created
+- [ ] Epic + subtasks created with `hive_create_epic`
+- [ ] **UI tasks created** with `TaskCreate` (both modes)
+
+### Execution Phase
 - [ ] **Coordinator did NOT reserve files** (workers do this)
 - [ ] **Custom prompts include hivemind steps** (see 6.5)
-- [ ] **Workers spawned in parallel** (single message, multiple Task calls)
-- [ ] **Inbox monitored every 5-10 min**
+- [ ] **Workers spawned in parallel** (single message, multiple spawns)
+- [ ] **Mode-aware monitoring** (automatic in native-teams, poll inbox in fallback)
 - [ ] **All workers reviewed** with swarm_review
+
+### Completion
 - [ ] **hivemind_store** called with learnings (MANDATORY)
+- [ ] **Mode-aware shutdown** (SendMessage shutdown_request OR workers exit naturally)
+- [ ] **TeammateTool cleanup** (native-teams only)
 - [ ] PR created (or pushed to main)
 - [ ] **ASCII art session summary**
+
+## Mode Comparison Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      WHEN TO USE WHICH MODE                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  NATIVE TEAMS MODE                                                      │
+│  ┌────────────────────────────────────────────────────────────┐        │
+│  │  ✅ Real-time coordination needed                          │        │
+│  │  ✅ Workers need to message each other                     │        │
+│  │  ✅ Complex task dependencies                              │        │
+│  │  ✅ Want planning mode safety (read-only exploration)      │        │
+│  │  ✅ Shared task list with ownership tracking               │        │
+│  │                                                            │        │
+│  │  Benefits:                                                 │        │
+│  │  • Automatic message delivery                              │        │
+│  │  • Planning mode prevents premature edits                  │        │
+│  │  • Task ownership via TaskUpdate                           │        │
+│  │  • Graceful shutdown protocol                              │        │
+│  └────────────────────────────────────────────────────────────┘        │
+│                                                                         │
+│  TASK FALLBACK MODE                                                     │
+│  ┌────────────────────────────────────────────────────────────┐        │
+│  │  ✅ Simple parallel work (independent subtasks)            │        │
+│  │  ✅ Minimal inter-worker communication                     │        │
+│  │  ✅ Native teams not available/enabled                     │        │
+│  │  ✅ Fire-and-forget execution                              │        │
+│  │                                                            │        │
+│  │  Benefits:                                                 │        │
+│  │  • Simpler coordinator logic                               │        │
+│  │  • Workers auto-exit when done                             │        │
+│  │  • Persistent message history (swarmmail)                  │        │
+│  │  • Proven stable architecture                              │        │
+│  └────────────────────────────────────────────────────────────┘        │
+│                                                                         │
+│  BOTH MODES GET:                                                        │
+│  • Semantic memory (hivemind)                                           │
+│  • File locking (swarmmail_reserve)                                     │
+│  • Intelligent decomposition (swarm_decompose)                          │
+│  • Code review (swarm_review)                                           │
+│  • Verification gates (swarm_complete)                                  │
+│  • Git-backed persistence (hive)                                        │
+│  • UI task spinners (TaskCreate)                                        │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ## ASCII Art Session Summary (MANDATORY)
 

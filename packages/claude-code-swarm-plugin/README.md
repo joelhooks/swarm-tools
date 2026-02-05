@@ -96,7 +96,54 @@ The plugin exposes 25 tools via MCP:
 - `swarm_progress` - Report progress
 - `swarm_complete` - Mark subtask complete
 
-## Hooks
+## Claude Code 2.1.32 Integration
+
+Claude Code has native multi-agent capabilities as of version 2.1.32. This plugin complements those capabilities rather than replacing them.
+
+### Architecture: Two Coordination Paths
+
+```
+                     ┌──────────────────────────────────┐
+                     │        Claude Code 2.1.32        │
+                     └──────────────────────────────────┘
+                                   │
+                     ┌─────────────┴─────────────┐
+                     │                           │
+         ┌───────────▼─────────────┐   ┌─────────▼────────────────┐
+         │  Native Agent Teams     │   │   Swarm Plugin Tools     │
+         │  (Teammate tool)        │   │   (MCP)                  │
+         ├─────────────────────────┤   ├──────────────────────────┤
+         │ • Team spawning         │   │ • Hive (git-backed)      │
+         │ • Task assignment       │   │ • Hivemind (memory)      │
+         │ • Real-time messaging   │   │ • Swarmmail (events)     │
+         │ • UI task list          │   │ • Decomposition logic    │
+         │ • Planning mode         │   │ • Review workflow        │
+         │ • Sub-agent config      │   │ • File reservations      │
+         └─────────────────────────┘   └──────────────────────────┘
+                     │                           │
+                     └───────────┬───────────────┘
+                                 │
+                        ┌────────▼────────┐
+                        │  Worker Agents  │
+                        └─────────────────┘
+```
+
+### What Native Provides vs Plugin Additions
+
+| Capability | Native (2.1.32+) | Swarm Plugin |
+|------------|------------------|--------------|
+| **Agent Teams** | ✅ Teammate tool | ⚠️ Swarmmail (event-based, persistent history) |
+| **Task UI** | ✅ TaskCreate/TaskList | ⚠️ Hive cells (git-backed, survives compaction) |
+| **Messaging** | ✅ Real-time DMs | ⚠️ Swarmmail (persistent, file reservations) |
+| **Planning** | ✅ Planning mode | ⚠️ Decomposition strategies (file/feature/risk) |
+| **Sub-agents** | ✅ Agent config | ⚠️ Worker/coordinator specialization |
+| **Memory** | ❌ | ✅ Hivemind semantic memory + embeddings |
+| **Git Persistence** | ❌ | ✅ Hive syncs to `.hive/` directory |
+| **File Coordination** | ❌ | ✅ Swarmmail reservations prevent conflicts |
+| **Review Workflow** | ❌ | ✅ `swarm_review` + feedback loop |
+| **Strategy Selection** | ❌ | ✅ Auto-selects file/feature/risk strategies |
+
+### Hooks
 
 The plugin registers lifecycle hooks:
 
@@ -108,6 +155,8 @@ The plugin registers lifecycle hooks:
 | `PostToolUse` | Track tool usage for hivemind_find, skills_use, swarmmail_init, hivemind_store, swarm_complete |
 | `PreCompact` | Save state before context compaction |
 | `SessionEnd` | Cleanup and sync |
+| `SubagentStart` | Initialize worker agent context |
+| `SubagentStop` | Cleanup worker state |
 
 ## Skills
 

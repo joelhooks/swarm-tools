@@ -339,6 +339,16 @@ const COORDINATOR_MODELS: ModelOption[] = [
     label: "Gemini 1.5 Pro",
     hint: "More capable, larger context",
   },
+  {
+    value: "synthetic/hf:moonshotai/Kimi-K2.5",
+    label: "Synthetic Kimi K2.5",
+    hint: "Strong reasoning model via Synthetic",
+  },
+  {
+    value: "synthetic/hf:deepseek-ai/DeepSeek-V3.2",
+    label: "Synthetic DeepSeek V3.2",
+    hint: "Advanced reasoning via Synthetic",
+  },
 ];
 
 const WORKER_MODELS: ModelOption[] = [
@@ -361,6 +371,16 @@ const WORKER_MODELS: ModelOption[] = [
     value: "google/gemini-2.0-flash",
     label: "Gemini 2.0 Flash",
     hint: "Fast and capable",
+  },
+  {
+    value: "synthetic/hf:moonshotai/Kimi-K2.5",
+    label: "Synthetic Kimi K2.5",
+    hint: "Strong reasoning via Synthetic",
+  },
+  {
+    value: "synthetic/hf:MiniMaxAI/MiniMax-M2.1",
+    label: "Synthetic MiniMax M2.1",
+    hint: "Fast and cost-effective via Synthetic",
   },
 ];
 
@@ -2419,6 +2439,16 @@ async function setup(forceReinstall = false, nonInteractive = false) {
           label: "Gemini 1.5 Pro",
           hint: "More capable",
         },
+        {
+          value: "synthetic/hf:moonshotai/Kimi-K2.5",
+          label: "Synthetic Kimi K2.5",
+          hint: "Strong reasoning model via Synthetic",
+        },
+        {
+          value: "synthetic/hf:deepseek-ai/DeepSeek-V3.2",
+          label: "Synthetic DeepSeek V3.2",
+          hint: "Advanced reasoning via Synthetic",
+        },
       ],
       initialValue: DEFAULT_COORDINATOR,
     });
@@ -2467,6 +2497,21 @@ async function setup(forceReinstall = false, nonInteractive = false) {
           label: "Gemini 1.5 Pro",
           hint: "More capable",
         },
+        {
+          value: "synthetic/hf:moonshotai/Kimi-K2.5",
+          label: "Synthetic Kimi K2.5",
+          hint: "Strong reasoning via Synthetic",
+        },
+        {
+          value: "synthetic/hf:MiniMaxAI/MiniMax-M2.1",
+          label: "Synthetic MiniMax M2.1",
+          hint: "Fast and cost-effective via Synthetic",
+        },
+        {
+          value: "synthetic/hf:Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          label: "Synthetic Qwen3 Coder 480B",
+          hint: "Powerful coding model via Synthetic",
+        },
       ],
       initialValue: DEFAULT_WORKER,
     });
@@ -2500,6 +2545,16 @@ async function setup(forceReinstall = false, nonInteractive = false) {
           value: "google/gemini-2.0-flash",
           label: "Gemini 2.0 Flash",
           hint: "Fast and capable",
+        },
+        {
+          value: "synthetic/hf:MiniMaxAI/MiniMax-M2.1",
+          label: "Synthetic MiniMax M2.1",
+          hint: "Fast and cost-effective via Synthetic",
+        },
+        {
+          value: "synthetic/hf:Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          label: "Synthetic Qwen3 Coder 480B",
+          hint: "Powerful coding model via Synthetic",
         },
       ],
       initialValue: DEFAULT_LITE,

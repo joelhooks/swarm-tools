@@ -313,6 +313,7 @@ interface ModelOption {
   hint: string;
 }
 
+/** Available coordinator models for orchestration and planning tasks */
 const COORDINATOR_MODELS: ModelOption[] = [
   {
     value: "anthropic/claude-sonnet-4-5",
@@ -351,6 +352,7 @@ const COORDINATOR_MODELS: ModelOption[] = [
   },
 ];
 
+/** Available worker models for parallel task execution */
 const WORKER_MODELS: ModelOption[] = [
   {
     value: "anthropic/claude-haiku-4-5",

@@ -63,6 +63,7 @@ export async function createTestMemoryDb(): Promise<{
   const client = createClient({ url: ":memory:" });
 
   // Create memories table with vector column (libSQL schema)
+  // Must match db/schema/memory.ts exactly
   await client.execute(`
     CREATE TABLE memories (
       id TEXT PRIMARY KEY,
@@ -72,8 +73,17 @@ export async function createTestMemoryDb(): Promise<{
       tags TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
-      decay_factor REAL DEFAULT 0.7,
-      embedding F32_BLOB(1024)
+      decay_factor REAL DEFAULT 1.0,
+      embedding F32_BLOB(1024),
+      valid_from TEXT,
+      valid_until TEXT,
+      superseded_by TEXT REFERENCES memories(id),
+      auto_tags TEXT,
+      keywords TEXT,
+      access_count TEXT DEFAULT '0',
+      last_accessed TEXT DEFAULT (datetime('now')),
+      category TEXT,
+      status TEXT DEFAULT 'active'
     )
   `);
 

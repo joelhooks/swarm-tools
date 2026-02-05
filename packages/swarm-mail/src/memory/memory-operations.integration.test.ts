@@ -166,6 +166,7 @@ describe("executeMemoryOperation", () => {
     client = createClient({ url: ":memory:" });
 
     // Create memories table with vector column (libSQL schema)
+    // IMPORTANT: Must match db/schema/memory.ts Drizzle schema exactly
     await client.execute(`
       CREATE TABLE memories (
         id TEXT PRIMARY KEY,
@@ -181,7 +182,11 @@ describe("executeMemoryOperation", () => {
         valid_until TEXT,
         superseded_by TEXT,
         auto_tags TEXT,
-        keywords TEXT
+        keywords TEXT,
+        access_count TEXT DEFAULT '0',
+        last_accessed TEXT DEFAULT (datetime('now')),
+        category TEXT,
+        status TEXT DEFAULT 'active'
       )
     `);
 

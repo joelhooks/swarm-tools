@@ -26,7 +26,11 @@ describe("Memory Schema", () => {
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
         auto_tags TEXT,
-        keywords TEXT
+        keywords TEXT,
+        access_count TEXT DEFAULT '0',
+        last_accessed TEXT DEFAULT (datetime('now')),
+        category TEXT,
+        status TEXT DEFAULT 'active'
       )
     `);
 
@@ -41,7 +45,7 @@ describe("Memory Schema", () => {
       SELECT name, type, "notnull", dflt_value FROM pragma_table_info('memories')
     `);
 
-    expect(columns.rows).toHaveLength(14); // 9 original + 5 new columns
+    expect(columns.rows).toHaveLength(18); // 9 original + 9 new columns (temporal, auto-tags, access tracking, status)
 
     // Check each column
     const columnMap = new Map(
@@ -106,7 +110,11 @@ describe("Memory Schema", () => {
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
         auto_tags TEXT,
-        keywords TEXT
+        keywords TEXT,
+        access_count TEXT DEFAULT '0',
+        last_accessed TEXT DEFAULT (datetime('now')),
+        category TEXT,
+        status TEXT DEFAULT 'active'
       )
     `);
 
@@ -154,7 +162,11 @@ describe("Memory Schema", () => {
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
         auto_tags TEXT,
-        keywords TEXT
+        keywords TEXT,
+        access_count TEXT DEFAULT '0',
+        last_accessed TEXT DEFAULT (datetime('now')),
+        category TEXT,
+        status TEXT DEFAULT 'active'
       )
     `);
 

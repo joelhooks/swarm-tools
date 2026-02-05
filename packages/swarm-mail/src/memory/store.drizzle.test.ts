@@ -45,7 +45,11 @@ describe("Memory Store (Drizzle) - Basic Operations", () => {
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
         auto_tags TEXT,
-        keywords TEXT
+        keywords TEXT,
+        access_count TEXT DEFAULT '0',
+        last_accessed TEXT DEFAULT (datetime('now')),
+        category TEXT,
+        status TEXT DEFAULT 'active'
       )
     `);
 
@@ -245,7 +249,11 @@ describe("Memory Store (Drizzle) - Vector Search", () => {
         valid_until TEXT,
         superseded_by TEXT REFERENCES memories(id),
         auto_tags TEXT,
-        keywords TEXT
+        keywords TEXT,
+        access_count TEXT DEFAULT '0',
+        last_accessed TEXT DEFAULT (datetime('now')),
+        category TEXT,
+        status TEXT DEFAULT 'active'
       )
     `);
 

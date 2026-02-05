@@ -1,5 +1,12 @@
 # @swarmtools/evals
 
+## 0.2.35
+
+### Patch Changes
+
+- Updated dependencies [[`ed31f5c`](https://github.com/joelhooks/swarm-tools/commit/ed31f5c316e1bb9137bb27e824f2fc58b9ba9d46), [`70d47d5`](https://github.com/joelhooks/swarm-tools/commit/70d47d5c2ae3a9419a00a165e49a9f7f9d98b7d7), [`70d47d5`](https://github.com/joelhooks/swarm-tools/commit/70d47d5c2ae3a9419a00a165e49a9f7f9d98b7d7)]:
+  - opencode-swarm-plugin@0.62.0
+
 ## 0.2.34
 
 ### Patch Changes

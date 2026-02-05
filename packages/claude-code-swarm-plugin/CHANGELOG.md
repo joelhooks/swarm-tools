@@ -1,5 +1,55 @@
 # claude-code-swarm-plugin
 
+## 0.60.0
+
+### Minor Changes
+
+- [#163](https://github.com/joelhooks/swarm-tools/pull/163) [`ed31f5c`](https://github.com/joelhooks/swarm-tools/commit/ed31f5c316e1bb9137bb27e824f2fc58b9ba9d46) Thanks [@joelhooks](https://github.com/joelhooks)! - feat(plugin): upgrade for Claude Code 2.1.32 native integration
+
+  Add dual-mode architecture supporting both native agent teams and task
+  fallback. Plugin now complements rather than duplicates native features.
+
+  **claude-code-swarm-plugin:**
+
+  - agents: Add permissionMode, memory, disallowedTools, lifecycle hooks
+  - swarm.md: Full rewrite with environment detection, mode-aware protocols
+  - hooks: Add SubagentStart/Stop, TaskCreate/TaskUpdate tracking
+  - skills: Update for TaskCreate/TaskUpdate, TeammateTool awareness
+  - README: Add 2.1.32 integration docs, architecture diagram, comparison table
+
+  **opencode-swarm-plugin:**
+
+  - Fix test schema mismatch: add access_count, last_accessed, category, status
+  - Fix decay_factor default from 0.7 to 1.0 to match Drizzle schema
+  - Update column count assertions (14 → 18 columns)
+
+  Native teams provide: real-time messaging, planning mode, task UI
+  Plugin provides: git-backed persistence, semantic memory, file locking
+
+  > "Make the change easy, then make the easy change." — Kent Beck
+
+### Patch Changes
+
+- [`3bbf31d`](https://github.com/joelhooks/swarm-tools/commit/3bbf31d73874d49c319f4b89f51934ae9049622d) Thanks [@joelhooks](https://github.com/joelhooks)! - fix(mcp): inline tool schemas to fix params arriving as undefined
+
+  The MCP server scraped tool definitions from `swarm tool --list --json` at
+  startup, but the CLI's `--list` handler never supported `--json`. The fallback
+  parsed colored text output and registered every tool with an empty JSON schema
+  (`properties: {}`), which converted to a Zod schema with no required fields.
+  The MCP SDK then treated all params as optional, delivering `undefined` to
+  every handler.
+
+  - **claude-code-swarm-plugin**: Replace runtime CLI scraping with static
+    `TOOL_DEFINITIONS` array containing all 25 tools with proper JSON schemas
+    (properties, required fields, types, descriptions)
+  - **swarm-tools**: Export `SWARM_TOOLS` from index.ts; MCP server imports
+    canonical definitions instead of scraping CLI
+  - Remove dead `getToolDefinitions()`, `filterTools()`, unused `execSync` import
+
+  > "The most fundamental problem in computer science is problem decomposition:
+  > how to take a complex problem and divide it up into pieces that can be solved
+  > independently." — John Ousterhout, A Philosophy of Software Design
+
 ## 0.59.5
 
 ### Patch Changes

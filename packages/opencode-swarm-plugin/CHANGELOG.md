@@ -1,5 +1,51 @@
 # opencode-swarm-plugin
 
+## 0.62.0
+
+### Minor Changes
+
+- [#154](https://github.com/joelhooks/swarm-tools/pull/154) [`70d47d5`](https://github.com/joelhooks/swarm-tools/commit/70d47d5c2ae3a9419a00a165e49a9f7f9d98b7d7) Thanks [@joelhooks](https://github.com/joelhooks)! - feat: UserPromptSubmit hook now injects timestamp and semantic memory recall
+
+  - **Timestamp injection**: Every prompt now includes current date/time for temporal awareness
+  - **Semantic memory recall**: Automatically searches hivemind for relevant memories on each prompt
+    - Queries with prompt text, returns top 3 matches
+    - Filters to high-confidence matches (score > 0.5)
+    - Injects up to 2 relevant memory snippets as context
+  - Uses local memory adapter wrapper for proper db type conversion
+
+- [#154](https://github.com/joelhooks/swarm-tools/pull/154) [`70d47d5`](https://github.com/joelhooks/swarm-tools/commit/70d47d5c2ae3a9419a00a165e49a9f7f9d98b7d7) Thanks [@joelhooks](https://github.com/joelhooks)! - Add Pi-inspired agent enhancements:
+
+  - **skills_reload tool**: Hot-reload skills mid-session with cache invalidation
+  - **swarm_branch/swarm_return**: Session branching for side-quests with context forking
+  - **skill-generator meta-skill**: Generate properly formatted skill scaffolds
+  - **PostToolUse hook**: Auto-trigger skill reload on skills_create/update/init
+
+### Patch Changes
+
+- [#163](https://github.com/joelhooks/swarm-tools/pull/163) [`ed31f5c`](https://github.com/joelhooks/swarm-tools/commit/ed31f5c316e1bb9137bb27e824f2fc58b9ba9d46) Thanks [@joelhooks](https://github.com/joelhooks)! - feat(plugin): upgrade for Claude Code 2.1.32 native integration
+
+  Add dual-mode architecture supporting both native agent teams and task
+  fallback. Plugin now complements rather than duplicates native features.
+
+  **claude-code-swarm-plugin:**
+
+  - agents: Add permissionMode, memory, disallowedTools, lifecycle hooks
+  - swarm.md: Full rewrite with environment detection, mode-aware protocols
+  - hooks: Add SubagentStart/Stop, TaskCreate/TaskUpdate tracking
+  - skills: Update for TaskCreate/TaskUpdate, TeammateTool awareness
+  - README: Add 2.1.32 integration docs, architecture diagram, comparison table
+
+  **opencode-swarm-plugin:**
+
+  - Fix test schema mismatch: add access_count, last_accessed, category, status
+  - Fix decay_factor default from 0.7 to 1.0 to match Drizzle schema
+  - Update column count assertions (14 → 18 columns)
+
+  Native teams provide: real-time messaging, planning mode, task UI
+  Plugin provides: git-backed persistence, semantic memory, file locking
+
+  > "Make the change easy, then make the easy change." — Kent Beck
+
 ## 0.61.0
 
 ### Minor Changes

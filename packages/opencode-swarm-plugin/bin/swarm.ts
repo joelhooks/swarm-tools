@@ -382,6 +382,11 @@ const WORKER_MODELS: ModelOption[] = [
     label: "Synthetic MiniMax M2.1",
     hint: "Fast and cost-effective via Synthetic",
   },
+  {
+    value: "synthetic/hf:Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    label: "Synthetic Qwen3 Coder 480B",
+    hint: "Powerful coding model via Synthetic",
+  },
 ];
 
 // ============================================================================

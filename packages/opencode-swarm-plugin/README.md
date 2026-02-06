@@ -89,6 +89,74 @@ swarm init
 
 ### 3. Run Your First Swarm
 
+## OpenCode as Model Provider
+
+Swarm can use OpenCode as a model provider - meaning Swarm automatically uses the currently selected model in OpenCode.
+
+### Why OpenCode Provider?
+
+- **No model configuration:** You don't need to configure model names in Swarm
+- **Easy model switching:** Change the model in OpenCode, it takes effect immediately for Swarm
+- **Provider-agnostic:** Swarm doesn't store or know model names
+- **Future-proof:** New models in OpenCode are automatically available
+
+### Setup
+
+1. Install and configure OpenCode:
+   ```bash
+   npm install -g opencode-ai
+   opencode auth
+   ```
+
+2. Configure Swarm with OpenCode Provider:
+   ```bash
+   cd your-project
+   swarm setup
+   ```
+   
+   Select "OpenCode (recommended)" as Model Provider.
+
+Swarm saves `.opencode/swarm-config.json` in your project.
+
+### Model Switching
+
+When using OpenCode as provider, you don't change models in Swarm - you change them in OpenCode:
+
+```bash
+# Select a new model in OpenCode
+opencode auth
+
+# Use Swarm immediately with the new model
+/swarm "Implement new feature"
+```
+
+Swarm doesn't know which model you selected - OpenCode injects it automatically when executing agents.
+
+### Manual Behavior (Legacy)
+
+If you select "Manual" as provider, Swarm behaves as before:
+
+- Specify models during swarm setup
+- These models are hardcoded
+- Changes in OpenCode have no effect
+
+### Config Structure
+
+The `.opencode/swarm-config.json` file contains only the provider name:
+
+```json
+{
+  "provider": "opencode"
+}
+```
+
+**Important:**
+
+- No model names
+- No defaults
+- Only "opencode" or "manual"
+
+
 ```bash
 # Inside OpenCode
 /swarm "Add user authentication with OAuth"

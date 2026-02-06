@@ -1,5 +1,53 @@
 # opencode-swarm-plugin
 
+## 0.63.0
+
+---
+"opencode-swarm-plugin": minor
+---
+
+## 🎯 OpenCode as First-Class Model Provider
+
+Swarm can now use OpenCode as a model provider - no more model configuration needed!
+
+### What's New
+
+- **OpenCode Provider:** Swarm automatically uses the currently active model in OpenCode
+- **Provider Selection:** `swarm setup` offers "OpenCode" and "Manual" options
+- **Project-Local Config:** `.opencode/swarm-config.json` (versionable, no side effects)
+- **Backward Compatible:** No config = Manual Behavior (works as before)
+
+### Breaking Changes
+
+- When you select `provider: "opencode"`, hardcoded `model:` fields in agents are removed
+- Model selection happens **exclusively** through OpenCode
+- Swarm stores or knows **no model names**
+
+### Migration
+
+```bash
+# 1. Install and configure OpenCode
+npm install -g opencode-ai
+opencode auth
+
+# 2. Run setup to select provider
+cd your-project
+swarm setup
+
+# 3. Select "OpenCode (recommended)"
+
+# 4. Done! Swarm now uses your current OpenCode model
+```
+
+### Architecture Changes
+
+- **Provider Adapter:** New `src/provider/adapter.ts` with `getAgentDefinition()` and `loadSwarmConfig()`
+- **Setup Flow:** Provider selection before model selection
+- **Config Schema:** Only `provider` field, no model names
+- **No Model Knowledge:** Swarm never resolves models, OpenCode injects at runtime
+
+---
+
 ## 0.62.2
 
 ### Patch Changes

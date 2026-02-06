@@ -24,6 +24,10 @@
     "./compaction-prompt-scoring": {
       "import": "./dist/compaction-prompt-scoring.js",
       "types": "./dist/compaction-prompt-scoring.d.ts"
+    },
+    "./provider/adapter": {
+      "import": "./dist/provider/adapter.js",
+      "types": "./dist/provider/adapter.d.ts"
     }
   },
   "files": [
@@ -48,6 +52,7 @@
     "test:integration": "bun test --timeout 60000 src/*.integration.test.ts",
     "test:all": "bun test --timeout 60000 src/",
     "test:isolated": "bun test ./src/zz-compaction-hook.test.ts && bun test ./src/zz-compaction-observability.integration.test.ts && bun test ./src/zz-eval-runner.test.ts",
+    "test:provider": "bun test src/provider/",
     "test:watch": "bun test --watch src/",
     "typecheck": "tsc --noEmit",
     "eval:run": "bun --env-file=.env run bunx evalite run evals/",

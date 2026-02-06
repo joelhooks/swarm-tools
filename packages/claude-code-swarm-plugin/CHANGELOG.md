@@ -1,5 +1,11 @@
 # claude-code-swarm-plugin
 
+## 0.63.3
+
+### Patch Changes
+
+- [`f21f581`](https://github.com/joelhooks/swarm-tools/commit/f21f581c2efeb1407ae2761bfb2f4a641714e212) Thanks [@joelhooks](https://github.com/joelhooks)! - chore: link plugin versions — sync claude-code-swarm-plugin with opencode-swarm-plugin
+
 ## 0.61.0
 
 ### Minor Changes

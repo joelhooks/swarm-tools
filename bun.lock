@@ -57,7 +57,7 @@
     },
     "packages/opencode-swarm-plugin": {
       "name": "opencode-swarm-plugin",
-      "version": "0.63.0",
+      "version": "0.63.1",
       "bin": {
         "swarm": "./dist/bin/swarm.js",
       },
@@ -131,7 +131,7 @@
     },
     "packages/swarm-evals": {
       "name": "@swarmtools/evals",
-      "version": "0.2.38",
+      "version": "0.2.39",
       "dependencies": {
         "ai": "6.0.0-beta.150",
         "evalite": "^1.0.0-beta.10",

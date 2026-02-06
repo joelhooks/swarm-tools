@@ -1,6 +1,6 @@
 {
   "name": "@swarmtools/evals",
-  "version": "0.2.38",
+  "version": "0.2.39",
   "description": "Evaluation suite for swarm-tools multi-agent coordination",
   "type": "module",
   "main": "./dist/index.js",

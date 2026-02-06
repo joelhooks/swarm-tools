@@ -1,5 +1,18 @@
 # opencode-swarm-plugin
 
+## 0.63.1
+
+### Patch Changes
+
+- [`d87cc94`](https://github.com/joelhooks/swarm-tools/commit/d87cc9467edfcb38c832b752b81fc7118d47dd38) Thanks [@joelhooks](https://github.com/joelhooks)! - fix(publish): resolve workspace:\* deps before npm publish
+
+  `bun publish v1.3.4` silently shipped unresolved `workspace:*` dependencies to npm,
+  breaking installs of `opencode-swarm-plugin@0.63.0`. Switch CI publish to
+  `bun pm pack` (which correctly resolves workspace protocol) + `npm publish <tarball>`.
+
+  > "I consider any unsolved bug to be an intolerable personal insult"
+  > — John Ousterhout, A Philosophy of Software Design
+
 ## 0.63.0
 
 ### Minor Changes

@@ -7,7 +7,7 @@
       "devDependencies": {
         "@changesets/changelog-github": "^0.5.2",
         "@changesets/cli": "^2.29.8",
-        "turbo": "^2.8.1",
+        "turbo": "^2.8.3",
       },
     },
     "apps/web": {
@@ -45,7 +45,7 @@
     },
     "packages/claude-code-swarm-plugin": {
       "name": "claude-code-swarm-plugin",
-      "version": "0.60.0",
+      "version": "0.60.1",
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.25.2",
         "zod": "^4.3.5",
@@ -57,7 +57,7 @@
     },
     "packages/opencode-swarm-plugin": {
       "name": "opencode-swarm-plugin",
-      "version": "0.62.0",
+      "version": "0.62.1",
       "bin": {
         "swarm": "./dist/bin/swarm.js",
       },
@@ -131,7 +131,7 @@
     },
     "packages/swarm-evals": {
       "name": "@swarmtools/evals",
-      "version": "0.2.35",
+      "version": "0.2.36",
       "dependencies": {
         "ai": "6.0.0-beta.150",
         "evalite": "^1.0.0-beta.10",

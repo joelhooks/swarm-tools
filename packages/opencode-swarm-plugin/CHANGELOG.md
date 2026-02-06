@@ -1,5 +1,16 @@
 # opencode-swarm-plugin
 
+## 0.63.2
+
+### Patch Changes
+
+- [`35a81f3`](https://github.com/joelhooks/swarm-tools/commit/35a81f38318ed08b835e7269405e8e53ed4599a5) Thanks [@joelhooks](https://github.com/joelhooks)! - fix(publish): bump bun to 1.3.8 and add workspace dep resolution safety net
+
+  Previous fix (0.63.1) still shipped with unresolved `workspace:*` because CI
+  was pinned to bun 1.3.4 via `packageManager`. Bumps to 1.3.8 and replaces the
+  inline one-liner with a proper publish script that verifies and resolves any
+  leaked `workspace:*` references before uploading to npm.
+
 ## 0.63.1
 
 ### Patch Changes

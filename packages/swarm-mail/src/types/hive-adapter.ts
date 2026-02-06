@@ -703,6 +703,29 @@ export interface HiveAdapter
   getDatabase(projectPath?: string): Promise<DatabaseAdapter>;
 
   /**
+   * Force WAL checkpoint to ensure data durability
+   * 
+   * Call after batch operations (epic creation, bulk updates) to ensure
+   * data written by this process is visible to other processes.
+   * 
+   * This fixes data loss when MCP server process restarts - cells created
+   * by one process instance may sit in the WAL journal and be rolled back
+   * when the process dies without clean shutdown.
+   * 
+   * @see https://github.com/joelhooks/swarm-tools/issues/147
+   * 
+   * @example
+   * ```typescript
+   * // After creating an epic with subtasks
+   * await hive.createCell(projectKey, { title: 'Epic', type: 'epic' });
+   * await hive.createCell(projectKey, { title: 'Task 1', type: 'task', parent_id: epicId });
+   * await hive.createCell(projectKey, { title: 'Task 2', type: 'task', parent_id: epicId });
+   * await hive.sync(); // Force checkpoint to ensure durability
+   * ```
+   */
+  sync(projectPath?: string): Promise<void>;
+
+  /**
    * Close the database connection
    * 
    * Note: This is shared with SwarmMailAdapter, so closing should be coordinated

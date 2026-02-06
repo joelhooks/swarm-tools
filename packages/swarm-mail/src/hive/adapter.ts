@@ -812,13 +812,32 @@ export function createHiveAdapter(
       return db;
     },
 
+    async sync(projectPath?) {
+      // Force WAL checkpoint to ensure data durability
+      // Critical for multi-process scenarios (e.g., MCP server spawning sub-agents)
+      // Without this, data written by one process may not be visible to another
+      // See: https://github.com/joelhooks/swarm-tools/issues/147
+      if (db.checkpoint) {
+        await db.checkpoint();
+      }
+    },
+
     async close(projectPath?) {
+      // Force checkpoint before close to prevent data loss
+      // Ensures any uncommitted WAL frames are flushed
+      if (db.checkpoint) {
+        await db.checkpoint();
+      }
       if (db.close) {
         await db.close();
       }
     },
 
     async closeAll() {
+      // Force checkpoint before close to prevent data loss
+      if (db.checkpoint) {
+        await db.checkpoint();
+      }
       if (db.close) {
         await db.close();
       }

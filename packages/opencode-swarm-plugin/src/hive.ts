@@ -676,6 +676,16 @@ export const hive_create = tool({
         projectKey,
       );
 
+      // Force WAL checkpoint to ensure data durability
+      // Ensures cell is visible to other processes (e.g., spawned workers)
+      // See: https://github.com/joelhooks/swarm-tools/issues/147
+      try {
+        await adapter.sync();
+      } catch (syncError) {
+        // Non-fatal - log and continue
+        console.warn("[hive_create] Failed to sync WAL checkpoint:", syncError);
+      }
+
       const formatted = formatCellForOutput(cell);
       return JSON.stringify(formatted, null, 2);
     } catch (error) {
@@ -901,6 +911,20 @@ export const hive_create_epic = tool({
         // Non-fatal - log and continue
         console.warn(
           "[hive_create_epic] Failed to sync to JSONL:",
+          error,
+        );
+      }
+
+      // Force WAL checkpoint to ensure data durability
+      // Critical for multi-process scenarios - cells created here must be visible
+      // to spawned workers who connect to the same database
+      // See: https://github.com/joelhooks/swarm-tools/issues/147
+      try {
+        await adapter.sync();
+      } catch (error) {
+        // Non-fatal - log and continue
+        console.warn(
+          "[hive_create_epic] Failed to sync WAL checkpoint:",
           error,
         );
       }
@@ -1263,6 +1287,16 @@ export const hive_close = tool({
         "hive_close",
         projectKey,
       );
+
+      // Force WAL checkpoint to ensure data durability
+      // Ensures cell closure is visible to other processes
+      // See: https://github.com/joelhooks/swarm-tools/issues/147
+      try {
+        await adapter.sync();
+      } catch (syncError) {
+        // Non-fatal - log and continue
+        console.warn("[hive_close] Failed to sync WAL checkpoint:", syncError);
+      }
 
       return `Closed ${cell.id}: ${validated.reason}`;
     } catch (error) {

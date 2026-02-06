@@ -2557,10 +2557,8 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     } catch (error) {
       p.log.message(dim('  Could not parse OpenCode config (skipping MCP check)'));
     }
-  } else {
-    p.log.message(dim('  No OpenCode config found (skipping MCP check)'));
   }
-
+ 
   // ============================================================================
   // Provider Selection (NEU)
   // ============================================================================

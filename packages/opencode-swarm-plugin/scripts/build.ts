@@ -21,6 +21,7 @@ const LIBRARY_ENTRIES: BuildEntry[] = [
   { input: "./src/compaction-prompt-scoring.ts", outfile: "./dist/compaction-prompt-scoring.js" },
   { input: "./src/hive.ts", outfile: "./dist/hive.js" },
   { input: "./src/swarm-prompts.ts", outfile: "./dist/swarm-prompts.js" },
+  { input: "./src/provider/adapter.ts", outdir: "./dist/provider" },
   {
     input: "./claude-plugin/bin/swarm-mcp-server.ts",
     outfile: "./dist/mcp/swarm-mcp-server.cjs",
@@ -46,6 +47,7 @@ const CLI_ENTRIES: BuildEntry[] = [
 const EXTERNALS = [
   "@electric-sql/pglite",
   "swarm-mail",
+  "swarm-queue",  // workspace dependency, external to avoid bundling
   "evalite",  // dev-only, shouldn't be in production bundle
   "@clack/prompts",  // unicode detection must happen at runtime, not bundle time
   "@clack/core",

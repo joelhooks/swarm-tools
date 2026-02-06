@@ -61,6 +61,44 @@ import {
 import { createMemoryAdapter } from "../src/memory";
 import { execSync, spawn } from "child_process";
 import { tmpdir } from "os";
+import { getAgentDefinition, loadSwarmConfig } from "../dist/provider/adapter.js";
+
+// ============================================================================
+// OpenCode Provider Utilities
+// ============================================================================
+
+/**
+ * Prüft ob OpenCode installiert und erreichbar ist
+ * 
+ * Gekapselter CLI Check - kein SDK Call in Agenten, nur minimaler
+ * Check im setup. Testbar über Mock von spawn.
+ * 
+ * @returns true wenn opencode CLI erreichbar ist
+ */
+async function checkOpenCodeAuth(): Promise<boolean> {
+  try {
+    const { spawn } = await import("child_process");
+    
+    // Minimaler CLI Check - prüft ob opencode --version funktioniert
+    const proc = spawn("opencode", ["--version"], {
+      stdio: "pipe",
+      shell: true
+    });
+    
+    const timeout = setTimeout(() => proc.kill(), 5000); // 5s Timeout
+    
+    const exitCode = await new Promise<number>((resolve) => {
+      proc.on("exit", resolve);
+      proc.on("error", () => resolve(1));
+    });
+    
+    clearTimeout(timeout);
+    
+    return exitCode === 0;
+  } catch {
+    return false;
+  }
+}
 
 // Query & observability tools
 import {
@@ -2523,6 +2561,68 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     p.log.message(dim('  No OpenCode config found (skipping MCP check)'));
   }
 
+  // ============================================================================
+  // Provider Selection (NEU)
+  // ============================================================================
+
+  p.log.step("Selecting model provider...");
+
+  const provider = await p.select({
+    message: "Select model provider for swarm agents:",
+    options: [
+      {
+        value: "opencode",
+        label: "OpenCode (recommended)",
+        hint: "Swarm uses whatever model you select in OpenCode",
+      },
+      {
+        value: "manual",
+        label: "Manual (legacy)",
+        hint: "Specify fixed models for each agent type",
+      },
+    ],
+    initialValue: "opencode",
+  });
+
+  if (p.isCancel(provider)) {
+    p.cancel("Setup cancelled");
+    process.exit(0);
+  }
+
+  // Validiere OpenCode falls gewählt
+  if (provider === "opencode") {
+    p.log.message(dim("  Checking OpenCode installation..."));
+    
+    const hasAuth = await checkOpenCodeAuth();
+    
+    if (!hasAuth) {
+      p.log.error("OpenCode provider selected but not configured!");
+      console.log();
+      console.log(dim("  OpenCode is not installed or not authenticated."));
+      console.log();
+      console.log("  To fix this:");
+      console.log(cyan("    1. Install OpenCode: npm install -g opencode-ai"));
+      console.log(cyan("    2. Authenticate: opencode auth"));
+      console.log();
+      console.log(dim("  After configuring OpenCode, run 'swarm setup' again."));
+      console.log();
+      p.outro("Setup aborted");
+      process.exit(1);
+    }
+    
+    p.log.success("OpenCode detected and authenticated");
+  }
+
+  // Speichere Provider-Auswahl in Config
+  const swarmConfigPath = join(configDir, "swarm-config.json");
+  const swarmConfigContent = JSON.stringify({ provider }, null, 2);
+  writeFileSync(swarmConfigPath, swarmConfigContent, "utf-8");
+  p.log.success(`Provider saved: ${green(provider)}`);
+
+  // ============================================================================
+  // Bestehende Modell-Selection (ab hier unverändert)
+  // ============================================================================
+
   // Model defaults: opus for coordinator, sonnet for worker, haiku for lite
   const DEFAULT_COORDINATOR = "anthropic/claude-opus-4-5";
   const DEFAULT_WORKER = "anthropic/claude-sonnet-4-5";
@@ -2714,9 +2814,32 @@ async function setup(forceReinstall = false, nonInteractive = false) {
   // Write nested agent files (swarm-planner.md, swarm-worker.md, swarm-researcher.md)
   // This is the format used by Task(subagent_type="swarm-worker")
   p.log.step("Writing agent configuration...");
-  stats[writeFileWithStatus(plannerAgentPath, getPlannerAgent(coordinatorModel as string), "Planner agent")]++;
-  stats[writeFileWithStatus(workerAgentPath, getWorkerAgent(workerModel as string), "Worker agent")]++;
-  stats[writeFileWithStatus(researcherAgentPath, getResearcherAgent(workerModel as string), "Researcher agent")]++;
+  
+  // Load Swarm-Config (für Provider-Resolution)
+  const projectPath = process.cwd();
+  const swarmConfig = loadSwarmConfig(projectPath) || { provider: "manual" };
+
+  // ============================================================================
+  // Generiere Agent-Definitionen MIT Provider-Resolution
+  // ============================================================================
+
+  const plannerAgentContent = getAgentDefinition(
+    getPlannerAgent(coordinatorModel as string),  // Original Template mit model: Feld
+    swarmConfig                            // Provider Config
+  );
+  stats[writeFileWithStatus(plannerAgentPath, plannerAgentContent, "Planner agent")]++;
+
+  const workerAgentContent = getAgentDefinition(
+    getWorkerAgent(workerModel as string),       // Original Template mit model: Feld
+    swarmConfig                            // Provider Config
+  );
+  stats[writeFileWithStatus(workerAgentPath, workerAgentContent, "Worker agent")]++;
+
+  const researcherAgentContent = getAgentDefinition(
+    getResearcherAgent(workerModel as string),  // Original Template mit model: Feld
+    swarmConfig                            // Provider Config
+  );
+  stats[writeFileWithStatus(researcherAgentPath, researcherAgentContent, "Researcher agent")]++;
 
   // Clean up legacy nested agent files if they exist (swarm/planner.md -> swarm-planner.md)
   if (existsSync(legacyPlannerPath) || existsSync(legacyWorkerPath) || existsSync(legacyResearcherPath)) {

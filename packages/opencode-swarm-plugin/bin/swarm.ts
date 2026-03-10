@@ -468,7 +468,7 @@ function getDecoratedBee(): string {
 }
 
 // ============================================================================
-// Model Configuration
+// Model Configuration - Fetched from models.dev (same as OpenCode)
 // ============================================================================
 
 interface ModelOption {
@@ -477,7 +477,14 @@ interface ModelOption {
   hint: string;
 }
 
-const COORDINATOR_MODELS: ModelOption[] = [
+interface ModelsDevProvider {
+  id: string;
+  name: string;
+  models: Record<string, { name: string }>;
+}
+
+// Default/fallback models (used if models.dev fetch fails)
+const DEFAULT_COORDINATOR_MODELS: ModelOption[] = [
   {
     value: "anthropic/claude-sonnet-4-5",
     label: "Claude Sonnet 4.5",
@@ -503,44 +510,9 @@ const COORDINATOR_MODELS: ModelOption[] = [
     label: "Gemini 1.5 Pro",
     hint: "More capable, larger context",
   },
-  // MiniMax models
-  {
-    value: "minimax/MiniMax-M2.1",
-    label: "MiniMax M2.1",
-    hint: "Fast, large context (up to 1M tokens)",
-  },
-  // Z.AI models
-  {
-    value: "z-ai/zy-1",
-    label: "Z.AI Zy-1",
-    hint: "Z.AI coding model",
-  },
-  {
-    value: "z-ai/zy-1-32k",
-    label: "Z.AI Zy-1-32k",
-    hint: "Z.AI with larger context",
-  },
-  // xAI (Grok)
-  {
-    value: "xai/grok-2-1212",
-    label: "Grok 2",
-    hint: "xAI's coding model",
-  },
-  // DeepSeek
-  {
-    value: "deepseek/deepseek-chat",
-    label: "DeepSeek Chat",
-    hint: "Strong coding capabilities",
-  },
-  // Custom option
-  {
-    value: "custom",
-    label: "Custom model...",
-    hint: "Enter your own provider/model",
-  },
 ];
 
-const WORKER_MODELS: ModelOption[] = [
+const DEFAULT_WORKER_MODELS: ModelOption[] = [
   {
     value: "anthropic/claude-haiku-4-5",
     label: "Claude Haiku 4.5",
@@ -561,37 +533,113 @@ const WORKER_MODELS: ModelOption[] = [
     label: "Gemini 2.0 Flash",
     hint: "Fast and capable",
   },
-  // MiniMax models (fast and cost-effective)
-  {
-    value: "minimax/MiniMax-Text-01",
-    label: "MiniMax Text 01",
-    hint: "Fast, cost-effective",
-  },
-  // Z.AI models
-  {
-    value: "z-ai/zy-1-preview",
-    label: "Z.AI Zy-1 Preview",
-    hint: "Fast Z.AI model",
-  },
-  // Groq (ultra-fast inference)
-  {
-    value: "groq/llama-3.1-70b-versatile",
-    label: "Llama 3.1 70B (Groq)",
-    hint: "Ultra-fast inference",
-  },
-  // DeepSeek (good coding capabilities)
-  {
-    value: "deepseek/deepseek-coder",
-    label: "DeepSeek Coder",
-    hint: "Specialized for code",
-  },
-  // Custom option
-  {
+];
+
+// Fetch models from models.dev (same source as OpenCode)
+let cachedModels: ModelOption[] | null = null;
+
+async function fetchModelsFromModelsDev(): Promise<ModelOption[]> {
+  if (cachedModels) return cachedModels;
+
+  try {
+    const response = await fetch("https://models.dev/api.json", {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = (await response.json()) as Record<string, ModelsDevProvider>;
+    const models: ModelOption[] = [];
+
+    for (const [providerId, provider] of Object.entries(data)) {
+      for (const [modelId, model] of Object.entries(provider.models || {})) {
+        // Skip deprecated/alpha models
+        if (model.status === "deprecated" || model.status === "alpha") continue;
+
+        // Use friendly name or format modelId
+        const label = model.name || `${provider.name} ${modelId}`;
+
+        models.push({
+          value: `${providerId}/${modelId}`,
+          label: label,
+          hint: provider.name,
+        });
+      }
+    }
+
+    // Sort by provider name, then model name
+    models.sort((a, b) => {
+      const providerCompare = a.value.split("/")[0].localeCompare(b.value.split("/")[0]);
+      if (providerCompare !== 0) return providerCompare;
+      return a.label.localeCompare(b.label);
+    });
+
+    cachedModels = models;
+    return models;
+  } catch (error) {
+    console.warn("Failed to fetch models.dev, using defaults:", error);
+    return [];
+  }
+}
+
+// Build model options: defaults + models.dev + custom option
+async function getModelOptions(
+  defaultModels: ModelOption[],
+  role: "coordinator" | "worker" | "lite",
+): Promise<ModelOption[]> {
+  const options: ModelOption[] = [...defaultModels];
+
+  // Add models from models.dev
+  const devModels = await fetchModelsFromModelsDev();
+
+  // Categorize models by role suitability
+  const coordinatorPriority = ["opus", "sonnet", "gpt-4", "gemini-1.5-pro", "claude-4"];
+  const workerPriority = ["haiku", "mini", "gpt-4o-mini", "flash", "claude-3"];
+
+  for (const model of devModels) {
+    const modelKey = model.value.toLowerCase();
+
+    // Skip if already in defaults
+    if (defaultModels.some((d) => d.value === model.value)) continue;
+
+    // Add all models (user can choose any)
+    options.push(model);
+  }
+
+  // Add custom option
+  options.push({
     value: "custom",
     label: "Custom model...",
     hint: "Enter your own provider/model",
-  },
-];
+  });
+
+  return options;
+}
+
+// Dynamic model lists
+let COORDINATOR_MODELS: ModelOption[] = DEFAULT_COORDINATOR_MODELS;
+let WORKER_MODELS: ModelOption[] = DEFAULT_WORKER_MODELS;
+let LITE_MODELS: ModelOption[] = DEFAULT_WORKER_MODELS;
+
+// Initialize models asynchronously
+async function initModels() {
+  const devModels = await fetchModelsFromModelsDev();
+  if (devModels.length > 0) {
+    // Merge defaults with dev models, avoiding duplicates
+    const mergeModels = (defaults: ModelOption[]) => {
+      const seen = new Set(defaults.map((d) => d.value));
+      const merged = [...defaults];
+      for (const model of devModels) {
+        if (!seen.has(model.value)) {
+          merged.push(model);
+        }
+      }
+      return merged;
+    };
+    COORDINATOR_MODELS = mergeModels(DEFAULT_COORDINATOR_MODELS);
+    WORKER_MODELS = mergeModels(DEFAULT_WORKER_MODELS);
+    LITE_MODELS = mergeModels(DEFAULT_WORKER_MODELS);
+  }
+}
 
 // ============================================================================
 // Update Checking
@@ -2157,6 +2205,11 @@ async function setup(forceReinstall = false, nonInteractive = false) {
 
   p.intro("opencode-swarm-plugin v" + VERSION);
 
+  // Fetch models from models.dev (same source as OpenCode)
+  p.log.step("Fetching available models from models.dev...");
+  await initModels();
+  p.log.success(`Loaded ${COORDINATOR_MODELS.length} models`);
+
   // CRITICAL: Check for Bun first - the CLI requires Bun runtime
   const bunCheck = await checkCommand("bun", ["--version"]);
   if (!bunCheck.available) {
@@ -2245,6 +2298,9 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     p.log.success("Swarm is already configured!");
     p.log.message(dim("  Found " + existingFiles.length + "/5 config files"));
 
+    // Fetch models from models.dev
+    await initModels();
+
     const action = await p.select({
       message: "What would you like to do?",
       options: [
@@ -2289,7 +2345,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
       if (selectedCoordinator === "custom") {
         const customModel = await p.text({
           message: "Enter coordinator model (provider/model format):",
-          placeholder: "e.g., minimax/MiniMax-M2.1",
+          placeholder: "e.g., minimax/MiniMax-M2.5",
         });
         if (p.isCancel(customModel) || !customModel) {
           p.cancel("Setup cancelled");
@@ -2316,7 +2372,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
       if (selectedWorker === "custom") {
         const customModel = await p.text({
           message: "Enter worker model (provider/model format):",
-          placeholder: "e.g., minimax/MiniMax-Text-01",
+          placeholder: "e.g., minimax/MiniMax-M2.5",
         });
         if (p.isCancel(customModel) || !customModel) {
           p.cancel("Setup cancelled");
@@ -2656,7 +2712,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     if (selectedCoordinator === "custom") {
       const customModel = await p.text({
         message: "Enter coordinator model (provider/model format):",
-        placeholder: "e.g., minimax/MiniMax-M2.1",
+        placeholder: "e.g., minimax/MiniMax-M2.5",
       });
       if (p.isCancel(customModel) || !customModel) {
         p.cancel("Setup cancelled");
@@ -2681,7 +2737,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     if (selectedWorker === "custom") {
       const customModel = await p.text({
         message: "Enter worker model (provider/model format):",
-        placeholder: "e.g., minimax/MiniMax-Text-01",
+        placeholder: "e.g., minimax/MiniMax-M2.5",
       });
       if (p.isCancel(customModel) || !customModel) {
         p.cancel("Setup cancelled");
@@ -2718,14 +2774,14 @@ async function setup(forceReinstall = false, nonInteractive = false) {
         },
         // MiniMax models (fast and cost-effective)
         {
-          value: "minimax/MiniMax-Text-01",
-          label: "MiniMax Text 01",
+          value: "minimax/MiniMax-M2.5",
+          label: "MiniMax M2.5",
           hint: "Fast, cost-effective",
         },
         // Z.AI models
         {
-          value: "z-ai/zy-1-preview",
-          label: "Z.AI Zy-1 Preview",
+          value: "z-ai/GLM-4.7",
+          label: "Z.AI GLM-4.7",
           hint: "Fast Z.AI model",
         },
         // Custom option
@@ -2746,7 +2802,7 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     if (selectedLite === "custom") {
       const customModel = await p.text({
         message: "Enter lite model (provider/model format):",
-        placeholder: "e.g., minimax/MiniMax-Text-01",
+        placeholder: "e.g., minimax/MiniMax-M2.5",
       });
       if (p.isCancel(customModel) || !customModel) {
         p.cancel("Setup cancelled");

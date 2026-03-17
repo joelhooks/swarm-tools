@@ -1,9 +1,6 @@
 ---
 name: swarm-cli
-description: |
-  Swarm CLI commands for workers - hivemind memory, hive tasks, swarmmail coordination.
-  Use when working in a swarm context. Covers: swarm memory (find/store/get/stats),
-  swarm cells (query/create/update/close), and coordination commands.
+description: "Swarm CLI commands for workers covering hivemind memory, hive tasks, and swarmmail coordination. Use when working in a swarm context, managing distributed memory, or coordinating worker tasks. Covers: swarm memory (find/store/get/stats), swarm cells (query/create/update/close), and coordination commands."
 ---
 
 # Swarm CLI Quick Reference

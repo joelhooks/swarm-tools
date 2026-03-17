@@ -1,12 +1,6 @@
 ---
 name: release
-description: |
-  Handles version bumps and npm releases for the swarm-tools monorepo (opencode-swarm-plugin,
-  claude-code-swarm-plugin, swarm-mail, swarm-queue). Use when: creating changesets, bumping
-  versions, preparing releases, checking release status, debugging publish failures, verifying
-  npm packages, or merging release PRs.
-  Triggers: "release", "publish", "changeset", "bump version", "ship it", "new version",
-  "create a release", "check npm", "verify publish", "/release"
+description: "Handles version bumps and npm releases for the swarm-tools monorepo (opencode-swarm-plugin, claude-code-swarm-plugin, swarm-mail, swarm-queue). Use when creating changesets, bumping versions, preparing releases, checking release status, debugging publish failures, verifying npm packages, or merging release PRs. Triggers: release, publish, changeset, bump version, ship it, new version, create a release, check npm, verify publish, /release."
 ---
 
 # Release Workflow

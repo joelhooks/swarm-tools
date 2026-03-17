@@ -1,6 +1,6 @@
 ---
 name: hive-workflow
-description: Issue tracking and task management using the hive system. Use when creating, updating, or managing work items. Use when you need to track bugs, features, tasks, or epics. Do NOT use for simple one-off questions or explorations.
+description: "Issue tracking and task management using the hive system. Use when creating tickets, assigning priorities, updating status, closing resolved work items, or managing epics with subtasks. Use when you need to track bugs, features, tasks, or chores across a project. Do NOT use for simple one-off questions or explorations."
 tags:
   - hive
   - issues

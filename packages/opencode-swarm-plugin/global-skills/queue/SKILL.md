@@ -1,6 +1,6 @@
 ---
 name: queue
-description: Guide for job queue patterns in multi-agent coordination. Use when deciding between background jobs vs inline execution, submitting long-running tasks, monitoring job progress, and handling failures. Covers when to queue, job priority, retry strategies, and monitoring patterns.
+description: "Implements job queue patterns for multi-agent coordination using BullMQ and Redis. Use when submitting background jobs, configuring retry strategies, setting job priority levels, monitoring queue health metrics, or handling dead-letter failures. Use when deciding between background jobs vs inline execution, creating workers with concurrency settings, chaining dependent jobs, or polling for job completion. Covers queue creation, job submission, worker processing, exponential backoff, graceful degradation, and performance tuning."
 tags:
   - queue
   - background-jobs
@@ -456,6 +456,16 @@ if (metrics.failed > 0) {
   }
 }
 ```
+
+## Validation Checkpoints
+
+Before deploying queue-based workflows, verify:
+
+1. **Connection check** - Confirm Redis is reachable and `createSwarmQueue` returns without error
+2. **Job submission** - Submit a test job and verify it appears in `getMetrics().waiting`
+3. **Worker processing** - Start a worker and confirm the test job transitions to `completed`
+4. **Retry behavior** - Submit a failing job and verify retry attempts match `defaultJobOptions.attempts`
+5. **Graceful shutdown** - Send SIGTERM and confirm worker drains active jobs before stopping
 
 ## Performance Tuning
 

@@ -1,18 +1,6 @@
 ---
 name: gh-issue-triage
-description: GitHub issue triage workflow with contributor profile extraction. Analyze → clarify → file cells → tag → implement → credit. Captures Twitter handles for changeset acknowledgments.
-tags:
-  - github
-  - issues
-  - triage
-  - contributors
-  - twitter
-  - credits
----
-
----
-name: gh-issue-triage
-description: GitHub issue triage workflow with contributor profile extraction. Analyze → clarify → file cells → tag → implement → credit. Captures Twitter handles for changeset acknowledgments.
+description: "Use when triaging GitHub issues to analyze, clarify, label, and implement fixes while crediting contributors. Fetches contributor profiles including Twitter handles, files hive cells for tracking, applies labels via gh CLI, and generates changeset acknowledgments. Handles bugs, feature requests, duplicates, and support questions with appropriate workflows for each issue type."
 tags:
   - github
   - issues

@@ -1,6 +1,6 @@
 ---
 name: system-design
-description: Principles for building reusable coding systems. Use when designing modules, APIs, CLIs, or any code meant to be used by others. Based on "A Philosophy of Software Design" by John Ousterhout. Covers deep modules, complexity management, and design red flags.
+description: "Applies software design principles to evaluate and improve code architecture. Use when designing modules, APIs, CLIs, or interfaces meant to be used by others. Use when performing code review, evaluating interface design, refactoring for simplicity, reducing complexity, identifying design red flags, or deciding between deep and shallow module boundaries. Analyzes information hiding, error handling strategies, and abstraction depth. Based on 'A Philosophy of Software Design' by John Ousterhout."
 tags:
   - design
   - architecture

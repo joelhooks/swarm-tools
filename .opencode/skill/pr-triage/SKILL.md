@@ -1,6 +1,6 @@
 ---
 name: pr-triage
-description: "Context-efficient PR comment triage. Evaluate, decide, act. Fix important issues, resolve the rest silently."
+description: "Use when triaging pull request review comments to decide which need code fixes and which to resolve silently. Fetches unreplied PR comments, evaluates each for security or correctness issues, applies fixes with commit references for important problems, and resolves style nits and metadata comments without reply. Prioritizes action over conversation to keep PR threads focused."
 tags:
   - pr
   - review

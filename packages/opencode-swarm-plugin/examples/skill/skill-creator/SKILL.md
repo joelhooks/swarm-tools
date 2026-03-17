@@ -1,6 +1,6 @@
 ---
 name: skill-creator
-description: Guide for creating effective agent skills. Use when you want to create a new skill, improve an existing skill, or learn best practices for skill development. Helps codify learned patterns into reusable, discoverable skills.
+description: "Guide for creating effective agent skills. Use when writing YAML frontmatter, defining trigger terms, structuring workflow instructions, or adding bundled scripts and references. Use when you want to create a new skill, improve an existing skill, or codify learned patterns into reusable, discoverable skills."
 tags:
   - meta
   - skills

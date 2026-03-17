@@ -1,10 +1,14 @@
 ---
 name: swarm-coordination
-description: Multi-agent coordination patterns for OpenCode swarm workflows. Use when working on complex tasks that benefit from parallelization, when coordinating multiple agents, or when managing task decomposition. Do NOT use for simple single-agent tasks.
+description: "Multi-agent coordination patterns for OpenCode swarm workflows. Use when spawning worker agents, distributing subtasks across parallel workers, reserving files to prevent conflicts, or routing messages between agents. Use when decomposing complex tasks, coordinating multiple agents, or orchestrating parallel execution. Do NOT use for simple single-agent tasks."
 tags:
   - swarm
   - multi-agent
   - coordination
+  - parallel
+  - decomposition
+  - orchestration
+  - task-distribution
 tools:
   - swarm_decompose
   - swarm_complete

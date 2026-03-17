@@ -1,15 +1,40 @@
 ---
 name: ralph-supervisor
-description: |
-  Ralph loop pattern - Claude supervises while Codex (gpt-5.3-codex) executes
-  implementation work. Use for autonomous coding loops with fresh context per
-  iteration, validation gates, and git-backed persistence. Tools: ralph_init,
-  ralph_story, ralph_iterate, ralph_loop, ralph_status, ralph_cancel, ralph_review.
+description: "Ralph loop pattern — Claude supervises while Codex (gpt-5.3-codex) executes implementation work. Use when running autonomous coding loops, delegating coding tasks to background agents, orchestrating sequential implementation with fresh context per iteration, or managing supervisor-executor workflows with validation gates and git-backed persistence. Trigger terms: delegate coding, background task, autonomous loop, supervisor pattern, codex execute. Tools: ralph_init, ralph_story, ralph_iterate, ralph_loop, ralph_status, ralph_cancel, ralph_review."
 ---
 
 # Ralph Supervisor Pattern
 
 Ralph implements an autonomous coding loop where Claude acts as supervisor and Codex executes implementation work. Named after the pattern from [openclaw-codex-ralph](https://github.com/joelhooks/openclaw-codex-ralph).
+
+## Quick Start
+
+Initialize a Ralph project, add a story, and start the autonomous loop:
+
+```typescript
+// 1. Initialize a new Ralph project
+ralph_init({ project_path: "/path/to/project", validation_command: "npm test && npm run typecheck" })
+
+// 2. Add a story to the PRD
+ralph_story({
+  title: "Add user authentication",
+  description: "Implement JWT-based login/logout with refresh tokens",
+  acceptance_criteria: ["JWT generation works", "Refresh token rotation implemented"],
+  validation_command: "npm test -- --grep auth"
+})
+
+// 3. Start the autonomous coding loop (Codex executes, Claude supervises)
+ralph_loop({ max_iterations: 10 })
+
+// 4. Check progress at any time
+ralph_status()
+
+// 5. Review completed work
+ralph_review({ approve: true })
+
+// 6. Cancel if needed
+ralph_cancel({ reason: "Changing approach" })
+```
 
 ## Core Philosophy
 

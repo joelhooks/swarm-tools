@@ -1,6 +1,14 @@
 ---
 name: learning-systems
-description: Implicit feedback scoring, confidence decay, and anti-pattern detection. Use when understanding how the swarm plugin learns from outcomes, implementing learning loops, or debugging why patterns are being promoted or deprecated. Unique to opencode-swarm-plugin.
+description: "Score task outcomes from duration, errors, and retries to compute implicit feedback. Apply confidence decay using half-life formulas to fade stale patterns. Detect and invert anti-patterns when failure rates exceed thresholds. Use when recording swarm outcomes, debugging pattern promotion or deprecation, tuning learning thresholds, or implementing feedback loops. Unique to opencode-swarm-plugin."
+tags:
+  - learning
+  - feedback
+  - patterns
+  - anti-patterns
+  - scoring
+  - decay
+  - maturity
 ---
 
 # Learning Systems

@@ -1,6 +1,6 @@
 ---
 name: skill-generator
-description: Meta-skill for generating new skills with proper format and structure. Use when creating new skills for the swarm system or when agents need to generate skill scaffolds. Ensures skills follow conventions (frontmatter format, directory structure, bundled resources).
+description: "Generates new skill scaffolds by creating SKILL.md files, writing YAML frontmatter with name and description fields, and setting up directory structures with scripts/, references/, and assets/ folders. Use when generating a new skill, scaffolding skill directories, bootstrapping skill templates, or initializing skill files for the swarm system. Validates frontmatter format, checks naming conventions, and ensures skills follow established conventions."
 ---
 
 # Skill Generator
@@ -149,6 +149,20 @@ Checks:
 - No TODO placeholders
 - No extraneous files
 - Naming conventions
+
+## Error Recovery After Validation
+
+If validation fails, apply these fixes:
+
+| Error | Fix |
+|-------|-----|
+| Missing `name` field | Add `name:` to YAML frontmatter matching the directory name |
+| Missing `description` field | Write a description including what the skill does and when to use it |
+| TODO placeholders found | Replace all TODO text with actual content or remove the placeholder |
+| Extraneous files (README.md, etc.) | Delete non-essential files; keep only SKILL.md and bundled resources |
+| Name mismatch | Rename the `name:` field to match the skill directory name exactly |
+
+Re-run `bun scripts/validate-skill.ts path/to/skill` after each fix to confirm resolution.
 
 ## Reference
 

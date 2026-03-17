@@ -1,6 +1,6 @@
 ---
 name: cli-builder
-description: Guide for building TypeScript CLIs with Bun. Use when creating command-line tools, adding subcommands to existing CLIs, or building developer tooling. Covers argument parsing, subcommand patterns, output formatting, and distribution.
+description: "Guide for building TypeScript CLIs with Bun. Use when creating command-line tools, adding subcommands to existing CLIs, or building developer tooling. Covers argument parsing, subcommand patterns, output formatting, and distribution."
 tags:
   - cli
   - typescript
@@ -12,13 +12,15 @@ tags:
 
 Build TypeScript command-line tools with Bun.
 
-## When to Build a CLI
+## CLI Build Workflow
 
-CLIs are ideal for:
-- Developer tools and automation
-- Project-specific commands (`swarm`, `bd`, etc.)
-- Scripts that need arguments/flags
-- Tools that compose with shell pipelines
+1. **Define the interface** - Identify commands, flags, and positional arguments the CLI needs
+2. **Set up the entry point** - Create the script with shebang and argument parsing
+3. **Implement subcommands** - Use the command registry pattern for multi-command CLIs
+4. **Add output formatting** - Support `--json` for scriptability and human-readable defaults
+5. **Handle errors gracefully** - Validate inputs early, use meaningful exit codes
+6. **Add help text** - Provide `--help` for every command and subcommand
+7. **Configure distribution** - Set up `bin` field in package.json and build step
 
 ## Quick Start
 

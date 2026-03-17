@@ -1,9 +1,6 @@
 ---
 name: swarm-coordination
-description: |
-  Multi-agent coordination patterns for OpenCode swarm workflows. Use when work
-  benefits from parallelization or coordination. Covers: decomposition, worker
-  spawning, file reservations, progress tracking, and review loops.
+description: "Multi-agent coordination patterns for OpenCode swarm workflows. Use when you need to split work across agents, parallelize tasks, coordinate file ownership, or run a swarm. Covers: task decomposition, worker spawning, file reservations, progress tracking, and review loops."
 ---
 
 # Swarm Coordination
@@ -18,10 +15,6 @@ This skill guides multi-agent coordination for OpenCode swarm workflows.
 - Time-to-completion matters
 
 Avoid swarming for 1–2 file changes or tightly sequential work.
-
-## Tool Access (Wildcard)
-
-This skill is configured with `tools: ["*"]` per user choice. If you need curated access later, replace the wildcard with explicit tool lists.
 
 ## Foreground vs Background vs Agent Teams
 

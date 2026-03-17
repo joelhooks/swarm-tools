@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: "Test-Driven Development workflow with RED-GREEN-REFACTOR, lore from Kent Beck, Michael Feathers, and Ousterhout's counterpoint"
+description: "Use when writing code test-first using TDD and the RED-GREEN-REFACTOR cycle. Write a failing test that defines expected behavior, implement minimal code to pass, then refactor while keeping tests green. Applies test-driven development patterns including triangulation, fake-it-til-you-make-it, and assertion-first design. Draws on practices from Kent Beck, Michael Feathers, and balances with Ousterhout's design-first counterpoint."
 tags:
   - testing
   - workflow

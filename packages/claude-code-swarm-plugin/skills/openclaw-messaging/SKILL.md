@@ -160,3 +160,10 @@ openclaw system event --mode now --text "Completed Phase 1 encryption. All tests
 ```bash
 openclaw system event --mode now --text "Worker task-42 complete: implemented D1 schema migration. 12 tests added."
 ```
+
+### Verifying message delivery
+Use `--json` output to confirm delivery status. For critical notifications, check the response for success before proceeding:
+```bash
+openclaw message send --channel telegram --target @joelhooks -m "Deploy complete" --json
+# Response includes delivery status — check "status": "delivered" before continuing workflow
+```

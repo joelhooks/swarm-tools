@@ -1,9 +1,6 @@
 ---
 name: always-on-guidance
-description: |
-  Always-on rule-oriented guidance for claude-plugin agents. Use to align behavior,
-  tool usage, and model-specific defaults while avoiding deprecated bd/cass references.
-  Related skills: swarm-coordination, testing-patterns.
+description: "Always-on rule-oriented guidance for claude-plugin agents. Use when configuring agent behavior rules, enforcing correct tool usage (hive_*, swarm_*, swarmmail_*, hivemind_*), applying model-specific defaults for GPT-5.2-code or Opus 4.5, or preventing use of deprecated bd (BeadDB CLI) and cass (Coding Agent Session Search legacy API) references. Covers instruction priority, file reservation discipline, and testing workflow. Related skills: swarm-coordination, testing-patterns."
 ---
 
 # Always-On Guidance
@@ -11,7 +8,7 @@ description: |
 ## Global Rules
 
 - Follow instruction priority: system → developer → user → AGENTS.
-- Use swarm plugin tools (`hive_*`, `swarm_*`, `swarmmail_*`, `hivemind_*`); avoid deprecated `bd`/`cass` references.
+- Use swarm plugin tools (`hive_*`, `swarm_*`, `swarmmail_*`, `hivemind_*`); avoid deprecated `bd` (BeadDB CLI, replaced by HiveAdapter) and `cass` (Coding Agent Session Search legacy API, replaced by hivemind_find) references.
 - Stay within assigned files; reserve before edits with `ttl_seconds`; release reservations on done; finish swarm work with `swarm_complete`.
 - After every `swarm_spawn_subtask`, immediately call `Task(subagent_type="swarm-worker", prompt="<prompt returned by swarm_spawn_subtask>")`.
 - `swarmmail_release_all` is coordinator-only for stale/orphaned reservations.

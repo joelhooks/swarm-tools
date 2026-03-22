@@ -974,7 +974,7 @@ export const swarm_broadcast = tool({
  */
 export const swarm_complete = tool({
   description:
-    "Mark subtask complete with Verification Gate. REQUIRED: project_key, agent_name, bead_id (from your task assignment), summary, start_time (Date.now() from when you started). Before calling: 1) hivemind_store your learnings, 2) list files_touched for verification. Runs typecheck/tests before finalizing.",
+    "Mark subtask complete with Verification Gate. REQUIRED: project_key, agent_name, bead_id (from your task assignment), summary. OPTIONAL: start_time (auto-defaults to Date.now()). Before calling: 1) hivemind_store your learnings, 2) list files_touched for verification. Runs typecheck/tests before finalizing.",
   args: {
     project_key: tool.schema.string().describe("Project path (e.g., '/Users/name/project')"),
     agent_name: tool.schema.string().describe("Your agent name from swarmmail_init"),
@@ -1000,7 +1000,8 @@ export const swarm_complete = tool({
       .describe("Files that were originally planned to be modified"),
     start_time: tool.schema
       .number()
-      .describe("Task start timestamp (Unix ms) for duration calculation - REQUIRED for accurate analytics"),
+      .optional()
+      .describe("Task start timestamp (Unix ms) for duration calculation. Auto-defaults to Date.now() if not provided."),
     error_count: tool.schema
       .number()
       .optional()
@@ -1035,19 +1036,22 @@ export const swarm_complete = tool({
     if (!args.project_key) missing.push("project_key");
     if (!args.agent_name) missing.push("agent_name");
     if (!args.summary) missing.push("summary");
-    if (args.start_time === undefined) missing.push("start_time");
+    // Auto-inject start_time if not provided — LLM agents can't provide
+    // meaningful start times, and it's only used for duration analytics.
+    if (args.start_time === undefined) {
+      args.start_time = Date.now();
+    }
 
     if (missing.length > 0) {
       return JSON.stringify({
         success: false,
         error: `Missing required parameters: ${missing.join(", ")}`,
-        hint: "swarm_complete marks a subtask as done. All parameters are required.",
+        hint: "swarm_complete marks a subtask as done. project_key, agent_name, bead_id, and summary are required. start_time auto-defaults to Date.now().",
         example: {
           project_key: "/path/to/project",
           agent_name: "your-agent-name",
           bead_id: "epic-id.subtask-num OR cell-id from hive",
           summary: "Brief description of what you completed",
-          start_time: Date.now(),
           files_touched: ["src/file1.ts", "src/file2.ts"],
         },
         tip: "The bead_id comes from swarm_spawn_subtask or hive_create. Check your task assignment for the correct ID.",

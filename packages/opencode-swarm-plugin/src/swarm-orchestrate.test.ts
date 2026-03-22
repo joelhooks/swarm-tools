@@ -834,8 +834,6 @@ describe("anti-pattern auto-deprecation integration", () => {
 describe("eval_records duration tracking", () => {
   test("duration should be calculated correctly from start_time", () => {
     // This is a unit test for the duration calculation logic
-    // After fix: start_time is REQUIRED, so we always calculate duration
-    
     const startTime = Date.now() - 5000; // 5 seconds ago
     const completionDurationMs = Date.now() - startTime;
     
@@ -844,22 +842,15 @@ describe("eval_records duration tracking", () => {
     expect(completionDurationMs).toBeLessThan(5500);
   });
   
-  test("swarm_complete requires start_time parameter", () => {
-    // After fix: start_time is no longer optional
+  test("swarm_complete accepts start_time as optional (auto-defaults to Date.now())", () => {
     const { args } = swarm_complete;
     
     // Verify start_time is in the schema
     expect(args).toHaveProperty("start_time");
     
-    // Try to parse undefined - should fail since it's required now
-    try {
-      args.start_time.parse(undefined);
-      // If we get here, start_time is optional (which would be wrong)
-      expect(true).toBe(false); // Force fail
-    } catch (error) {
-      // Good - start_time is required
-      expect(error).toBeDefined();
-    }
+    // start_time is now optional — should parse undefined without error
+    const result = args.start_time.safeParse(undefined);
+    expect(result.success).toBe(true);
   });
   
   test("swarm_record_outcome schema requires duration_ms", () => {

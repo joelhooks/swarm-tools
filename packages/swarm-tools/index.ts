@@ -12,6 +12,10 @@ import { execFileSync } from "child_process";
 
 function executeSwarmTool(name: string, args: Record<string, unknown>): string {
   try {
+    // Auto-inject start_time for swarm_complete if not provided
+    if (name === "swarm_complete" && args.start_time === undefined) {
+      args = { ...args, start_time: Date.now() };
+    }
     const argsJson = JSON.stringify(args);
     const output = execFileSync("swarm", ["tool", name, "--json", argsJson], {
       encoding: "utf-8",
@@ -361,11 +365,11 @@ export const SWARM_TOOLS = [
         agent_name: { type: "string", description: "Agent name (required)" },
         bead_id: { type: "string", description: "Bead/cell ID (required)" },
         summary: { type: "string", description: "Work summary (required)" },
-        start_time: { type: "number", description: "Start timestamp (required)" },
+        start_time: { type: "number", description: "Start timestamp (auto-injected as Date.now() if not provided)" },
         files_touched: { type: "string", description: "Files touched (JSON array)" },
         skip_verification: { type: "boolean", description: "Skip verification gate" },
       },
-      required: ["project_key", "agent_name", "bead_id", "summary", "start_time"],
+      required: ["project_key", "agent_name", "bead_id", "summary"],
       additionalProperties: false,
     },
   },

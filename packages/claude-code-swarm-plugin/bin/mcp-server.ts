@@ -389,11 +389,11 @@ const TOOL_DEFINITIONS: ToolInfo[] = [
         agent_name: { type: "string", description: "Agent name (required)" },
         bead_id: { type: "string", description: "Bead/cell ID (required)" },
         summary: { type: "string", description: "Work summary (required)" },
-        start_time: { type: "number", description: "Start timestamp (required)" },
+        start_time: { type: "number", description: "Start timestamp (auto-injected as Date.now() if not provided)" },
         files_touched: { type: "array", items: { type: "string" }, description: "Files that were modified" },
         skip_verification: { type: "boolean", description: "Skip verification gate" },
       },
-      required: ["project_key", "agent_name", "bead_id", "summary", "start_time"],
+      required: ["project_key", "agent_name", "bead_id", "summary"],
     },
   },
 
@@ -620,6 +620,10 @@ function coerceArrayParams(name: string, args: Record<string, unknown>): Record<
  */
 function executeTool(name: string, args: Record<string, unknown>): string {
   try {
+    // Auto-inject start_time for swarm_complete if not provided
+    if (name === "swarm_complete" && args.start_time === undefined) {
+      args = { ...args, start_time: Date.now() };
+    }
     const coercedArgs = coerceArrayParams(name, args);
     const argsJson = JSON.stringify(coercedArgs);
     const output = execFileSync("swarm", ["tool", name, "--json", argsJson], {

@@ -64,9 +64,9 @@ const vector = (dimension: number) =>
 export const memories = sqliteTable("memories", {
   id: text("id").primaryKey(),
   content: text("content").notNull(),
-  metadata: text("metadata").default("'{}'"),
-  collection: text("collection").default("'default'"),
-  tags: text("tags").default("'[]'"),
+  metadata: text("metadata").default("{}"),
+  collection: text("collection").default("default"),
+  tags: text("tags").default("[]"),
   created_at: text("created_at").default("(datetime('now'))"),
   updated_at: text("updated_at").default("(datetime('now'))"),
   decay_factor: real("decay_factor").default(1.0),
@@ -83,7 +83,7 @@ export const memories = sqliteTable("memories", {
   last_accessed: text("last_accessed").default("(datetime('now'))"),
   // Fact categorization
   category: text("category"), // relationship, milestone, status, preference, context
-  status: text("status").default("'active'"), // active, superseded
+  status: text("status").default("active"), // active, superseded
 });
 
 /**
@@ -140,7 +140,7 @@ export const entities = sqliteTable("entities", {
   entity_type: text("entity_type").notNull(),
   canonical_name: text("canonical_name"),
   pref_label: text("pref_label"),
-  alt_labels: text("alt_labels").default("'[]'"),
+  alt_labels: text("alt_labels").default("[]"),
   created_at: text("created_at").default("(datetime('now'))"),
   updated_at: text("updated_at").default("(datetime('now'))"),
 }, (table) => [

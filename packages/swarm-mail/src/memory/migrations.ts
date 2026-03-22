@@ -350,6 +350,44 @@ export const memorySelfHealColumnsLibSQL: Migration = {
 };
 
 /**
+ * Migration v13 (libSQL): Fix corrupted default values from Drizzle quoting bug
+ *
+ * Bug: Drizzle schema used .default("'active'") instead of .default("active").
+ * Drizzle wraps the value in quotes automatically, so the extra quotes became
+ * part of the stored string: 'active' (with literal quote chars) instead of active.
+ *
+ * This affected: status, metadata, collection, tags, alt_labels columns.
+ * Impact: WHERE status = 'active' never matched rows containing literal quote chars.
+ *
+ * This migration strips the spurious quotes from existing rows.
+ */
+export const fixQuotedDefaultsLibSQL: Migration = {
+  version: 13,
+  description: "Fix corrupted default values from Drizzle .default() quoting bug",
+  up: `
+    -- Fix status column: 'active' (with quotes) → active
+    UPDATE memories SET status = 'active' WHERE status = '''active''';
+    UPDATE memories SET status = 'superseded' WHERE status = '''superseded''';
+
+    -- Fix metadata column: '{}' (with quotes) → {}
+    UPDATE memories SET metadata = '{}' WHERE metadata = '''{}''';
+
+    -- Fix collection column: 'default' (with quotes) → default
+    UPDATE memories SET collection = 'default' WHERE collection = '''default''';
+
+    -- Fix tags column: '[]' (with quotes) → []
+    UPDATE memories SET tags = '[]' WHERE tags = '''[]''';
+
+    -- Fix alt_labels on entities table
+    UPDATE entities SET alt_labels = '[]' WHERE alt_labels = '''[]''';
+  `,
+  down: `
+    -- Cannot reliably reverse: we don't know which rows had the original bug vs were inserted correctly
+    SELECT 1;
+  `,
+};
+
+/**
  * Export memory migrations array
  */
 export const memoryMigrations: Migration[] = [memoryMigration];
@@ -358,6 +396,7 @@ export const memoryMigrationsLibSQL: Migration[] = [
   memorySchemaOverhaulLibSQL,
   sessionMetadataExtensionLibSQL,
   memorySelfHealColumnsLibSQL,
+  fixQuotedDefaultsLibSQL,
 ];
 
 /**

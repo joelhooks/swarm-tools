@@ -475,6 +475,7 @@ interface ModelOption {
   value: string;
   label: string;
   hint: string;
+  envVars?: string[];  // Environment variables required by this option
 }
 
 const COORDINATOR_MODELS: ModelOption[] = [
@@ -525,6 +526,59 @@ const WORKER_MODELS: ModelOption[] = [
     value: "google/gemini-2.0-flash",
     label: "Gemini 2.0 Flash",
     hint: "Fast and capable",
+  },
+];
+
+// Z.AI models
+const ZAI_MODELS: ModelOption[] = [
+  {
+    value: "zai/glm-4.7",
+    label: "GLM-4.7",
+    hint: "New flagship, 200K context",
+    envVars: ["ZAI_API_KEY"],
+  },
+  {
+    value: "zai/glm-4.6",
+    label: "GLM-4.6",
+    hint: "200K context",
+    envVars: ["ZAI_API_KEY"],
+  },
+  {
+    value: "zai/glm-4.32b",
+    label: "GLM-4.32b",
+    hint: "32B context",
+    envVars: ["ZAI_API_KEY"],
+  },
+];
+
+// MiniMax models
+const ZAI_MODELS: ModelOption[] = [
+  {
+    value: "zai/glm-4.7",
+    label: "GLM-4.7",
+    hint: "New flagship, 200K context",
+    envVars: ["ZAI_API_KEY"],
+  },
+  {
+    value: "zai/glm-4.6",
+    label: "GLM-4.6",
+    hint: "200K context",
+    envVars: ["ZAI_API_KEY"],
+  },
+];
+
+const MINIMAX_MODELS: ModelOption[] = [
+  {
+    value: "minimax/MiniMax-M2.7",
+    label: "MiniMax M2.7",
+    hint: "Peak performance",
+    envVars: ["MINIMAX_API_KEY"],
+  },
+  {
+    value: "minimax/MiniMax-M2.7-highspeed",
+    label: "MiniMax M2.7 HS",
+    hint: "Faster variant",
+    envVars: ["MINIMAX_API_KEY"],
   },
 ];
 
@@ -1607,10 +1661,11 @@ Return ONLY valid JSON - no markdown, no explanation:
 - Pass synthesized knowledge to workers via subtask descriptions
 `;
 
-const getWorkerAgent = (model: string) => `---
+const getWorkerAgent = (vendorModel: VendorModel) => `---
 name: swarm-worker
 description: Executes subtasks in a swarm - fast, focused, cost-effective
-model: ${model}
+vendor: ${vendorModel.vendor}
+model: ${vendorModel.model}
 ---
 
 You are a swarm worker agent. Your prompt contains a **MANDATORY SURVIVAL CHECKLIST** - follow it IN ORDER.
@@ -1634,6 +1689,269 @@ Your Task prompt contains detailed instructions including:
 - Edit conflicts (no reservations)
 - Wasted time (no semantic memory query)
 - Silent failures (no progress reports)
+
+## Step Summary (details in your prompt)
+
+1. **swarmmail_init()** - FIRST, before anything else
+2. **semantic-memory_find()** - Check past learnings
+3. **skills_list() / skills_use()** - Load relevant skills
+4. **swarmmail_reserve()** - YOU reserve your files
+5. **Do the work** - Read, implement, verify
+6. **swarm_progress()** - Report at 25/50/75%
+7. **swarm_checkpoint()** - Before risky operations
+8. **semantic-memory_store()** - Store learnings
+9. **swarm_complete()** - NOT hive_close
+
+## Non-Negotiables
+
+- **Step 1 is MANDATORY** - swarm_complete fails without init
+- **Step 2 saves time** - past agents may have solved this
+- **Step 4 prevents conflicts** - workers reserve, not coordinator
+- **Step 6 prevents silent failure** - report progress
+- **Step 9 is the ONLY way to close** - releases reservations, records learning
+
+## When Blocked
+
+\`\`\`
+swarmmail_send(
+  to=["coordinator"],
+  subject="BLOCKED: <bead-id>",
+  body="<what you need>",
+  importance="high"
+)
+hive_update(id="<bead-id>", status="blocked")
+\`\`\`
+
+## Focus
+
+- Only modify your assigned files
+- Don't fix other agents' code - coordinate instead
+- Report scope changes before expanding
+
+Begin by reading your full prompt and executing Step 1.
+`;
+
+const getZAIWorkerAgent = (vendorModel: VendorModel) => `---
+name: swarm-worker
+description: Executes subtasks in a swarm - fast, focused, cost-effective
+vendor: ${vendorModel.vendor}
+model: ${vendorModel.model}
+---
+
+You are a swarm worker agent using Z.AI (GLM) models.
+
+## CRITICAL: Setup First
+
+Before starting work, you MUST initialize the swarm mail system:
+
+\`\`\`
+swarmmail_init()
+\`\`\`
+
+**Do NOT proceed without initialization.** The swarm mail system manages file reservations and inter-agent communication. Without it:
+- You cannot reserve files
+- You cannot report progress
+- You cannot complete tasks
+- Workers will cause conflicts
+
+## Z.AI Model Configuration
+
+You are configured to use: **${vendorModel.model}**
+
+### Model Capabilities
+${vendorModel.model.includes('glm-4.7') ? `| Capability | Status |
+|-----------|--------|
+| 200K context window | ✅ Supported |
+| 128K output tokens | ✅ Supported |
+| Multimodal support | ✅ Supported |
+| Fast inference | ✅ Supported |` : vendorModel.model.includes('glm-4.6') ? `| Capability | Status |
+|-----------|--------|
+| 200K context window | ✅ Supported |
+| 128K output tokens | ✅ Supported |
+| Multimodal support | ✅ Supported |
+| Fast inference | ✅ Supported |` : `| Capability | Status |
+|-----------|--------|
+| 32B context window | ⚠️ Limited |
+| 32K output tokens | ⚠️ Limited |
+| Multimodal support | ⚠️ Limited |
+| Fast inference | ✅ Supported |`}
+
+### Required Environment Variables
+
+**You must have the following environment variable set:**
+
+\`\`\`
+# Check ZAI_API_KEY is available
+swarmmail_send(
+  to=["coordinator"],
+  subject="Z.AI Setup Required",
+  body="Z.AI_API_KEY environment variable is required for Z.AI models.",
+  importance="high"
+)
+\`\`\`
+
+If this environment variable is not set, the model will fail to initialize.
+
+## Workflow
+
+As a Z.AI-powered worker, you should:
+
+1. **Initialize First**: Call \`swarmmail_init()\` to set up the swarm mail system
+2. **Check Past Experience**: Use \`semantic-memory_find()\` to query for past experiences with similar tasks
+3. **Reserve Files**: Use \`swarmmail_reserve()\` to claim exclusive access to files you need
+4. **Execute Work**: Read, implement, and verify your changes
+5. **Report Progress**: Use \`swarm_progress()\` at 25%, 50%, 75% completion
+6. **Checkpoint**: Use \`swarm_checkpoint()\` before risky operations
+7. **Store Learnings**: Use \`semantic-memory_store()\` to save valuable insights
+8. **Complete**: Use \`swarm_complete()\` to mark task as done (NOT \`hive_close\`)
+
+## Z.AI-Specific Considerations
+
+### When Working with Z.AI Models
+
+- **Context Management**: Z.AI GLM-4.7/4.6 support up to 200K context. Be mindful of token usage.
+- **Multimodal Capabilities**: Z.AI models support both text and vision. Use this for code + image tasks.
+- **Cost Efficiency**: Z.AI offers competitive pricing. Consider batching requests when appropriate.
+- **API Rate Limits**: Monitor request rate limits and implement backoff strategies if needed.
+
+### Common Patterns for Z.AI Integration
+
+\`\`\`typescript
+// Example: Query semantic memory before starting
+const pastExperiences = await semantic-memory_find({
+  query: "file upload error handling",
+  limit: 5
+});
+\`\`\`
+
+## Step Summary (details in your prompt)
+
+1. **swarmmail_init()** - FIRST, before anything else
+2. **semantic-memory_find()** - Check past learnings
+3. **skills_list() / skills_use()** - Load relevant skills
+4. **swarmmail_reserve()** - YOU reserve your files
+5. **Do the work** - Read, implement, verify
+6. **swarm_progress()** - Report at 25/50/75%
+7. **swarm_checkpoint()** - Before risky operations
+8. **semantic-memory_store()** - Store learnings
+9. **swarm_complete()** - NOT hive_close
+
+## Non-Negotiables
+
+- **Step 1 is MANDATORY** - swarm_complete fails without init
+- **Step 2 saves time** - past agents may have solved this
+- **Step 4 prevents conflicts** - workers reserve, not coordinator
+- **Step 6 prevents silent failure** - report progress
+- **Step 9 is the ONLY way to close** - releases reservations, records learning
+
+## When Blocked
+
+\`\`\`
+swarmmail_send(
+  to=["coordinator"],
+  subject="BLOCKED: <bead-id>",
+  body="<what you need>",
+  importance="high"
+)
+hive_update(id="<bead-id>", status="blocked")
+\`\`\`
+
+## Focus
+
+- Only modify your assigned files
+- Don't fix other agents' code - coordinate instead
+- Report scope changes before expanding
+
+Begin by reading your full prompt and executing Step 1.
+`;
+
+const getMiniMaxWorkerAgent = (vendorModel: VendorModel) => `---
+name: swarm-worker
+description: Executes subtasks in a swarm - fast, focused, cost-effective
+vendor: ${vendorModel.vendor}
+model: ${vendorModel.model}
+---
+
+You are a swarm worker agent using MiniMax models.
+
+## CRITICAL: Setup First
+
+Before starting work, you MUST initialize the swarm mail system:
+
+\`\`\`
+swarmmail_init()
+\`\`\`
+
+**Do NOT proceed without initialization.** The swarm mail system manages file reservations and inter-agent communication. Without it:
+- You cannot reserve files
+- You cannot report progress
+- You cannot complete tasks
+- Workers will cause conflicts
+
+## MiniMax Model Configuration
+
+You are configured to use: **${vendorModel.model}**
+
+### Model Capabilities
+${vendorModel.model.includes('MiniMax-M2.7') ? `| Capability | Status |
+|-----------|--------|
+| Peak performance | ✅ Supported |
+| Fast inference | ✅ Supported |
+| High-speed variant | ✅ Supported |
+` : `| Capability | Status |
+|-----------|--------|
+| Peak performance | ✅ Supported |
+| Fast inference | ✅ Supported |
+| High-speed variant | ✅ Supported |
+`}
+
+### Required Environment Variables
+
+**You must have the following environment variable set:**
+
+\`\`\`
+# Check MINIMAX_API_KEY is available
+swarmmail_send(
+  to=["coordinator"],
+  subject="MiniMax Setup Required",
+  body="MINIMAX_API_KEY environment variable is required for MiniMax models.",
+  importance="high"
+)
+\`\`\`
+
+If this environment variable is not set, the model will fail to initialize.
+
+## Workflow
+
+As a MiniMax-powered worker, you should:
+
+1. **Initialize First**: Call \`swarmmail_init()\` to set up the swarm mail system
+2. **Check Past Experience**: Use \`semantic-memory_find()\` to query for past experiences with similar tasks
+3. **Reserve Files**: Use \`swarmmail_reserve()\` to claim exclusive access to files you need
+4. **Execute Work**: Read, implement, and verify your changes
+5. **Report Progress**: Use \`swarm_progress()\` at 25%, 50%, 75% completion
+6. **Checkpoint**: Use \`swarm_checkpoint()\` before risky operations
+7. **Store Learnings**: Use \`semantic-memory_store()\` to save valuable insights
+8. **Complete**: Use \`swarm_complete()\` to mark task as done (NOT \`hive_close\`)
+
+## MiniMax-Specific Considerations
+
+### When Working with MiniMax Models
+
+- **Performance**: MiniMax-M2.7 offers peak performance for demanding tasks. Use for complex operations.
+- **High-Speed Variant**: MiniMax-M2.7-highspeed provides faster inference at a slight quality tradeoff. Good for iterative development.
+- **Cost Efficiency**: MiniMax offers competitive pricing. Consider batching requests when appropriate.
+- **API Rate Limits**: Monitor request rate limits and implement backoff strategies if needed.
+
+### Common Patterns for MiniMax Integration
+
+\`\`\`typescript
+// Example: Query semantic memory before starting
+const pastExperiences = await semantic-memory_find({
+  query: "file upload error handling",
+  limit: 5
+});
+\`\`\`
 
 ## Step Summary (details in your prompt)
 
@@ -2523,10 +2841,10 @@ async function setup(forceReinstall = false, nonInteractive = false) {
     p.log.message(dim('  No OpenCode config found (skipping MCP check)'));
   }
 
-  // Model defaults: opus for coordinator, sonnet for worker, haiku for lite
-  const DEFAULT_COORDINATOR = "anthropic/claude-opus-4-5";
-  const DEFAULT_WORKER = "anthropic/claude-sonnet-4-5";
-  const DEFAULT_LITE = "anthropic/claude-haiku-4-5";
+  // Model defaults: use vendor types for flexibility
+  const DEFAULT_COORDINATOR = "anthropic/claude-opus-4.5";
+  const DEFAULT_WORKER = "anthropic/claude-sonnet-4.5";
+  const DEFAULT_LITE = "anthropic/claude-haiku-4.5";
 
   // Model selection (skip if non-interactive)
   let coordinatorModel: string;
@@ -2536,6 +2854,110 @@ async function setup(forceReinstall = false, nonInteractive = false) {
   if (nonInteractive) {
     coordinatorModel = DEFAULT_COORDINATOR;
     workerModel = DEFAULT_WORKER;
+    liteModel = DEFAULT_LITE;
+    p.log.step("Using default models:");
+    p.log.message(dim(`  Coordinator: ${coordinatorModel}`));
+    p.log.message(dim(`  Worker: ${workerModel}`));
+    p.log.message(dim(`  Lite: ${liteModel}`));
+  } else {
+    p.log.step("Configuring swarm agents...");
+    p.log.message(dim("  Coordinator handles orchestration, worker executes tasks"));
+
+    const selectedCoordinator = await p.select({
+      message: "Select coordinator model (for orchestration/planning):",
+      options: [
+        {
+          value: "anthropic/claude-opus-4.5",
+          label: "Claude Opus 4.5",
+          hint: "Most capable, best for complex orchestration (recommended)",
+        },
+        {
+          value: "anthropic/claude-sonnet-4.5",
+          label: "Claude Sonnet 4.5",
+          hint: "Good balance of speed and capability",
+        },
+        {
+          value: "anthropic/claude-haiku-4.5",
+          label: "Claude Haiku 4.5",
+          hint: "Fast and cost-effective",
+        },
+        {
+          value: "openai/gpt-4o",
+          label: "GPT-4o",
+          hint: "Fast, good for most tasks",
+        },
+        {
+          value: "openai/gpt-4-turbo",
+          label: "GPT-4 Turbo",
+          hint: "Powerful, more expensive",
+        },
+        {
+          value: "google/gemini-2.0-flash",
+          label: "Gemini 2.0 Flash",
+          hint: "Fast and capable",
+        },
+        {
+          value: "google/gemini-1.5-pro",
+          label: "Gemini 1.5 Pro",
+          hint: "More capable, larger context",
+        },
+      ],
+      initialValue: DEFAULT_COORDINATOR,
+    });
+
+    if (p.isCancel(selectedCoordinator)) {
+      p.cancel("Setup cancelled");
+      process.exit(0);
+    }
+    coordinatorModel = selectedCoordinator;
+
+    const selectedWorker = await p.select({
+      message: "Select worker model (for task execution):",
+      options: [
+        {
+          value: "anthropic/claude-sonnet-4.5",
+          label: "Claude Sonnet 4.5",
+          hint: "Best balance of speed and capability (recommended)",
+        },
+        {
+          value: "anthropic/claude-haiku-4.5",
+          label: "Claude Haiku 4.5",
+          hint: "Fast and cost-effective",
+        },
+        {
+          value: "anthropic/claude-opus-4.5",
+          label: "Claude Opus 4.5",
+          hint: "Most capable, slower and more expensive",
+        },
+        {
+          value: "openai/gpt-4o",
+          label: "GPT-4o",
+          hint: "Fast, good for most tasks",
+        },
+        {
+          value: "openai/gpt-4-turbo",
+          label: "GPT-4 Turbo",
+          hint: "Powerful, more expensive",
+        },
+        {
+          value: "google/gemini-2.0-flash",
+          label: "Gemini 2.0 Flash",
+          hint: "Fast and capable",
+        },
+        {
+          value: "google/gemini-1.5-pro",
+          label: "Gemini 1.5 Pro",
+          hint: "More capable, larger context",
+        },
+      ],
+      initialValue: DEFAULT_WORKER,
+    });
+
+    if (p.isCancel(selectedWorker)) {
+      p.cancel("Setup cancelled");
+      process.exit(0);
+    }
+    workerModel = selectedWorker;
     liteModel = DEFAULT_LITE;
     p.log.step("Using default models:");
     p.log.message(dim(`  Coordinator: ${coordinatorModel}`));

@@ -87,7 +87,7 @@ jobs:
         run: bun turbo typecheck
 
       - name: Run unit tests
-        run: bun turbo test
+        run: bun turbo test --concurrency=1
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           RUN_LLM_TESTS: "false"

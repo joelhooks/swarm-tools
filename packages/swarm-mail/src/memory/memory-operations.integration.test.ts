@@ -26,7 +26,7 @@ import type { Memory } from "./store.js";
 // Environment Detection
 // ============================================================================
 
-const HAS_API_KEY = Boolean(process.env.AI_GATEWAY_API_KEY);
+const HAS_API_KEY = Boolean(process.env.AI_GATEWAY_API_KEY) && process.env.RUN_LLM_TESTS === "true";
 const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
 
 // Check if Ollama is running (cached result)

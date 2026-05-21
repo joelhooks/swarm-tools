@@ -153,10 +153,26 @@ export async function runEvals(
   } = options;
 
   try {
-    // Resolve to project root (evals are in evals/ relative to project root)
-    // If cwd is src/, go up one level
+    // Resolve to project root. Historically this package looked for evals/
+    // inside packages/opencode-swarm-plugin, but the repo moved eval files to
+    // the sibling packages/swarm-evals/src package. CI still runs this gate
+    // from packages/opencode-swarm-plugin, so discover both locations.
     const projectRoot = cwd.endsWith("src") ? path.dirname(cwd) : cwd;
-    const evalsDir = path.join(projectRoot, "evals");
+    const localEvalsDir = path.join(projectRoot, "evals");
+    const workspaceRoot = path.resolve(projectRoot, "../..");
+    const workspaceEvalsDir = path.join(workspaceRoot, "packages/swarm-evals/src");
+    let evaliteCwd = projectRoot;
+    const evalsDir = await fs
+      .access(localEvalsDir)
+      .then(() => localEvalsDir)
+      .catch(async () => {
+        await fs.access(workspaceEvalsDir);
+        // Evalite/Vitest only discovers files under its root. When using the
+        // workspace eval package, run from the monorepo root so the path filter
+        // is inside root instead of silently producing `Eval Files 0`.
+        evaliteCwd = workspaceRoot;
+        return workspaceEvalsDir;
+      });
     let evalPath: string | undefined;
 
     if (suiteFilter) {
@@ -206,7 +222,7 @@ export async function runEvals(
     
     await runEvalite({
       path: evalPath, // undefined = run all
-      cwd: projectRoot, // Use project root as working directory
+      cwd: evaliteCwd, // Use root that contains the selected eval path
       mode: "run-once-and-exit",
       scoreThreshold,
       outputPath,

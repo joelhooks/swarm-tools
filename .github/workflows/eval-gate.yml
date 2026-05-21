@@ -37,7 +37,7 @@ jobs:
 
       - name: Build dependencies
         working-directory: .
-        run: bun turbo build --filter=swarm-mail
+        run: bun turbo build --filter=swarm-mail --filter=opencode-swarm-plugin
 
       - name: Run eval gates
         run: bun run eval:gate

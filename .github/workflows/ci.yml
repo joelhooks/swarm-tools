@@ -114,6 +114,7 @@ jobs:
 
       - name: Post eval results
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
@@ -155,9 +156,13 @@ jobs:
             body += '\n---\n';
             body += '*Progressive gates: Bootstrap (always pass) → Stabilization (warn) → Production (enforce)*';
             
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            } catch (error) {
+              core.warning(`Could not post eval results comment: ${error.message}`);
+            }

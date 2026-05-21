@@ -506,13 +506,13 @@ const ALLOWED_TOOLS = new Set(TOOL_DEFINITIONS.map(t => t.name));
  * Convert JSON Schema to Zod schema for MCP SDK.
  * Handles the common types used in tool parameter schemas.
  */
-function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
+function jsonSchemaToZodShape(schema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
   const props = schema.properties as Record<string, { type?: string; enum?: string[]; items?: Record<string, unknown> }> | undefined;
   const required = (schema.required as string[]) || [];
 
   if (!props || Object.keys(props).length === 0) {
     // Empty schema - accept any properties
-    return z.record(z.string(), z.unknown());
+    return {};
   }
 
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -536,7 +536,7 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
         fieldSchema = z.union([z.string(), z.array(z.unknown())]);
         break;
       case "object":
-        fieldSchema = jsonSchemaToZod(prop as Record<string, unknown>);
+        fieldSchema = z.object(jsonSchemaToZodShape(prop as Record<string, unknown>)).passthrough();
         break;
       default:
         fieldSchema = z.unknown();
@@ -546,7 +546,7 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
     shape[key] = required.includes(key) ? fieldSchema : fieldSchema.optional();
   }
 
-  return z.object(shape).passthrough(); // passthrough allows extra properties
+  return shape; // passthrough allows extra properties
 }
 
 /**
@@ -712,11 +712,11 @@ async function main(): Promise<void> {
 
   for (const tool of TOOL_DEFINITIONS) {
     // Convert JSON Schema from CLI to Zod for MCP SDK
-    const zodSchema = jsonSchemaToZod(tool.inputSchema);
+    const zodSchema = jsonSchemaToZodShape(tool.inputSchema);
 
     server.registerTool(
       tool.name,
-      { description: tool.description, inputSchema: zodSchema },
+      { description: tool.description, inputSchema: zodSchema as any },
       async (args: Record<string, unknown>) => {
         const result = executeTool(tool.name, args ?? {});
         return {

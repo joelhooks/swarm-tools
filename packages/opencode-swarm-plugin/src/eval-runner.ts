@@ -256,26 +256,44 @@ export async function runEvals(
       });
     }
 
-    // Transform to structured result (evalite v1.0 API: output.evals with results)
-    const suites: SuiteResult[] = output.evals.map((evalItem: Evalite.Exported.Eval) => ({
-      name: evalItem.name,
-      filepath: evalItem.filepath,
-      status: evalItem.status,
-      duration: evalItem.duration,
-      averageScore: evalItem.averageScore,
-      evalCount: evalItem.results.length,
-      // Include evals if user wants detailed results
-      evals: evalItem.results.map((r: Evalite.Exported.Result) => ({
-        input: r.input,
-        output: r.output,
-        expected: r.expected,
-        scores: r.scores.map((s: Evalite.Exported.Score) => ({
-          name: s.name,
-          score: s.score,
-          description: s.description,
+    // Evalite changed its export shape between versions:
+    // - <=0.19: { evals: [{ results: [...] }] }
+    // - 1.0 beta: { suites: [{ evals: [...] }] }
+    // CI currently uses the 1.0 beta shape, so support both instead of
+    // silently reporting `Suites: 0 / Evals: 0` after a successful run.
+    const exportedSuites = Array.isArray((output as any).suites)
+      ? (output as any).suites
+      : Array.isArray((output as any).evals)
+        ? (output as any).evals
+        : [];
+
+    const suites: SuiteResult[] = exportedSuites.map((suiteItem: any) => {
+      const evalResults = Array.isArray(suiteItem.evals)
+        ? suiteItem.evals
+        : Array.isArray(suiteItem.results)
+          ? suiteItem.results
+          : [];
+
+      return {
+        name: suiteItem.name,
+        filepath: suiteItem.filepath,
+        status: suiteItem.status,
+        duration: suiteItem.duration,
+        averageScore: suiteItem.averageScore,
+        evalCount: evalResults.length,
+        // Include evals if user wants detailed results
+        evals: evalResults.map((r: any) => ({
+          input: r.input,
+          output: r.output,
+          expected: r.expected,
+          scores: (r.scores ?? []).map((s: Evalite.Exported.Score) => ({
+            name: s.name,
+            score: s.score,
+            description: s.description,
+          })),
         })),
-      })),
-    }));
+      };
+    });
 
     // Record eval runs to history
     for (const suite of suites) {

@@ -14,9 +14,9 @@
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",
-    "@changesets/cli": "^2.29.8",
-    "evalite": "^1.0.0-beta.10",
-    "turbo": "^2.8.3"
+    "@changesets/cli": "^2.31.0",
+    "evalite": "^1.0.0-beta.16",
+    "turbo": "^2.9.14"
   },
   "overrides": {
     "@types/node": "22.19.3"

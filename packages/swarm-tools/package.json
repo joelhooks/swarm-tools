@@ -1,6 +1,6 @@
 {
   "name": "swarm-tools",
-  "version": "0.59.7",
+  "version": "0.60.0",
   "description": "Multi-agent swarm coordination plugin for Clawdbot - hivemind memory, cells, and swarm workflows",
   "type": "module",
   "main": "index.ts",

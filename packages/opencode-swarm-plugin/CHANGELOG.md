@@ -1,5 +1,32 @@
 # opencode-swarm-plugin
 
+## 0.63.4
+
+### Patch Changes
+
+- [`02c3ae9`](https://github.com/joelhooks/swarm-tools/commit/02c3ae904ec3207feb75b58284bc6e8097c5aafd) Thanks [@joelhooks](https://github.com/joelhooks)! - fix(mcp): coerce string→array params flattened by MCP protocol
+
+  The MCP protocol flattens all `type: "array"` JSON Schema params to `type: "string"`,
+  causing Claude to send JSON-encoded strings or pipe-delimited strings instead of actual
+  arrays. This broke `hive_create_epic` (subtasks), `swarmmail_reserve` (paths), and 8
+  other array params.
+
+  Adds `coerceArrayParams()` that handles JSON strings, pipe-delimited, comma-separated,
+  and single values. Relaxes Zod validation to accept both strings and arrays for these
+  params.
+
+  > "Coerce objects into the roles we need them to play. Guard the borders, not the
+  > hinterlands." — Avdi Grimm, Confident Ruby
+
+- [`feb227e`](https://github.com/joelhooks/swarm-tools/commit/feb227e8911311c6619a75c04b3d58c898a18ad0) Thanks [@joelhooks](https://github.com/joelhooks)! - Fix hivemind memory CLI pointing at wrong database
+
+  The `swarm memory` CLI commands (stats, find, store, etc.) were connecting to a per-project `streams.db` in `/tmp/` instead of the global `~/.config/swarm-tools/swarm.db` where all memories actually live. This caused `swarm memory stats` to show 0 and `swarm memory find` to return no results.
+
+  Also fixes libSQL `COUNT(*)` returning 0 on tables with F32_BLOB vector columns — replaced with `COUNT(id)` across all memory-touching code paths.
+
+- Updated dependencies [[`feb227e`](https://github.com/joelhooks/swarm-tools/commit/feb227e8911311c6619a75c04b3d58c898a18ad0)]:
+  - swarm-mail@1.11.3
+
 ## 0.63.2
 
 ### Patch Changes

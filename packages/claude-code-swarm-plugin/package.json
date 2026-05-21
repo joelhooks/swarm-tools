@@ -1,6 +1,6 @@
 {
   "name": "claude-code-swarm-plugin",
-  "version": "0.63.3",
+  "version": "0.63.4",
   "description": "Multi-agent swarm coordination plugin for Claude Code",
   "type": "module",
   "scripts": {

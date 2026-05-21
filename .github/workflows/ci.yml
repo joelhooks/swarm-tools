@@ -132,11 +132,24 @@ jobs:
             body += '| Eval | Phase | Score | Status | Message |\n';
             body += '|------|-------|-------|--------|----------|\n';
             
-            for (const [evalName, result] of Object.entries(results)) {
+            const rows = Array.isArray(results)
+              ? results
+              : Array.isArray(results?.results)
+                ? results.results
+                : Object.entries(results).map(([name, value]) => ({ name, ...(value || {}) }));
+
+            for (const result of rows) {
+              const evalName = result.name || result.evalName || result.id || 'unknown';
               const statusEmoji = result.passed ? '✅' : '❌';
-              const phaseEmoji = result.phase === 'bootstrap' ? '🌱' : 
-                                result.phase === 'stabilization' ? '⚡' : '🏆';
-              body += `| ${evalName} | ${phaseEmoji} ${result.phase} | ${result.currentScore.toFixed(2)} | ${statusEmoji} | ${result.message} |\n`;
+              const phase = result.phase || 'unknown';
+              const phaseEmoji = phase === 'bootstrap' ? '🌱' : 
+                                phase === 'stabilization' ? '⚡' : '🏆';
+              const score = typeof result.currentScore === 'number'
+                ? result.currentScore.toFixed(2)
+                : typeof result.score === 'number'
+                  ? result.score.toFixed(2)
+                  : 'n/a';
+              body += `| ${evalName} | ${phaseEmoji} ${phase} | ${score} | ${statusEmoji} | ${result.message || ''} |\n`;
             }
             
             body += '\n---\n';

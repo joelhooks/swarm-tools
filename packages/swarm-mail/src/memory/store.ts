@@ -26,7 +26,7 @@
  * - Timestamps are TEXT (ISO strings)
  */
 
-import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import type { SwarmDb } from "../db/client.js";
 import { memories } from "../db/schema/memory.js";
 import { EMBEDDING_DIM } from "./ollama.js";
@@ -229,9 +229,9 @@ export function createMemoryStore(db: SwarmDb) {
         : sql``;
 
       // Only return active memories (not superseded)
-      const statusFilter = sql`AND (m.status IS NULL OR m.status = 'active')`;
+      const statusFilter = sql`AND (m.status IS NULL OR m.status = 'active' OR m.status = '''active''')`;
 
-      const results = await db.all<{
+      let results = await db.all<{
         id: string;
         content: string;
         metadata: string;
@@ -260,6 +260,43 @@ export function createMemoryStore(db: SwarmDb) {
           ${statusFilter}
         LIMIT ${limit}
       `);
+
+      // libSQL's vector index can be eventually populated for freshly inserted rows
+      // in in-memory/test databases. If ANN returns no rows, fall back to an exact
+      // scan so recent writes remain searchable and higher layers can degrade
+      // gracefully instead of behaving as if memory is empty.
+      if (results.length === 0) {
+        results = await db.all<{
+          id: string;
+          content: string;
+          metadata: string;
+          collection: string;
+          created_at: string;
+          decay_factor: number;
+          distance: number;
+          access_count: string;
+          last_accessed: string;
+        }>(sql`
+          SELECT
+            m.id,
+            m.content,
+            m.metadata,
+            m.collection,
+            m.created_at,
+            m.decay_factor,
+            m.access_count,
+            m.last_accessed,
+            vector_distance_cos(m.embedding, vector(${vectorStr})) as distance
+          FROM memories m
+          WHERE m.embedding IS NOT NULL
+            AND (1 - vector_distance_cos(m.embedding, vector(${vectorStr}))) >= ${threshold}
+            ${collectionFilter}
+            ${decayFilter}
+            ${statusFilter}
+          ORDER BY distance ASC
+          LIMIT ${limit}
+        `);
+      }
 
       // Track access for returned memories
       if (shouldTrack && results.length > 0) {
@@ -307,7 +344,7 @@ export function createMemoryStore(db: SwarmDb) {
         : decayTier === "warm"
         ? sql`AND datetime(m.last_accessed) >= datetime('now', '-30 days')`
         : sql``;
-      const statusFilter = sql`AND (m.status IS NULL OR m.status = 'active')`;
+      const statusFilter = sql`AND (m.status IS NULL OR m.status = 'active' OR m.status = '''active''')`;
 
       const results = await db.all<{
         id: string;

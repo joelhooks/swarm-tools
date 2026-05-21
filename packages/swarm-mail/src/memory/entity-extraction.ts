@@ -247,22 +247,50 @@ export async function storeEntities(
       const id = `ent-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       const now = new Date().toISOString();
 
-      await db.execute(
-        `
-        INSERT INTO entities (id, name, entity_type, canonical_name, pref_label, alt_labels, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        [
-          id,
-          entity.name,
-          entity.entityType,
-          entity.canonicalName ?? null,
-          (entity as any).prefLabel ?? null,
-          (entity as any).altLabels ? JSON.stringify((entity as any).altLabels) : null,
-          now,
-          now,
-        ]
-      );
+      try {
+        await db.execute(
+          `
+          INSERT INTO entities (id, name, entity_type, canonical_name, pref_label, alt_labels, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          [
+            id,
+            entity.name,
+            entity.entityType,
+            entity.canonicalName ?? null,
+            (entity as any).prefLabel ?? null,
+            (entity as any).altLabels ? JSON.stringify((entity as any).altLabels) : null,
+            now,
+            now,
+          ]
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("no column named pref_label") && !message.includes("no column named alt_labels")) {
+          throw error;
+        }
+
+        // Older test/local databases can predate the schema-overhaul columns.
+        // Add them lazily so entity extraction remains backward-compatible.
+        await db.execute(`ALTER TABLE entities ADD COLUMN pref_label TEXT`).catch(() => undefined);
+        await db.execute(`ALTER TABLE entities ADD COLUMN alt_labels TEXT`).catch(() => undefined);
+        await db.execute(
+          `
+          INSERT INTO entities (id, name, entity_type, canonical_name, pref_label, alt_labels, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+          [
+            id,
+            entity.name,
+            entity.entityType,
+            entity.canonicalName ?? null,
+            (entity as any).prefLabel ?? null,
+            (entity as any).altLabels ? JSON.stringify((entity as any).altLabels) : null,
+            now,
+            now,
+          ]
+        );
+      }
 
       storedEntity = {
         id,

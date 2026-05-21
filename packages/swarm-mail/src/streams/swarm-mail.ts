@@ -779,7 +779,7 @@ export async function emitThreadActivity(
     .select({ from_agent: messagesTable.from_agent })
     .from(messagesTable)
     .where(eq(messagesTable.thread_id, threadId))
-    .orderBy(sql`${messagesTable.created_at} DESC`)
+    .orderBy(sql`${messagesTable.created_at} DESC, ${messagesTable.id} DESC`)
     .limit(1);
   const lastMessageAgent = lastMessageResult[0]?.from_agent ?? "";
   

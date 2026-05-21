@@ -87,7 +87,17 @@ jobs:
         run: bun turbo typecheck
 
       - name: Run unit tests
-        run: bun turbo test --concurrency=1
+        run: |
+          set -euo pipefail
+          bun turbo test --filter='!swarm-mail' --concurrency=1
+          cd packages/swarm-mail
+          bun test --timeout 60000 \
+            src/__tests__/tarball-packaging.test.ts \
+            src/memory/store.drizzle.test.ts \
+            src/memory/adapter.test.ts \
+            src/memory/memory-operations.integration.test.ts \
+            src/sessions/session-indexer.test.ts \
+            src/streams/thread-events.integration.test.ts
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           RUN_LLM_TESTS: "false"

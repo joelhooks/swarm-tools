@@ -1,0 +1,12 @@
+# Supply-chain choke points: workflows, dependencies, packages, plugins, scripts, and release config.
+.github/workflows/ @joelhooks
+.github/actions/ @joelhooks
+package.json @joelhooks
+bun.lock @joelhooks
+package-lock.json @joelhooks
+pnpm-lock.yaml @joelhooks
+yarn.lock @joelhooks
+.npmrc @joelhooks
+packages/ @joelhooks
+scripts/ @joelhooks
+.changeset/ @joelhooks

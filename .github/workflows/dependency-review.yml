@@ -1,0 +1,16 @@
+name: Dependency Review
+on:
+  pull_request:
+    paths: ['package.json','bun.lock','package-lock.json','pnpm-lock.yaml','yarn.lock']
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        continue-on-error: true
+        with:
+          fail-on-severity: high

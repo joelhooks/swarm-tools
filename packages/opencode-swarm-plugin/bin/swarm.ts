@@ -503,6 +503,11 @@ const COORDINATOR_MODELS: ModelOption[] = [
     label: "Gemini 1.5 Pro",
     hint: "More capable, larger context",
   },
+  {
+    value: "cerebras/zai-glm-4.7",
+    label: "Cerebras GLM 4.7",
+    hint: "Ultra-fast (~1000 tok/s), 131k context, reasoning model",
+  },
 ];
 
 const WORKER_MODELS: ModelOption[] = [
@@ -525,6 +530,11 @@ const WORKER_MODELS: ModelOption[] = [
     value: "google/gemini-2.0-flash",
     label: "Gemini 2.0 Flash",
     hint: "Fast and capable",
+  },
+  {
+    value: "cerebras/zai-glm-4.7",
+    label: "Cerebras GLM 4.7",
+    hint: "Ultra-fast (~1000 tok/s), reasoning model",
   },
 ];
 

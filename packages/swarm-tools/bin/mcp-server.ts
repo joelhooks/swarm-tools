@@ -34,12 +34,12 @@ const ALLOWED_TOOLS = new Set([
   "swarm_review", "swarm_review_feedback", "swarm_progress", "swarm_complete",
 ]);
 
-function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
+function jsonSchemaToZodShape(schema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
   const props = schema.properties as Record<string, { type?: string; enum?: string[] }> | undefined;
   const required = (schema.required as string[]) || [];
 
   if (!props || Object.keys(props).length === 0) {
-    return z.record(z.string(), z.unknown());
+    return {};
   }
 
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -60,7 +60,7 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
     }
     shape[key] = required.includes(key) ? fieldSchema : fieldSchema.optional();
   }
-  return z.object(shape).passthrough();
+  return shape;
 }
 
 function executeTool(name: string, args: Record<string, unknown>): string {
@@ -97,10 +97,10 @@ async function main(): Promise<void> {
   console.error(`[swarm-mcp] Registering ${tools.length} tools (from ${SWARM_TOOLS.length} available)`);
 
   for (const tool of tools) {
-    const zodSchema = jsonSchemaToZod(tool.parameters as Record<string, unknown>);
+    const zodSchema = jsonSchemaToZodShape(tool.parameters as Record<string, unknown>);
     server.registerTool(
       tool.name,
-      { description: tool.description, inputSchema: zodSchema },
+      { description: tool.description, inputSchema: zodSchema as any },
       async (args: Record<string, unknown>) => ({
         content: [{ type: "text" as const, text: executeTool(tool.name, args ?? {}) }],
       })

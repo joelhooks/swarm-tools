@@ -9,7 +9,7 @@
     "version": "bun run ../opencode-swarm-plugin/scripts/sync-plugin-versions.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.25.2",
+    "@modelcontextprotocol/sdk": "1.26.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {

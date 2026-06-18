@@ -16,7 +16,7 @@ jobs:
   manage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: mitchellh/vouch/action/manage-by-issue@main
         with:
           issue-id: ${{ github.event.issue.number }}

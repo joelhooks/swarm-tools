@@ -6,8 +6,22 @@
  */
 
 import { createClient } from "@libsql/client";
-import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { sql } from "drizzle-orm";
+import type { SwarmDb } from "../db/client.js";
 import { createDrizzleClient } from "../db/drizzle.js";
+import {
+  createInMemorySwarmMailLibSQL,
+  toSwarmDb,
+} from "../libsql.convenience.js";
+import type { SwarmMailAdapter } from "../types/adapter.js";
 import { type Memory, createMemoryStore } from "./store.js";
 
 /**
@@ -297,7 +311,7 @@ describe("Memory Store (Drizzle) - Vector Search", () => {
           collection: mem.collection,
           createdAt: new Date(),
         },
-        mem.embedding
+        mem.embedding,
       );
     }
   });
@@ -357,5 +371,125 @@ describe("Memory Store (Drizzle) - Vector Search", () => {
 
     const results = await store.search(mockEmbedding(1));
     expect(results).toEqual([]);
+  });
+});
+
+describe("Memory Store (Drizzle) - Status Corruption Regression", () => {
+  // Regression test for a bug where the Drizzle schema's column default
+  // (db/schema/memory.ts `status: text("status").default("'active'")`) contained
+  // literal quote characters. Drizzle's SQLite dialect binds `.default()` as a
+  // client-side insert parameter whenever a column is omitted from `.values()`,
+  // so every memory silently got a `status` of the 8-char string `'active'`
+  // instead of `active` - independent of what the table's raw SQL DDL default said.
+  // search()/ftsSearch() filtered on `status = 'active'`, which never matched,
+  // so every memory became permanently unsearchable while getStats() still
+  // reported a healthy count. Store succeeded, search returned empty: silent
+  // write-only corruption with stats showing everything was fine.
+  let swarmMail: SwarmMailAdapter;
+  let db: SwarmDb;
+  let store: ReturnType<typeof createMemoryStore>;
+
+  beforeAll(async () => {
+    swarmMail = await createInMemorySwarmMailLibSQL(
+      "status-corruption-regression",
+    );
+    const dbAdapter = await swarmMail.getDatabase();
+    db = toSwarmDb(dbAdapter);
+    store = createMemoryStore(db);
+  });
+
+  afterAll(async () => {
+    await swarmMail.close();
+  });
+
+  test("store() writes a clean 'active' status, not a quoted literal", async () => {
+    const memory: Memory = {
+      id: "mem-status-1",
+      content: "Some content",
+      metadata: {},
+      collection: "default",
+      createdAt: new Date(),
+    };
+
+    await store.store(memory, mockEmbedding(1));
+
+    const rows = await db.all<{ status: string }>(
+      sql`SELECT status FROM memories WHERE id = ${memory.id}`,
+    );
+    expect(rows[0]?.status).toBe("active");
+  });
+
+  test("a freshly stored memory is retrievable via search() (end-to-end)", async () => {
+    const memory: Memory = {
+      id: "mem-status-2",
+      content: "Findable content about durable fixes",
+      metadata: {},
+      collection: "default",
+      createdAt: new Date(),
+    };
+    const embedding = mockEmbedding(7);
+
+    await store.store(memory, embedding);
+
+    const results = await store.search(embedding, { threshold: 0 });
+    expect(results.map((r) => r.memory.id)).toContain("mem-status-2");
+  });
+
+  test("a freshly stored memory is retrievable via ftsSearch() (end-to-end)", async () => {
+    const memory: Memory = {
+      id: "mem-status-3",
+      content: "unique-fts-marker-zzyzx durable fixes",
+      metadata: {},
+      collection: "default",
+      createdAt: new Date(),
+    };
+
+    await store.store(memory, mockEmbedding(8));
+
+    const results = await store.ftsSearch("unique-fts-marker-zzyzx");
+    expect(results.map((r) => r.memory.id)).toContain("mem-status-3");
+  });
+
+  test("search() still finds legacy-corrupted rows (status = literal 'active')", async () => {
+    // Simulates a row written by an unpatched install before this fix, so
+    // memories already in production databases remain searchable.
+    const memory: Memory = {
+      id: "mem-legacy",
+      content: "Legacy corrupted row",
+      metadata: {},
+      collection: "default",
+      createdAt: new Date(),
+    };
+    await store.store(memory, mockEmbedding(3));
+
+    // Force the legacy-corrupted value directly, bypassing the (now-fixed) default.
+    await db.run(
+      sql`UPDATE memories SET status = '''active''' WHERE id = ${memory.id}`,
+    );
+
+    const results = await store.search(mockEmbedding(3), { threshold: 0 });
+    expect(results.map((r) => r.memory.id)).toContain("mem-legacy");
+  });
+
+  test("ftsSearch() still finds legacy-corrupted rows (status = literal 'active')", async () => {
+    // Mirrors the search() legacy-status test above: ftsSearch() has its own
+    // end-to-end query path and status filter, so it needs its own coverage
+    // of the corrupted-status case rather than inheriting search()'s.
+    const memory: Memory = {
+      id: "mem-legacy-fts",
+      content: "unique-fts-marker-legacy durable fixes",
+      metadata: {},
+      collection: "default",
+      createdAt: new Date(),
+    };
+    await store.store(memory, mockEmbedding(9));
+
+    // Force the legacy-corrupted value directly, bypassing the (now-fixed) default.
+    await db.run(
+      sql`UPDATE memories SET status = '''active''' WHERE id = ${memory.id}`,
+    );
+
+    const results = await store.ftsSearch("unique-fts-marker-legacy");
+    expect(results.map((r) => r.memory.id)).toContain("mem-legacy-fts");
   });
 });

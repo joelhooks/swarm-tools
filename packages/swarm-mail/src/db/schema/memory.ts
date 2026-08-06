@@ -83,7 +83,7 @@ export const memories = sqliteTable("memories", {
   last_accessed: text("last_accessed").default("(datetime('now'))"),
   // Fact categorization
   category: text("category"), // relationship, milestone, status, preference, context
-  status: text("status").default("'active'"), // active, superseded
+  status: text("status").default("active"), // active, superseded
 });
 
 /**

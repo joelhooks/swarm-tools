@@ -493,13 +493,13 @@ Hivemind's unified session search is inspired by [CASS](https://github.com/Dickl
 
 ## Project Skills
 
-Skills live in `.opencode/skills/` and provide reusable knowledge for agents.
+Skills live in `.opencode/skill/` and provide reusable knowledge for agents.
 
 ### pr-triage
 
 Context-efficient PR comment handling. **Evaluate → Decide → Act.** Fix important issues, resolve the rest silently.
 
-**Location:** `.opencode/skills/pr-triage/`
+**Location:** `.opencode/skill/pr-triage/`
 
 **Philosophy:** Replies are SECONDARY to addressing concerns. Don't reply to every comment - that's noise.
 
